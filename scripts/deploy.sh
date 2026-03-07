@@ -541,8 +541,9 @@ check_ui_api_routes() {
     cd "$PROJECT_DIR"
 }
 
-print_manual_check_urls() {
-    section "Manual Testing URLs"
+print_services_summary() {
+    section "Installed Services"
+
     PORT_UI="${PORT_UI:-3000}"
     PORT_SONARR="${PORT_SONARR:-8989}"
     PORT_RADARR="${PORT_RADARR:-7878}"
@@ -555,19 +556,31 @@ print_manual_check_urls() {
     PORT_TAUTULLI="${PORT_TAUTULLI:-8181}"
     PORT_GLUETUN_CONTROL="${PORT_GLUETUN_CONTROL:-8000}"
 
-    info "Verify responsive design at these URLs:"
+    printf "\n  ${GREEN}${BOLD}Mars Media Centre${RESET}  ${GREEN}http://localhost:${PORT_UI}${RESET}\n"
     echo ""
-    info "  Media UI:      http://localhost:${PORT_UI}"
-    info "  Sonarr:        http://localhost:${PORT_SONARR}"
-    info "  Radarr:        http://localhost:${PORT_RADARR}"
-    info "  Prowlarr:      http://localhost:${PORT_PROWLARR}"
-    info "  qBittorrent:   http://localhost:${PORT_QBITTORRENT}"
-    info "  SABnzbd:       http://localhost:${PORT_SABNZBD}"
-    info "  Plex:          http://localhost:${PORT_PLEX}/web"
-    info "  Seerr:         http://localhost:${PORT_SEERR}"
-    info "  Bazarr:        http://localhost:${PORT_BAZARR}"
-    info "  Tautulli:      http://localhost:${PORT_TAUTULLI}"
-    info "  Gluetun:       http://localhost:${PORT_GLUETUN_CONTROL}/v1/openvpn/status"
+
+    info "${BOLD}Media Management${RESET}"
+    info "  Sonarr         http://localhost:${PORT_SONARR}        TV show management"
+    info "  Radarr         http://localhost:${PORT_RADARR}        Movie management"
+    info "  Prowlarr       http://localhost:${PORT_PROWLARR}        Indexer management"
+    info "  Seerr          http://localhost:${PORT_SEERR}        Media requests"
+    echo ""
+
+    info "${BOLD}Download Clients${RESET}"
+    info "  qBittorrent    http://localhost:${PORT_QBITTORRENT}        Torrent client"
+    info "  SABnzbd        http://localhost:${PORT_SABNZBD}        Usenet client"
+    echo ""
+
+    info "${BOLD}Media Server${RESET}"
+    info "  Plex           http://localhost:${PORT_PLEX}/web    Media streaming"
+    info "  Bazarr         http://localhost:${PORT_BAZARR}        Subtitle management"
+    info "  Tautulli       http://localhost:${PORT_TAUTULLI}        Plex analytics"
+    echo ""
+
+    info "${BOLD}Operations${RESET}"
+    info "  Gluetun        http://localhost:${PORT_GLUETUN_CONTROL}        VPN status"
+    info "  Recyclarr      (runs on schedule)      Quality profile sync"
+    info "  Watchtower      (runs on schedule)      Container auto-update"
 }
 
 # ============================================================
@@ -967,7 +980,7 @@ elif [ "$DRY_RUN" = "1" ]; then
     check_shell_scripts
     build_ui
     check_ui_api_routes
-    print_manual_check_urls
+    print_services_summary
     print_summary
 else
     section "Mars Media Centre — Deploy"
@@ -998,7 +1011,7 @@ else
     check_vpn_connectivity
     check_service_ports
     check_ui_api_routes_live
-    print_manual_check_urls
+    print_services_summary
     print_summary
 fi
 
