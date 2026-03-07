@@ -802,24 +802,25 @@ print_summary() {
 setup_colors
 
 if [ "$UI_ONLY" = "1" ]; then
-    section "Mars Media Centre — UI Deploy"
+    section "Mars Media Centre — UI Only"
 
-    check_env_file
-    validate_compose_syntax
+    cd "$PROJECT_DIR/ui"
 
-    section "Build & Deploy UI"
-    cd "$PROJECT_DIR"
-    info "Building and starting media-ui..."
-    docker compose up -d --build media-ui
-
-    PORT_UI="${PORT_UI:-3000}"
-    if wait_for_port "$PORT_UI" 30; then
-        pass "media-ui responding on port $PORT_UI"
+    info "Installing dependencies..."
+    if npm install --loglevel=error 2>&1; then
+        pass "npm install succeeded"
     else
-        warn "media-ui not responding on port $PORT_UI (may still be building)"
+        fail "npm install failed"
+        print_summary
+        exit 1
     fi
 
-    print_summary
+    PORT_UI="${PORT_UI:-3000}"
+    echo ""
+    info "Starting Mars Media Centre UI on http://localhost:${PORT_UI}"
+    info "Press Ctrl+C to stop"
+    echo ""
+    PORT="$PORT_UI" exec npm run dev
 elif [ "$UPDATE_MODE" = "1" ]; then
     section "Mars Media Centre — Update"
 
