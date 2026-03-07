@@ -306,20 +306,35 @@ Individual service web UIs remain accessible at their respective ports for advan
 | Permission errors | Verify `PUID`/`PGID` match your host user (`id` command). Re-run `sudo ./scripts/init.sh`. |
 | Container keeps restarting | Check logs: `docker logs <container-name>`. Common cause: missing or invalid config. |
 
-## Stopping and Starting
+## Managing Containers
+
+### All Services
 
 ```bash
-# Stop all services (preserves data and configs)
-docker compose down
+docker compose up -d       # Start all services
+docker compose down        # Stop and remove all containers (preserves data and configs)
+docker compose restart     # Restart all services
+```
 
-# Start all services
-docker compose up -d
+### Individual Containers
 
-# Restart a single service
-docker compose restart sonarr
+```bash
+docker stop sonarr         # Stop a container
+docker start sonarr        # Start a stopped container
+docker restart sonarr      # Restart a container
+docker rm -f sonarr        # Force stop and remove a container
+docker logs -f sonarr      # Follow a container's logs
+```
 
-# View logs
-docker compose logs -f sonarr
+Replace `sonarr` with any container name: `gluetun`, `qbittorrent`, `sabnzbd`, `prowlarr`, `sonarr`, `radarr`, `unpackerr`, `plex`, `bazarr`, `tautulli`, `seerr`, `recyclarr`, `watchtower`, `media-ui`.
+
+### Rebuilding After Removal
+
+If you remove a container and want to bring it back:
+
+```bash
+docker compose up -d sonarr           # Recreate a single service
+docker compose up -d --build media-ui # Rebuild and start the UI
 ```
 
 ## Uninstalling

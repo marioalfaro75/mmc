@@ -582,6 +582,15 @@ print_services_summary() {
     info "  Gluetun        http://localhost:${PORT_GLUETUN_CONTROL}        VPN status"
     info "  Recyclarr      (runs on schedule)      Quality profile sync"
     info "  Watchtower      (runs on schedule)      Container auto-update"
+    echo ""
+
+    info "${BOLD}Quick Reference${RESET}"
+    info "  Stop a service:      docker stop <name>"
+    info "  Start a service:     docker start <name>"
+    info "  Remove a service:    docker rm -f <name>"
+    info "  View logs:           docker logs -f <name>"
+    info "  Stop all:            docker compose down"
+    info "  Start all:           docker compose up -d"
 }
 
 # ============================================================
@@ -962,6 +971,13 @@ elif [ "$UI_DOCKER" = "1" ]; then
 
     section "Installed Services"
     printf "\n  ${GREEN}${BOLD}Mars Media Centre${RESET}  ${GREEN}http://localhost:${PORT_UI}${RESET}\n\n"
+
+    info "${BOLD}Quick Reference${RESET}"
+    info "  Stop:       docker stop media-ui"
+    info "  Start:      docker start media-ui"
+    info "  Remove:     docker rm -f media-ui"
+    info "  View logs:  docker logs -f media-ui"
+    echo ""
 
     print_summary
 elif [ "$UPDATE_MODE" = "1" ]; then
