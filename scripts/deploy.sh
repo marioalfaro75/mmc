@@ -542,7 +542,8 @@ check_ui_api_routes() {
 }
 
 print_services_summary() {
-    section "Installed Services"
+    _heading="${1:-Installed Services}"
+    section "$_heading"
 
     PORT_UI="${PORT_UI:-3000}"
     PORT_SONARR="${PORT_SONARR:-8989}"
@@ -996,6 +997,7 @@ elif [ "$UPDATE_MODE" = "1" ]; then
     check_all_containers
     check_service_ports
     check_ui_api_routes_live
+    print_services_summary
     print_summary
 elif [ "$DRY_RUN" = "1" ]; then
     section "Mars Media Centre — Dry Run"
@@ -1007,7 +1009,7 @@ elif [ "$DRY_RUN" = "1" ]; then
     check_shell_scripts
     build_ui
     check_ui_api_routes
-    print_services_summary
+    print_services_summary "Services (will be deployed)"
     print_summary
 else
     section "Mars Media Centre — Deploy"
