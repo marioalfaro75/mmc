@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { STALE_TIME } from '@/lib/utils/polling';
+import { fetchApi } from '@/lib/utils/fetchApi';
 import type { RadarrMovie } from '@/lib/types/radarr';
 import type { SonarrSeries } from '@/lib/types/sonarr';
 
@@ -10,17 +11,17 @@ export function useMovies() {
 
   const query = useQuery<RadarrMovie[]>({
     queryKey: ['movies'],
-    queryFn: () => fetch('/api/movies').then(r => r.json()),
+    queryFn: () => fetchApi<RadarrMovie[]>('/api/movies'),
     staleTime: STALE_TIME.LIBRARY,
   });
 
   const addMutation = useMutation({
     mutationFn: (movie: Partial<RadarrMovie>) =>
-      fetch('/api/movies', {
+      fetchApi('/api/movies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(movie),
-      }).then(r => r.json()),
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['movies'] }),
   });
 
@@ -38,17 +39,17 @@ export function useSeries() {
 
   const query = useQuery<SonarrSeries[]>({
     queryKey: ['series'],
-    queryFn: () => fetch('/api/series').then(r => r.json()),
+    queryFn: () => fetchApi<SonarrSeries[]>('/api/series'),
     staleTime: STALE_TIME.LIBRARY,
   });
 
   const addMutation = useMutation({
     mutationFn: (series: Partial<SonarrSeries>) =>
-      fetch('/api/series', {
+      fetchApi('/api/series', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(series),
-      }).then(r => r.json()),
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['series'] }),
   });
 

@@ -5,12 +5,13 @@ import { Clock } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
 import { Skeleton } from '@/components/common/Skeleton';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
+import { fetchApi } from '@/lib/utils/fetchApi';
 import type { PlexMediaItem } from '@/lib/api/plex';
 
 export function RecentlyAdded() {
   const { data, isLoading, isError } = useQuery<PlexMediaItem[]>({
     queryKey: ['recently-added'],
-    queryFn: () => fetch('/api/recently-added').then(r => r.json()),
+    queryFn: () => fetchApi<PlexMediaItem[]>('/api/recently-added'),
     refetchInterval: POLLING.RECENTLY_ADDED,
     staleTime: STALE_TIME.RECENTLY_ADDED,
   });

@@ -6,6 +6,7 @@ import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Skeleton } from '@/components/common/Skeleton';
 import { POLLING } from '@/lib/utils/polling';
+import { fetchApi } from '@/lib/utils/fetchApi';
 import { formatDate } from '@/lib/utils/formatters';
 import { toast } from 'sonner';
 
@@ -38,7 +39,7 @@ export default function RequestsPage() {
 
   const { data, isLoading, isError } = useQuery<RequestData>({
     queryKey: ['requests'],
-    queryFn: () => fetch('/api/requests').then(r => r.json()),
+    queryFn: () => fetchApi<RequestData>('/api/requests'),
     refetchInterval: POLLING.REQUESTS,
   });
 

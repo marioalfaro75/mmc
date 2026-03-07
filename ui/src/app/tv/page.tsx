@@ -10,6 +10,7 @@ import { SearchBar } from '@/components/media/SearchBar';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { STALE_TIME } from '@/lib/utils/polling';
+import { fetchApi } from '@/lib/utils/fetchApi';
 import type { SonarrSeries, SonarrLookupResult } from '@/lib/types/sonarr';
 import { toast } from 'sonner';
 
@@ -25,21 +26,21 @@ export default function TvPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [lookupTerm, setLookupTerm] = useState('');
 
-  const { data: series, isLoading } = useQuery<SonarrSeries[]>({
+  const { data: series, isLoading, isError } = useQuery<SonarrSeries[]>({
     queryKey: ['series'],
-    queryFn: () => fetch('/api/series').then(r => r.json()),
+    queryFn: () => fetchApi<SonarrSeries[]>('/api/series'),
     staleTime: STALE_TIME.LIBRARY,
   });
 
   const { data: lookupResults } = useQuery<SonarrLookupResult[]>({
     queryKey: ['series', 'lookup', lookupTerm],
-    queryFn: () => fetch(`/api/series/lookup?term=${encodeURIComponent(lookupTerm)}`).then(r => r.json()),
+    queryFn: () => fetchApi<SonarrLookupResult[]>(`/api/series/lookup?term=${encodeURIComponent(lookupTerm)}`),
     enabled: lookupTerm.length > 2,
   });
 
   const addMutation = useMutation({
     mutationFn: (s: Partial<SonarrSeries>) =>
-      fetch('/api/series', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(s) }).then(r => r.json()),
+      fetchApi('/api/series', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(s) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['series'] });
       setShowAdd(false);
@@ -109,6 +110,12 @@ export default function TvPage() {
           </select>
         </div>
       </div>
+
+      {isError && (
+        <div className="rounded-lg border border-danger/50 bg-danger/10 px-4 py-3 text-sm text-danger">
+          Sonarr is not configured or unavailable. Check your .env settings and ensure Sonarr is running.
+        </div>
+      )}
 
       <p className="text-sm text-muted-foreground">{filtered.length} series</p>
 

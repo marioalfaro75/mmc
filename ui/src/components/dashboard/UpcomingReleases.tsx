@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Skeleton } from '@/components/common/Skeleton';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
+import { fetchApi } from '@/lib/utils/fetchApi';
 import { formatRelativeDate, formatEpisode } from '@/lib/utils/formatters';
 import type { CalendarItem } from '@/lib/types/common';
 
@@ -15,7 +16,7 @@ export function UpcomingReleases() {
 
   const { data, isLoading } = useQuery<CalendarItem[]>({
     queryKey: ['calendar', { start, end }],
-    queryFn: () => fetch(`/api/calendar?start=${start}&end=${end}`).then(r => r.json()),
+    queryFn: () => fetchApi<CalendarItem[]>(`/api/calendar?start=${start}&end=${end}`),
     refetchInterval: POLLING.CALENDAR,
     staleTime: STALE_TIME.CALENDAR,
   });

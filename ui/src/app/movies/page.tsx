@@ -10,6 +10,7 @@ import { SearchBar } from '@/components/media/SearchBar';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { STALE_TIME } from '@/lib/utils/polling';
+import { fetchApi } from '@/lib/utils/fetchApi';
 import type { RadarrMovie, RadarrLookupResult } from '@/lib/types/radarr';
 import { toast } from 'sonner';
 
@@ -25,21 +26,21 @@ export default function MoviesPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [lookupTerm, setLookupTerm] = useState('');
 
-  const { data: movies, isLoading } = useQuery<RadarrMovie[]>({
+  const { data: movies, isLoading, isError } = useQuery<RadarrMovie[]>({
     queryKey: ['movies'],
-    queryFn: () => fetch('/api/movies').then(r => r.json()),
+    queryFn: () => fetchApi<RadarrMovie[]>('/api/movies'),
     staleTime: STALE_TIME.LIBRARY,
   });
 
   const { data: lookupResults } = useQuery<RadarrLookupResult[]>({
     queryKey: ['movies', 'lookup', lookupTerm],
-    queryFn: () => fetch(`/api/movies/lookup?term=${encodeURIComponent(lookupTerm)}`).then(r => r.json()),
+    queryFn: () => fetchApi<RadarrLookupResult[]>(`/api/movies/lookup?term=${encodeURIComponent(lookupTerm)}`),
     enabled: lookupTerm.length > 2,
   });
 
   const addMutation = useMutation({
     mutationFn: (movie: Partial<RadarrMovie>) =>
-      fetch('/api/movies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(movie) }).then(r => r.json()),
+      fetchApi('/api/movies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(movie) }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['movies'] });
       setShowAdd(false);
@@ -107,6 +108,12 @@ export default function MoviesPage() {
           </select>
         </div>
       </div>
+
+      {isError && (
+        <div className="rounded-lg border border-danger/50 bg-danger/10 px-4 py-3 text-sm text-danger">
+          Radarr is not configured or unavailable. Check your .env settings and ensure Radarr is running.
+        </div>
+      )}
 
       <p className="text-sm text-muted-foreground">{filtered.length} movies</p>
 

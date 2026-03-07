@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
+import { fetchApi } from '@/lib/utils/fetchApi';
 import type { DownloadItem } from '@/lib/types/common';
 
 export function useDownloads() {
@@ -9,14 +10,14 @@ export function useDownloads() {
 
   const query = useQuery<DownloadItem[]>({
     queryKey: ['downloads'],
-    queryFn: () => fetch('/api/downloads').then(r => r.json()),
+    queryFn: () => fetchApi<DownloadItem[]>('/api/downloads'),
     refetchInterval: POLLING.DOWNLOADS,
     staleTime: STALE_TIME.DOWNLOADS,
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
-      fetch(`/api/downloads/${id}`, { method: 'DELETE' }).then(r => r.json()),
+      fetchApi(`/api/downloads/${id}`, { method: 'DELETE' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['downloads'] }),
   });
 

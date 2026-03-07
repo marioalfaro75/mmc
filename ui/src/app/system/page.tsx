@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Skeleton } from '@/components/common/Skeleton';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
+import { fetchApi } from '@/lib/utils/fetchApi';
 import type { ServiceHealth, VpnStatus } from '@/lib/types/common';
 
 const serviceLinks: Record<string, { port: number; path?: string }> = {
@@ -23,14 +24,14 @@ const serviceLinks: Record<string, { port: number; path?: string }> = {
 export default function SystemPage() {
   const { data: healthData, isLoading: healthLoading } = useQuery<{ services: ServiceHealth[] }>({
     queryKey: ['health'],
-    queryFn: () => fetch('/api/health').then(r => r.json()),
+    queryFn: () => fetchApi<{ services: ServiceHealth[] }>('/api/health'),
     refetchInterval: POLLING.HEALTH,
     staleTime: STALE_TIME.HEALTH,
   });
 
   const { data: vpnData } = useQuery<VpnStatus>({
     queryKey: ['vpn'],
-    queryFn: () => fetch('/api/vpn').then(r => r.json()),
+    queryFn: () => fetchApi<VpnStatus>('/api/vpn'),
     refetchInterval: POLLING.VPN,
   });
 

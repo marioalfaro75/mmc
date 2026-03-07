@@ -6,6 +6,7 @@ import { Shield, ShieldAlert, Download } from 'lucide-react';
 import { DownloadQueue } from '@/components/downloads/DownloadQueue';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
 import { cn } from '@/lib/utils';
+import { fetchApi } from '@/lib/utils/fetchApi';
 import type { DownloadItem } from '@/lib/types/common';
 import type { VpnStatus } from '@/lib/types/common';
 import { toast } from 'sonner';
@@ -18,20 +19,20 @@ export default function DownloadsPage() {
 
   const { data: downloads = [], isLoading } = useQuery<DownloadItem[]>({
     queryKey: ['downloads'],
-    queryFn: () => fetch('/api/downloads').then(r => r.json()),
+    queryFn: () => fetchApi<DownloadItem[]>('/api/downloads'),
     refetchInterval: POLLING.DOWNLOADS,
     staleTime: STALE_TIME.DOWNLOADS,
   });
 
   const { data: vpn } = useQuery<VpnStatus>({
     queryKey: ['vpn'],
-    queryFn: () => fetch('/api/vpn').then(r => r.json()),
+    queryFn: () => fetchApi<VpnStatus>('/api/vpn'),
     refetchInterval: POLLING.VPN,
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
-      fetch(`/api/downloads/${id}`, { method: 'DELETE' }).then(r => r.json()),
+      fetchApi(`/api/downloads/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['downloads'] });
       toast.success('Download removed');

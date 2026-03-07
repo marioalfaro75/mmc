@@ -7,13 +7,14 @@ import { ProgressBar } from '@/components/common/ProgressBar';
 import { Badge } from '@/components/common/Badge';
 import { Skeleton } from '@/components/common/Skeleton';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
+import { fetchApi } from '@/lib/utils/fetchApi';
 import { formatBytes, formatSpeed, formatDuration } from '@/lib/utils/formatters';
 import type { DownloadItem } from '@/lib/types/common';
 
 export function ActiveDownloads() {
   const { data, isLoading } = useQuery<DownloadItem[]>({
     queryKey: ['downloads'],
-    queryFn: () => fetch('/api/downloads').then(r => r.json()),
+    queryFn: () => fetchApi<DownloadItem[]>('/api/downloads'),
     refetchInterval: POLLING.DOWNLOADS,
     staleTime: STALE_TIME.DOWNLOADS,
   });

@@ -5,12 +5,13 @@ import { Film, Tv, HardDrive, PlayCircle } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Skeleton } from '@/components/common/Skeleton';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
+import { fetchApi } from '@/lib/utils/fetchApi';
 import type { DashboardStats } from '@/lib/types/common';
 
 export function StatsCards() {
   const { data, isLoading } = useQuery<DashboardStats>({
     queryKey: ['dashboard', 'stats'],
-    queryFn: () => fetch('/api/dashboard/stats').then(r => r.json()),
+    queryFn: () => fetchApi<DashboardStats>('/api/dashboard/stats'),
     refetchInterval: POLLING.STATS,
     staleTime: STALE_TIME.STATS,
   });

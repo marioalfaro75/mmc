@@ -6,6 +6,7 @@ import { Card, CardHeader, CardTitle } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Skeleton } from '@/components/common/Skeleton';
 import { POLLING } from '@/lib/utils/polling';
+import { fetchApi } from '@/lib/utils/fetchApi';
 import { formatDate } from '@/lib/utils/formatters';
 
 interface RequestData {
@@ -26,7 +27,7 @@ interface RequestData {
 export function PendingRequests() {
   const { data, isLoading, isError } = useQuery<RequestData>({
     queryKey: ['requests'],
-    queryFn: () => fetch('/api/requests').then(r => r.json()),
+    queryFn: () => fetchApi<RequestData>('/api/requests'),
     refetchInterval: POLLING.REQUESTS,
   });
 

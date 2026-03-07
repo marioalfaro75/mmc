@@ -2,19 +2,20 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
+import { fetchApi } from '@/lib/utils/fetchApi';
 import type { ServiceHealth, VpnStatus } from '@/lib/types/common';
 
 export function useSystemHealth() {
   const healthQuery = useQuery<{ services: ServiceHealth[] }>({
     queryKey: ['health'],
-    queryFn: () => fetch('/api/health').then(r => r.json()),
+    queryFn: () => fetchApi<{ services: ServiceHealth[] }>('/api/health'),
     refetchInterval: POLLING.HEALTH,
     staleTime: STALE_TIME.HEALTH,
   });
 
   const vpnQuery = useQuery<VpnStatus>({
     queryKey: ['vpn'],
-    queryFn: () => fetch('/api/vpn').then(r => r.json()),
+    queryFn: () => fetchApi<VpnStatus>('/api/vpn'),
     refetchInterval: POLLING.VPN,
   });
 

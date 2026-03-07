@@ -7,6 +7,7 @@ import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Skeleton } from '@/components/common/Skeleton';
 import { STALE_TIME, POLLING } from '@/lib/utils/polling';
+import { fetchApi } from '@/lib/utils/fetchApi';
 import { formatDate, formatEpisode } from '@/lib/utils/formatters';
 import { cn } from '@/lib/utils';
 import type { CalendarItem } from '@/lib/types/common';
@@ -47,7 +48,7 @@ export default function CalendarPage() {
 
   const { data: items = [], isLoading } = useQuery<CalendarItem[]>({
     queryKey: ['calendar', { start, end }],
-    queryFn: () => fetch(`/api/calendar?start=${start}&end=${end}`).then(r => r.json()),
+    queryFn: () => fetchApi<CalendarItem[]>(`/api/calendar?start=${start}&end=${end}`),
     refetchInterval: POLLING.CALENDAR,
     staleTime: STALE_TIME.CALENDAR,
   });
