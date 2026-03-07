@@ -2,14 +2,15 @@
 # ============================================================
 # deploy.sh — Pre-flight validation and staged deployment
 # ============================================================
-# Usage: ./scripts/deploy.sh [--dry-run] [--skip-ui] [--ui-only] [--update] [--help]
+# Usage: ./scripts/deploy.sh [--dry-run] [--skip-ui] [--ui-only] [--ui-docker] [--update] [--help]
 #
 # Modes:
-#   --dry-run   Validate build, configs, and API routes
-#               without starting Docker containers.
-#   --update    Pull latest code, migrate .env, rebuild all containers.
-#   --ui-only   Build and deploy only the web UI container.
-#   (default)   Full staged deploy with post-deploy checks.
+#   --dry-run    Validate build, configs, and API routes
+#                without starting Docker containers.
+#   --update     Pull latest code, migrate .env, rebuild all containers.
+#   --ui-only    Run the web UI locally via Next.js dev server (no Docker).
+#   --ui-docker  Build and deploy only the web UI Docker container.
+#   (default)    Full staged deploy with post-deploy checks.
 #
 # Options:
 #   --skip-ui   Skip npm install / build (both modes)
@@ -26,6 +27,7 @@ DRY_RUN=0
 SKIP_UI=0
 UPDATE_MODE=0
 UI_ONLY=0
+UI_DOCKER=0
 PASS_COUNT=0
 WARN_COUNT=0
 FAIL_COUNT=0
@@ -94,13 +96,14 @@ is_json() {
 
 # --- Help ---
 show_help() {
-    echo "Usage: $0 [--dry-run] [--skip-ui] [--ui-only] [--update] [--help]"
+    echo "Usage: $0 [--dry-run] [--skip-ui] [--ui-only] [--ui-docker] [--update] [--help]"
     echo ""
     echo "Modes:"
-    echo "  --dry-run   Pre-flight validation only (no Docker containers)"
-    echo "  --update    Pull latest code, migrate .env, rebuild all containers"
-    echo "  --ui-only   Build and deploy only the web UI container"
-    echo "  (default)   Full staged deploy with post-deploy checks"
+    echo "  --dry-run    Pre-flight validation only (no Docker containers)"
+    echo "  --update     Pull latest code, migrate .env, rebuild all containers"
+    echo "  --ui-only    Run the web UI locally via Next.js dev server (no Docker)"
+    echo "  --ui-docker  Build and deploy only the web UI Docker container"
+    echo "  (default)    Full staged deploy with post-deploy checks"
     echo ""
     echo "Options:"
     echo "  --skip-ui   Skip npm install and build steps"
@@ -131,6 +134,7 @@ while [ $# -gt 0 ]; do
         --skip-ui)  SKIP_UI=1 ;;
         --update)   UPDATE_MODE=1 ;;
         --ui-only)  UI_ONLY=1 ;;
+        --ui-docker) UI_DOCKER=1 ;;
         --help|-h)  show_help ;;
         *)
             echo "ERROR: Unknown option: $1" >&2
@@ -821,6 +825,25 @@ if [ "$UI_ONLY" = "1" ]; then
     info "Press Ctrl+C to stop"
     echo ""
     PORT="$PORT_UI" exec npm run dev
+elif [ "$UI_DOCKER" = "1" ]; then
+    section "Mars Media Centre — UI Docker Deploy"
+
+    check_env_file
+    validate_compose_syntax
+
+    section "Build & Deploy UI Container"
+    cd "$PROJECT_DIR"
+    info "Building and starting media-ui..."
+    docker compose up -d --build media-ui
+
+    PORT_UI="${PORT_UI:-3000}"
+    if wait_for_port "$PORT_UI" 30; then
+        pass "media-ui responding on port $PORT_UI"
+    else
+        warn "media-ui not responding on port $PORT_UI (may still be building)"
+    fi
+
+    print_summary
 elif [ "$UPDATE_MODE" = "1" ]; then
     section "Mars Media Centre — Update"
 
