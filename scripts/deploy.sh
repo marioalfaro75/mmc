@@ -260,6 +260,9 @@ validate_env() {
 
     if [ "$_valid" = "1" ]; then
         pass "All required fields present"
+    elif [ "$DRY_RUN" = "0" ]; then
+        fail "Cannot deploy with missing required fields — fix .env and re-run"
+        exit 1
     fi
 }
 
