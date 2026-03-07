@@ -113,60 +113,117 @@ IMAGE_RADARR=lscr.io/linuxserver/radarr:5.2.0
 
 ## Post-Deploy Configuration
 
-Complete these steps in order after first deploy.
+Complete these steps in order after first deploy. The web UI also has a full interactive guide at `http://localhost:3000/guide`.
 
 ### Phase 1: VPN & Download Clients
 
-1. **Verify VPN**: `docker exec gluetun wget -qO- https://ipinfo.io` — confirm VPN IP, not your real IP
+1. **Verify VPN**:
+   ```bash
+   docker exec gluetun wget -qO- https://ipinfo.io
+   ```
+   Confirm the output shows a VPN IP, not your real IP. If it fails, check `docker logs gluetun` for connection errors.
+
 2. **qBittorrent** (`localhost:8080`):
-   - Default login: `admin` / check container logs for temporary password
-   - Set default save path: `/data/torrents`
-   - Add categories: `radarr` → `/data/torrents/movies`, `sonarr` → `/data/torrents/tv`
-   - Advanced: set network interface to `tun0`, disable UPnP/NAT-PMP
+   - Default login: username `admin` — find the temporary password in container logs:
+     ```bash
+     docker logs qbittorrent 2>&1 | grep "temporary password"
+     ```
+   - **Change the default password** immediately: Options → Web UI → Authentication
+   - Set default save path: Options → Downloads → Default Save Path → `/data/torrents`
+   - Add categories (right-click left panel → New Category):
+     - `radarr` → Save path: `/data/torrents/movies`
+     - `sonarr` → Save path: `/data/torrents/tv`
+   - **Network binding** (important for VPN kill-switch): Options → Advanced → Network Interface → `tun0`
+   - Disable UPnP/NAT-PMP: Options → Connection → uncheck both
+   - Recommended: Options → BitTorrent → Seeding Limits → set ratio/time limits
+
 3. **SABnzbd** (`localhost:8081`):
-   - Run through setup wizard, add usenet server(s)
-   - Set completed folder: `/data/usenet`, incomplete: `/data/usenet/incomplete`
-   - Add categories: `movies` → `/data/usenet/movies`, `tv` → `/data/usenet/tv`
+   - Run through the setup wizard on first access
+   - Add your usenet server(s): Config → Servers → Add Server
+   - Set folders: Config → Folders:
+     - Completed Download Folder: `/data/usenet`
+     - Incomplete Download Folder: `/data/usenet/incomplete`
+   - Add categories: Config → Categories:
+     - `movies` → Folder/Path: `/data/usenet/movies`
+     - `tv` → Folder/Path: `/data/usenet/tv`
 
 ### Phase 2: Indexers & Media Managers
 
 4. **Prowlarr** (`localhost:9696`):
-   - Add indexers (torrent trackers, usenet indexers)
-   - Add Sonarr and Radarr as applications (use container hostnames: `http://sonarr:8989`, `http://radarr:7878`)
+   - Add indexers: Indexers → Add Indexer → search and configure your trackers/usenet indexers
+   - Connect to arr apps: Settings → Apps → Add Application:
+     - Sonarr: Prowlarr Server `http://prowlarr:9696`, Sonarr Server `http://sonarr:8989`, API Key from Sonarr
+     - Radarr: Prowlarr Server `http://prowlarr:9696`, Radarr Server `http://radarr:7878`, API Key from Radarr
+   - After adding apps, click "Sync App Indexers" to push indexers to Sonarr/Radarr
+
 5. **Sonarr** (`localhost:8989`):
-   - Root folder: `/data/media/tv`
-   - Download clients: qBittorrent (`gluetun:8080`, category: `sonarr`), SABnzbd (`gluetun:8081`, category: `tv`)
-   - Enable rename episodes, configure naming format
+   - Root folder: Settings → Media Management → Add Root Folder → `/data/media/tv`
+   - Download clients: Settings → Download Clients → Add:
+     - qBittorrent: Host `gluetun`, Port `8080`, Category `sonarr`
+     - SABnzbd: Host `gluetun`, Port `8081`, API Key from SABnzbd, Category `tv`
+   - Naming: Settings → Media Management → Rename Episodes → Yes
+   - Recommended episode format: `{Series TitleYear} - S{season:00}E{episode:00} - {Episode CleanTitle} [{Quality Full}]{[MediaInfo VideoDynamicRangeType]}`
+   - Find your API key: Settings → General → API Key (needed for other services)
+
 6. **Radarr** (`localhost:7878`):
-   - Root folder: `/data/media/movies`
-   - Download clients: qBittorrent (`gluetun:8080`, category: `radarr`), SABnzbd (`gluetun:8081`, category: `movies`)
-   - Enable rename movies, configure naming format
-7. **Unpackerr**: Add Sonarr/Radarr API keys to `docker-compose.yml` environment variables, recreate container
+   - Root folder: Settings → Media Management → Add Root Folder → `/data/media/movies`
+   - Download clients: Settings → Download Clients → Add:
+     - qBittorrent: Host `gluetun`, Port `8080`, Category `radarr`
+     - SABnzbd: Host `gluetun`, Port `8081`, API Key from SABnzbd, Category `movies`
+   - Naming: Settings → Media Management → Rename Movies → Yes
+   - Recommended movie format: `{Movie CleanTitle} {(Release Year)} [imdbid-{ImdbId}] - [{Quality Full}]{[MediaInfo VideoDynamicRangeType]}`
+   - Find your API key: Settings → General → API Key
+
+7. **Unpackerr**:
+   - Add Sonarr/Radarr API keys to `docker-compose.yml` under the `unpackerr` service environment variables:
+     ```yaml
+     UN_SONARR_0_API_KEY: <sonarr-api-key>
+     UN_RADARR_0_API_KEY: <radarr-api-key>
+     ```
+   - Recreate the container: `docker compose up -d unpackerr`
 
 ### Phase 3: Plex & Companions
 
 8. **Plex** (`localhost:32400/web`):
-   - Claim server with your Plex account
-   - Add libraries: Movies → `/movies`, TV Shows → `/tv`
-   - Configure remote access if needed
+   - On first access, claim the server with your Plex account (requires the `PLEX_CLAIM` token set during deploy)
+   - Add libraries: Settings → Libraries → Add Library:
+     - Movies → Add folder → `/movies`
+     - TV Shows → Add folder → `/tv`
+   - Remote access: Settings → Remote Access → Enable Remote Access
+   - If remote access fails, ensure port 32400 is forwarded on your router
+
 9. **Bazarr** (`localhost:6767`):
-   - Connect to Sonarr and Radarr with API keys
-   - Add subtitle providers, set language preferences
+   - Connect to Sonarr: Settings → Sonarr → Enabled, Address `sonarr`, Port `8989`, API Key
+   - Connect to Radarr: Settings → Radarr → Enabled, Address `radarr`, Port `7878`, API Key
+   - Add subtitle providers: Settings → Providers → Add (OpenSubtitles, Addic7ed, etc.)
+   - Set languages: Settings → Languages → add your preferred subtitle language(s)
+
 10. **Tautulli** (`localhost:8181`):
-    - Connect to Plex server
+    - Run the setup wizard, which will auto-detect the local Plex server
+    - If prompted for Plex connection: Host `plex`, Port `32400`
+    - Sign in with your Plex account to access viewing history and statistics
 
 ### Phase 4: Request Management
 
 11. **Seerr** (`localhost:5055`):
-    - Sign in with Plex account
-    - Add Sonarr (`http://sonarr:8989`) and Radarr (`http://radarr:7878`) with API keys
-    - Configure user permissions and request quotas
+    - Sign in with your Plex account on first access
+    - Add Radarr: Settings → Radarr → Add Server:
+      - Server Name: `Radarr`, Hostname `radarr`, Port `7878`, API Key, Root Folder `/data/media/movies`, Quality Profile
+    - Add Sonarr: Settings → Sonarr → Add Server:
+      - Server Name: `Sonarr`, Hostname `sonarr`, Port `8989`, API Key, Root Folder `/data/media/tv`, Quality Profile
+    - Configure user permissions: Settings → Users → click a user → set request limits and auto-approve rules
 
 ### Phase 5: Operations
 
-12. **Recyclarr**: Add API keys to `config/recyclarr/recyclarr.yml`, run `docker exec recyclarr recyclarr sync`
-13. **Watchtower**: Verify running — `docker logs watchtower`
-14. **Backup**: Test with `./scripts/backup.sh`
+12. **Recyclarr**:
+    - Edit `config/recyclarr/recyclarr.yml` with your Sonarr/Radarr API keys and base URLs
+    - Reference [TRaSH-Guides](https://trash-guides.info/) for recommended custom formats and quality profiles
+    - Run a sync: `docker exec recyclarr recyclarr sync`
+    - Recyclarr runs automatically on a schedule — check logs: `docker logs recyclarr`
+
+13. **Watchtower**: Verify running — `docker logs watchtower`. Watchtower auto-updates enabled containers daily at 4 AM.
+
+14. **Backup**: Test with `./scripts/backup.sh` — verify the archive is created in your `BACKUP_DIR`
 
 ## Service URLs
 
@@ -186,6 +243,10 @@ Complete these steps in order after first deploy.
 
 ## VPN Configuration
 
+Gluetun supports 60+ VPN providers. Below are common examples. For the full list, see the [Gluetun provider list](https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers).
+
+> **WireGuard vs OpenVPN:** WireGuard is faster and uses less CPU. OpenVPN has broader provider support. Use WireGuard when your provider offers it.
+
 ### ProtonVPN (WireGuard)
 
 ```env
@@ -195,6 +256,8 @@ WIREGUARD_PRIVATE_KEY=<your-private-key>
 WIREGUARD_ADDRESSES=<your-address>/32
 SERVER_COUNTRIES=Netherlands
 ```
+
+Generate WireGuard credentials at [account.protonvpn.com](https://account.protonvpn.com) → WireGuard configuration.
 
 ### Mullvad
 
@@ -206,6 +269,8 @@ WIREGUARD_ADDRESSES=<your-address>/32
 SERVER_COUNTRIES=Switzerland
 ```
 
+Get your WireGuard key from [mullvad.net/account](https://mullvad.net/account) → WireGuard configuration.
+
 ### AirVPN
 
 ```env
@@ -216,6 +281,56 @@ WIREGUARD_ADDRESSES=<your-address>/32
 WIREGUARD_PRESHARED_KEY=<your-preshared-key>
 SERVER_COUNTRIES=Netherlands
 ```
+
+Generate keys at [airvpn.org](https://airvpn.org) → Client Area → VPN Devices.
+
+### Private Internet Access (PIA)
+
+```env
+VPN_SERVICE_PROVIDER=private internet access
+VPN_TYPE=openvpn
+OPENVPN_USER=<your-pia-username>
+OPENVPN_PASSWORD=<your-pia-password>
+SERVER_REGIONS=Netherlands
+```
+
+PIA also supports WireGuard — Gluetun handles key generation automatically with your credentials.
+
+### NordVPN
+
+```env
+VPN_SERVICE_PROVIDER=nordvpn
+VPN_TYPE=wireguard
+WIREGUARD_PRIVATE_KEY=<your-private-key>
+SERVER_COUNTRIES=Netherlands
+```
+
+Generate a WireGuard private key via the [NordVPN Linux app](https://support.nordvpn.com/hc/en-us/articles/20196094470929) or use OpenVPN with your service credentials from [my.nordaccount.com](https://my.nordaccount.com).
+
+### Surfshark
+
+```env
+VPN_SERVICE_PROVIDER=surfshark
+VPN_TYPE=openvpn
+OPENVPN_USER=<your-surfshark-username>
+OPENVPN_PASSWORD=<your-surfshark-password>
+SERVER_COUNTRIES=Netherlands
+```
+
+Get your service credentials from [my.surfshark.com](https://my.surfshark.com) → Manual setup → Router → OpenVPN.
+
+### Windscribe
+
+```env
+VPN_SERVICE_PROVIDER=windscribe
+VPN_TYPE=wireguard
+WIREGUARD_PRIVATE_KEY=<your-private-key>
+WIREGUARD_ADDRESSES=<your-address>/32
+WIREGUARD_PRESHARED_KEY=<your-preshared-key>
+SERVER_COUNTRIES=Netherlands
+```
+
+Generate WireGuard config at [windscribe.com/getconfig/wireguard](https://windscribe.com/getconfig/wireguard).
 
 ## Verifying VPN Works
 

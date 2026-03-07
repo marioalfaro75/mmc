@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Activity,
   Settings,
+  BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +24,7 @@ const navItems = [
   { href: '/requests', label: 'Requests', icon: MessageSquare },
   { href: '/system', label: 'System', icon: Activity },
   { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/guide', label: 'Guide', icon: BookOpen },
 ];
 
 export function Sidebar() {

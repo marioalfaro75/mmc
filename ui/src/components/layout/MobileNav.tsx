@@ -8,6 +8,7 @@ import {
   Tv,
   Download,
   Settings,
+  BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +18,7 @@ const mobileItems = [
   { href: '/tv', label: 'TV', icon: Tv },
   { href: '/downloads', label: 'Downloads', icon: Download },
   { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/guide', label: 'Guide', icon: BookOpen },
 ];
 
 export function MobileNav() {
