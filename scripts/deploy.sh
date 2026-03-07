@@ -959,6 +959,7 @@ elif [ "$UI_DOCKER" = "1" ]; then
         warn "media-ui not responding on port $PORT_UI (may still be building)"
     fi
 
+    print_services_summary
     print_summary
 elif [ "$UPDATE_MODE" = "1" ]; then
     section "Mars Media Centre — Update"
