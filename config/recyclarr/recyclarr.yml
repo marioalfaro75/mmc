@@ -1,0 +1,29 @@
+sonarr:
+  main:
+    base_url: http://sonarr:8989
+    api_key: !secret sonarr_api_key
+    quality_definition:
+      type: series
+    quality_profiles:
+      - name: WEB-1080p
+        reset_unmatched_scores:
+          enabled: true
+    custom_formats:
+      - trash_ids:
+          # Populate with TRaSH-Guides recommended custom format IDs
+          # See: https://trash-guides.info/Sonarr/sonarr-collection-of-custom-formats/
+
+radarr:
+  main:
+    base_url: http://radarr:7878
+    api_key: !secret radarr_api_key
+    quality_definition:
+      type: movie
+    quality_profiles:
+      - name: HD Bluray + WEB
+        reset_unmatched_scores:
+          enabled: true
+    custom_formats:
+      - trash_ids:
+          # Populate with TRaSH-Guides recommended custom format IDs
+          # See: https://trash-guides.info/Radarr/radarr-collection-of-custom-formats/

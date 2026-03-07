@@ -1,0 +1,319 @@
+networks:
+  medianet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${DOCKER_SUBNET}
+
+services:
+  # ============================================================
+  # VPN Gateway
+  # ============================================================
+  gluetun:
+    image: ${IMAGE_GLUETUN}
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    networks:
+      - medianet
+    ports:
+      - "${PORT_QBITTORRENT}:8080"       # qBittorrent WebUI
+      - "${PORT_SABNZBD}:8081"           # SABnzbd WebUI
+      - "6881:6881/tcp"                   # Torrent listening
+      - "6881:6881/udp"
+      - "${PORT_GLUETUN_CONTROL}:8000"   # Gluetun control API
+    environment:
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
+      - VPN_TYPE=${VPN_TYPE}
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES}
+      - WIREGUARD_PRESHARED_KEY=${WIREGUARD_PRESHARED_KEY}
+      - SERVER_COUNTRIES=${SERVER_COUNTRIES}
+      - VPN_PORT_FORWARDING=${VPN_PORT_FORWARDING}
+      - FIREWALL_VPN_INPUT_PORTS=${FIREWALL_VPN_INPUT_PORTS}
+      - FIREWALL_OUTBOUND_SUBNETS=${DOCKER_SUBNET},${LOCAL_SUBNET}
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - UPDATER_PERIOD=24h
+    volumes:
+      - ${CONFIG_ROOT}/gluetun:/gluetun
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8000/v1/openvpn/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  # ============================================================
+  # Download Clients
+  # ============================================================
+  qbittorrent:
+    image: ${IMAGE_QBITTORRENT}
+    container_name: qbittorrent
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK=${UMASK}
+      - WEBUI_PORT=8080
+    volumes:
+      - ${CONFIG_ROOT}/qbittorrent:/config
+      - ${DATA_ROOT}:/data
+    restart: unless-stopped
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  sabnzbd:
+    image: ${IMAGE_SABNZBD}
+    container_name: sabnzbd
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_ROOT}/sabnzbd:/config
+      - ${DATA_ROOT}:/data
+    restart: unless-stopped
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  unpackerr:
+    image: ${IMAGE_UNPACKERR}
+    container_name: unpackerr
+    networks:
+      - medianet
+    environment:
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - UN_SONARR_0_URL=http://sonarr:8989
+      - UN_SONARR_0_API_KEY=
+      - UN_RADARR_0_URL=http://radarr:7878
+      - UN_RADARR_0_API_KEY=
+      - UN_SONARR_0_PATHS_0=/data/torrents/tv
+      - UN_SONARR_0_PATHS_1=/data/usenet/tv
+      - UN_RADARR_0_PATHS_0=/data/torrents/movies
+      - UN_RADARR_0_PATHS_1=/data/usenet/movies
+    volumes:
+      - ${DATA_ROOT}:/data
+    restart: unless-stopped
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  # ============================================================
+  # Indexer & Media Managers
+  # ============================================================
+  prowlarr:
+    image: ${IMAGE_PROWLARR}
+    container_name: prowlarr
+    networks:
+      - medianet
+    ports:
+      - "${PORT_PROWLARR}:9696"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_ROOT}/prowlarr:/config
+    restart: unless-stopped
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  sonarr:
+    image: ${IMAGE_SONARR}
+    container_name: sonarr
+    networks:
+      - medianet
+    ports:
+      - "${PORT_SONARR}:8989"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_ROOT}/sonarr:/config
+      - ${DATA_ROOT}:/data
+    restart: unless-stopped
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  radarr:
+    image: ${IMAGE_RADARR}
+    container_name: radarr
+    networks:
+      - medianet
+    ports:
+      - "${PORT_RADARR}:7878"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_ROOT}/radarr:/config
+      - ${DATA_ROOT}:/data
+    restart: unless-stopped
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  # ============================================================
+  # Media Server & Companions
+  # ============================================================
+  plex:
+    image: ${IMAGE_PLEX}
+    container_name: plex
+    network_mode: host
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - VERSION=docker
+      - PLEX_CLAIM=${PLEX_CLAIM}
+    volumes:
+      - ${CONFIG_ROOT}/plex:/config
+      - ${DATA_ROOT}/media/tv:/tv
+      - ${DATA_ROOT}/media/movies:/movies
+    restart: unless-stopped
+    labels:
+      - com.centurylinklabs.watchtower.enable=false
+
+  bazarr:
+    image: ${IMAGE_BAZARR}
+    container_name: bazarr
+    networks:
+      - medianet
+    ports:
+      - "${PORT_BAZARR}:6767"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_ROOT}/bazarr:/config
+      - ${DATA_ROOT}/media:/data/media
+    restart: unless-stopped
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  tautulli:
+    image: ${IMAGE_TAUTULLI}
+    container_name: tautulli
+    networks:
+      - medianet
+    ports:
+      - "${PORT_TAUTULLI}:8181"
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_ROOT}/tautulli:/config
+    restart: unless-stopped
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  # ============================================================
+  # Request Management
+  # ============================================================
+  seerr:
+    image: ${IMAGE_SEERR}
+    container_name: seerr
+    networks:
+      - medianet
+    ports:
+      - "${PORT_SEERR}:5055"
+    environment:
+      - TZ=${TZ}
+      - LOG_LEVEL=info
+    volumes:
+      - ${CONFIG_ROOT}/seerr:/app/config
+    restart: unless-stopped
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  # ============================================================
+  # Operations
+  # ============================================================
+  recyclarr:
+    image: ${IMAGE_RECYCLARR}
+    container_name: recyclarr
+    networks:
+      - medianet
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_ROOT}/recyclarr:/config
+    restart: unless-stopped
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  watchtower:
+    image: ${IMAGE_WATCHTOWER}
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TZ=${TZ}
+      - WATCHTOWER_SCHEDULE=${WATCHTOWER_SCHEDULE}
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_LABEL_ENABLE=true
+      - WATCHTOWER_NOTIFICATIONS_HOSTNAME=mars-media-centre
+      - WATCHTOWER_NOTIFICATION_URL=${WATCHTOWER_NOTIFICATIONS}
+    restart: unless-stopped
+
+  # ============================================================
+  # Unified Web UI
+  # ============================================================
+  media-ui:
+    build:
+      context: ./ui
+    container_name: media-ui
+    networks:
+      - medianet
+    ports:
+      - "${PORT_UI}:3000"
+    environment:
+      - SONARR_URL=http://sonarr:8989
+      - SONARR_API_KEY=
+      - RADARR_URL=http://radarr:7878
+      - RADARR_API_KEY=
+      - PROWLARR_URL=http://prowlarr:9696
+      - PROWLARR_API_KEY=
+      - QBITTORRENT_URL=http://gluetun:8080
+      - QBITTORRENT_USERNAME=admin
+      - QBITTORRENT_PASSWORD=
+      - SABNZBD_URL=http://gluetun:8081
+      - SABNZBD_API_KEY=
+      - PLEX_URL=http://localhost:32400
+      - PLEX_TOKEN=
+      - SEERR_URL=http://seerr:5055
+      - SEERR_API_KEY=
+      - TAUTULLI_URL=http://tautulli:8181
+      - TAUTULLI_API_KEY=
+      - GLUETUN_URL=http://gluetun:8000
+      - ENV_FILE_PATH=/mnt/host-env/.env
+      - HOST_PROJECT_DIR=${HOST_PROJECT_DIR}
+    volumes:
+      - ./.env:/mnt/host-env/.env
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - sonarr
+      - radarr
+      - prowlarr
+      - plex
+    restart: unless-stopped
+    labels:
+      - com.centurylinklabs.watchtower.enable=false

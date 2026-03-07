@@ -1,0 +1,5 @@
+.env
+*.tar.gz
+ui/node_modules/
+ui/.next/
+ui/out/
