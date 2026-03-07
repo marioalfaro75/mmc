@@ -33,6 +33,26 @@ WARN_COUNT=0
 FAIL_COUNT=0
 DEV_SERVER_PID=""
 
+# --- Logging ---
+# On first invocation, re-exec ourselves through tee so all output
+# (including child processes) is captured to a timestamped log file.
+if [ -z "$_MMC_LOGGED" ]; then
+    _log_dir="${HOME}/.mmc/logs"
+    mkdir -p "$_log_dir"
+    LOG_FILE="$_log_dir/deploy-$(date +%Y%m%d-%H%M%S).log"
+    _exit_file=$(mktemp)
+    export _MMC_LOGGED="$LOG_FILE"
+    # Re-run; capture exit code via temp file (POSIX-safe, no PIPESTATUS)
+    { "$0" "$@" 2>&1; echo $? > "$_exit_file"; } | tee "$LOG_FILE"
+    _rc=$(cat "$_exit_file")
+    rm -f "$_exit_file"
+    # Strip ANSI colour codes from the log file
+    sed -i 's/\x1b\[[0-9;]*m//g' "$LOG_FILE" 2>/dev/null
+    # Prune old logs — keep only the 10 most recent
+    ls -1t "$_log_dir"/deploy-*.log 2>/dev/null | tail -n +11 | xargs -r rm -f
+    exit "${_rc:-1}"
+fi
+
 # --- Colour output ---
 setup_colors() {
     if [ -t 1 ]; then
@@ -170,6 +190,34 @@ check_prerequisites() {
     done
 }
 
+find_free_subnet() {
+    # List subnets used by existing Docker networks
+    _used=$(docker network ls -q | xargs -r docker network inspect \
+        --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null)
+
+    # Candidate /24 subnets in the 172.16-31 private range
+    for _block in 28 29 30 20 21 22 23 24 25 26 27; do
+        _candidate="172.${_block}.0.0/24"
+        _conflict=0
+        for _existing in $_used; do
+            # Simple overlap check: same /16 prefix
+            _existing_prefix="${_existing%.*.*}"
+            _candidate_prefix="172.${_block}"
+            if [ "$_existing_prefix" = "$_candidate_prefix" ]; then
+                _conflict=1
+                break
+            fi
+        done
+        if [ "$_conflict" = "0" ]; then
+            echo "$_candidate"
+            return 0
+        fi
+    done
+    # Exhausted all candidates — return the default and hope for the best
+    echo "172.28.0.0/24"
+    return 1
+}
+
 check_env_file() {
     section "Environment"
     ENV_FILE="$PROJECT_DIR/.env"
@@ -202,6 +250,29 @@ check_env_file() {
         fi
         HOST_PROJECT_DIR="$PROJECT_DIR"
         pass "Auto-set HOST_PROJECT_DIR=$PROJECT_DIR"
+    fi
+
+    # Validate DOCKER_SUBNET doesn't conflict with existing networks
+    if [ -f "$ENV_FILE" ] && [ -n "$DOCKER_SUBNET" ] && command -v docker >/dev/null 2>&1; then
+        _used=$(docker network ls -q | xargs -r docker network inspect \
+            --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null)
+        _current_prefix="${DOCKER_SUBNET%.*.*}"
+        _has_conflict=0
+        for _existing in $_used; do
+            _existing_prefix="${_existing%.*.*}"
+            if [ "$_existing_prefix" = "$_current_prefix" ]; then
+                _has_conflict=1
+                break
+            fi
+        done
+        if [ "$_has_conflict" = "1" ]; then
+            _new=$(find_free_subnet)
+            warn "DOCKER_SUBNET=$DOCKER_SUBNET conflicts with existing network — switching to $_new"
+            sed -i "s|^DOCKER_SUBNET=.*|DOCKER_SUBNET=$_new|" "$ENV_FILE"
+            DOCKER_SUBNET="$_new"
+        else
+            pass "DOCKER_SUBNET=$DOCKER_SUBNET (no conflicts)"
+        fi
     fi
 }
 
@@ -338,6 +409,11 @@ run_setup_wizard() {
     sed -i "s|^HOST_PROJECT_DIR=.*|HOST_PROJECT_DIR=$PROJECT_DIR|" "$ENV_FILE"
     sed -i "s|^PUID=.*|PUID=$_puid|" "$ENV_FILE"
     sed -i "s|^PGID=.*|PGID=$_pgid|" "$ENV_FILE"
+
+    # Auto-detect a free Docker subnet
+    _subnet=$(find_free_subnet)
+    sed -i "s|^DOCKER_SUBNET=.*|DOCKER_SUBNET=$_subnet|" "$ENV_FILE"
+    pass "DOCKER_SUBNET=$_subnet (auto-detected free range)"
 
     pass ".env written with your values"
     info "You can edit $ENV_FILE to fine-tune other settings."
@@ -796,6 +872,10 @@ print_summary() {
         printf "  ${YELLOW}${BOLD}RESULT: PASS (with warnings)${RESET}\n"
     else
         printf "  ${GREEN}${BOLD}RESULT: PASS${RESET}\n"
+    fi
+
+    if [ -n "$_MMC_LOGGED" ]; then
+        info "Full log: $_MMC_LOGGED"
     fi
 }
 
