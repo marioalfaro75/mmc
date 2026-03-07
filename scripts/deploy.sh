@@ -338,6 +338,10 @@ run_setup_wizard() {
 validate_compose_syntax() {
     section "Docker Compose Syntax"
     cd "$PROJECT_DIR"
+    if [ ! -f "$PROJECT_DIR/.env" ]; then
+        warn "Skipped — .env file missing (compose cannot resolve variables)"
+        return
+    fi
     if docker compose config -q 2>/dev/null; then
         pass "docker-compose.yml is valid"
     else
