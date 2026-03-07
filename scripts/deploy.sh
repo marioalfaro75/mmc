@@ -834,7 +834,7 @@ elif [ "$UI_DOCKER" = "1" ]; then
     section "Build & Deploy UI Container"
     cd "$PROJECT_DIR"
     info "Building and starting media-ui..."
-    docker compose up -d --build media-ui
+    docker compose up -d --build --no-deps media-ui
 
     PORT_UI="${PORT_UI:-3000}"
     if wait_for_port "$PORT_UI" 30; then
