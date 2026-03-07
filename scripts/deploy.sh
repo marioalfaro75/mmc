@@ -607,6 +607,28 @@ detect_first_run() {
     fi
 }
 
+cleanup_stale_containers() {
+    _containers="$1"
+    _found=""
+
+    for _name in $_containers; do
+        if docker ps -a -q -f "name=^${_name}$" | grep -q .; then
+            _found="${_found} ${_name}"
+        fi
+    done
+
+    if [ -z "$_found" ]; then
+        return
+    fi
+
+    warn "Found existing containers from a previous install:${_found}"
+    info "Stopping and removing stale containers..."
+    for _name in $_found; do
+        docker rm -f "$_name" >/dev/null 2>&1
+    done
+    pass "Stale containers removed"
+}
+
 wait_for_port() {
     _port="$1"
     _timeout="$2"
@@ -926,6 +948,7 @@ elif [ "$UI_DOCKER" = "1" ]; then
 
     section "Build & Deploy UI Container"
     cd "$PROJECT_DIR"
+    cleanup_stale_containers "media-ui"
     info "Building and starting media-ui..."
     docker compose up -d --build --no-deps media-ui
 
@@ -961,6 +984,7 @@ elif [ "$UPDATE_MODE" = "1" ]; then
 
     section "Rebuild & Restart"
     cd "$PROJECT_DIR"
+    cleanup_stale_containers "gluetun qbittorrent sabnzbd prowlarr sonarr radarr unpackerr plex bazarr tautulli seerr recyclarr watchtower media-ui"
     info "Running docker compose up -d --build..."
     docker compose up -d --build
     pass "docker compose up -d --build completed"
@@ -993,6 +1017,7 @@ else
     run_init
     build_ui
 
+    cleanup_stale_containers "gluetun qbittorrent sabnzbd prowlarr sonarr radarr unpackerr plex bazarr tautulli seerr recyclarr watchtower media-ui"
     if detect_first_run; then
         info "First run detected — starting staged deploy"
 
