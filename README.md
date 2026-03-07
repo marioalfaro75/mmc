@@ -32,25 +32,88 @@ User → Seerr → Sonarr/Radarr → Prowlarr → Indexers
 
 ```bash
 # 1. Clone the repository
-git clone <repo-url> mars-media-centre && cd mars-media-centre
+git clone https://github.com/marioalfaro75/mmc.git && cd mmc
 
-# 2. Create and configure environment
-cp .env.example .env
-nano .env  # Fill in VPN credentials, paths, and preferences
+# 2. Run the deploy wizard (creates .env, initialises directories, starts services)
+./scripts/deploy.sh
+```
 
-# 3. Create directory structure
-sudo ./scripts/init.sh
+The interactive wizard will prompt for VPN credentials, storage paths, and preferences, then run a staged deploy with health checks.
 
-# 4. Start all services
-docker compose up -d
+### Storage Paths
 
-# 5. Check everything is running
-docker compose ps
+By default, data is stored outside the repo under `~/.mmc/`:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DATA_ROOT` | `~/.mmc/data` | Media files, downloads, watch folders |
+| `CONFIG_ROOT` | `~/.mmc/config` | Container configuration volumes |
+| `BACKUP_DIR` | `~/.mmc/backups` | Backup archives |
+
+The wizard prompts for these during first run. You can also change them later via the web UI Settings page or by editing `.env` directly.
+
+## Deploy Script
+
+```bash
+./scripts/deploy.sh              # Interactive wizard (first run) or quick deploy
+./scripts/deploy.sh --update     # Pull latest code, migrate .env, rebuild all
+./scripts/deploy.sh --dry-run    # Pre-flight validation only (no containers)
+./scripts/deploy.sh --skip-ui    # Skip npm install/build steps
+./scripts/deploy.sh --help       # Show all options
+```
+
+### First Deploy
+
+On first run (no `.env` file), the wizard walks through:
+
+1. VPN provider and credentials
+2. Storage paths (`DATA_ROOT`, `CONFIG_ROOT`, `BACKUP_DIR`)
+3. User/group IDs and Plex claim token
+
+Then runs a staged deploy: VPN first (with healthcheck), then download clients, arr stack, media servers, operations, and finally the web UI.
+
+### Subsequent Deploys
+
+When containers already exist, `deploy.sh` runs `docker compose up -d --build` to pick up any code or config changes, including rebuilding the web UI.
+
+## Updating
+
+### Update Script
+
+The recommended way to update to the latest version:
+
+```bash
+./scripts/deploy.sh --update
+```
+
+This does three things:
+1. `git pull` — fetches the latest code
+2. `.env` migration — adds any new variables from `.env.example` (never overwrites existing values)
+3. `docker compose up -d --build` — rebuilds and restarts all containers
+
+### Automatic Image Updates (Watchtower)
+
+Watchtower checks for updated Docker images daily at 4 AM (configurable via `WATCHTOWER_SCHEDULE`). Only containers with `com.centurylinklabs.watchtower.enable=true` are updated. Plex and the custom UI are excluded.
+
+### Manual Image Updates
+
+```bash
+docker compose pull    # Pull latest images
+docker compose up -d   # Recreate changed containers
+```
+
+### Pinning Versions
+
+Edit `.env` to pin specific versions instead of `latest`:
+
+```env
+IMAGE_SONARR=lscr.io/linuxserver/sonarr:4.0.0
+IMAGE_RADARR=lscr.io/linuxserver/radarr:5.2.0
 ```
 
 ## Post-Deploy Configuration
 
-Complete these steps in order after first `docker compose up -d`.
+Complete these steps in order after first deploy.
 
 ### Phase 1: VPN & Download Clients
 
@@ -109,7 +172,7 @@ Complete these steps in order after first `docker compose up -d`.
 
 | Service | Default URL | Purpose |
 |---------|-------------|---------|
-| Unified UI | `http://localhost:3000` | Dashboard & management |
+| Mars Media Centre UI | `http://localhost:3000` | Dashboard & management |
 | qBittorrent | `http://localhost:8080` | Torrent client |
 | SABnzbd | `http://localhost:8081` | Usenet client |
 | Sonarr | `http://localhost:8989` | TV show management |
@@ -183,7 +246,7 @@ ls -li /data/torrents/movies/SomeMovie/
 
 ```bash
 ./scripts/backup.sh
-# Creates: backups/mars-media-centre-backup-YYYY-MM-DD-HHMMSS.tar.gz
+# Creates: ~/.mmc/backups/mars-media-centre-backup-YYYY-MM-DD-HHMMSS.tar.gz
 # Automatically keeps last 7 backups
 ```
 
@@ -192,38 +255,44 @@ ls -li /data/torrents/movies/SomeMovie/
 ```bash
 # Add to crontab (daily at 3 AM)
 crontab -e
-0 3 * * * /path/to/mars-media-centre/scripts/backup.sh >> /var/log/mars-media-centre-backup.log 2>&1
+0 3 * * * /path/to/mmc/scripts/backup.sh >> /var/log/mars-media-centre-backup.log 2>&1
 ```
 
 ### Restore
 
 ```bash
-./scripts/restore.sh backups/mars-media-centre-backup-2024-01-15-030000.tar.gz
+./scripts/restore.sh ~/.mmc/backups/mars-media-centre-backup-2024-01-15-030000.tar.gz
 # Stops containers, restores configs, sets permissions
 # Then run: docker compose up -d
 ```
 
-## Updating
+## Web UI
 
-### Automatic (Watchtower)
+The Mars Media Centre dashboard at `http://localhost:3000` provides:
 
-Watchtower checks for updates daily at 4 AM (configurable via `WATCHTOWER_SCHEDULE`). Only containers with `com.centurylinklabs.watchtower.enable=true` are updated. Plex and the custom UI are excluded.
+- Combined download queue (torrents + usenet)
+- Merged calendar (TV episodes + movies)
+- Library browsing with search and add
+- System health monitoring and VPN status
+- Media request management
+- Storage path configuration and stack restart
 
-### Manual
+### Settings Page
+
+The Settings page (`http://localhost:3000/settings`) includes:
+
+- **Storage Paths** — Edit `DATA_ROOT`, `CONFIG_ROOT`, and `BACKUP_DIR` directly from the browser. Save writes to `.env` and "Restart Stack" recreates all containers with the new paths.
+- **Service Connections** — Test connectivity to each service with one click.
+- **Appearance** — Toggle dark/light theme.
+
+### Rebuilding the UI
 
 ```bash
-docker compose pull    # Pull latest images
-docker compose up -d   # Recreate changed containers
+docker compose build media-ui
+docker compose up -d media-ui
 ```
 
-### Pinning Versions
-
-Edit `.env` to pin specific versions instead of `latest`:
-
-```env
-IMAGE_SONARR=lscr.io/linuxserver/sonarr:4.0.0
-IMAGE_RADARR=lscr.io/linuxserver/radarr:5.2.0
-```
+Individual service web UIs remain accessible at their respective ports for advanced configuration.
 
 ## Troubleshooting
 
@@ -260,37 +329,11 @@ docker compose logs -f sonarr
 docker compose down
 
 # 2. Remove container configs (DESTRUCTIVE)
-rm -rf config/
+rm -rf ~/.mmc/config
 
 # 3. Remove media data (DESTRUCTIVE — your media library!)
-# rm -rf /data
+# rm -rf ~/.mmc/data
 
 # 4. Remove Docker images
 docker compose down --rmi all
 ```
-
-## Unified Web UI
-
-The custom dashboard at `http://localhost:3000` provides:
-
-- Combined download queue (torrents + usenet)
-- Merged calendar (TV episodes + movies)
-- Library browsing with search and add
-- System health monitoring and VPN status
-- Media request management
-
-### First-Time Setup
-
-1. Deploy all services and complete post-deploy configuration above
-2. Collect API keys from each service's web UI
-3. Open the UI Settings page and enter connection details for each service
-4. Test each connection using the built-in test button
-
-### Rebuilding the UI
-
-```bash
-docker compose build media-ui
-docker compose up -d media-ui
-```
-
-Individual service web UIs remain accessible at their respective ports for advanced configuration.
