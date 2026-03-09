@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/marioalfaro75/mmc/main/scripts/depl
 The installer will:
 1. Detect WSL and show persistence tips
 2. Install Docker Engine, Node.js 20, and git (skips anything already installed)
-3. Clone the repository (default: `~/mmc`)
+3. Clone the repository into an `mmc` folder in the current directory
 4. Launch the interactive setup wizard and staged deploy
 
 > **WSL users:** To keep containers running after closing the terminal, add this to `C:\Users\<you>\.wslconfig`:

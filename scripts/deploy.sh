@@ -45,7 +45,7 @@ WARN_COUNT=0
 FAIL_COUNT=0
 DEV_SERVER_PID=""
 REPO_URL="https://github.com/marioalfaro75/mmc.git"
-DEFAULT_INSTALL_DIR="$HOME/mmc"
+DEFAULT_INSTALL_DIR="$(pwd)/mmc"
 
 # --- Logging ---
 # On first invocation, re-exec ourselves through tee so all output
@@ -1083,21 +1083,10 @@ clone_repo() {
         return
     fi
 
-    _install_dir=$(prompt_user "Install directory" "$DEFAULT_INSTALL_DIR")
-    # Expand ~ to $HOME
-    case "$_install_dir" in "~"*) _install_dir="$HOME${_install_dir#"~"}" ;; esac
-
-    if [ -d "$_install_dir/.git" ]; then
-        pass "Repository already exists at $_install_dir"
-        cd "$_install_dir"
-        git pull
-        return
-    fi
-
-    info "Cloning $REPO_URL → $_install_dir"
-    git clone "$REPO_URL" "$_install_dir"
-    pass "Repository cloned to $_install_dir"
-    cd "$_install_dir"
+    info "Cloning $REPO_URL → $DEFAULT_INSTALL_DIR"
+    git clone "$REPO_URL" "$DEFAULT_INSTALL_DIR"
+    pass "Repository cloned to $DEFAULT_INSTALL_DIR"
+    cd "$DEFAULT_INSTALL_DIR"
 }
 
 run_install() {
