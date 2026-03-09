@@ -309,6 +309,8 @@ services:
     volumes:
       - ./.env:/mnt/host-env/.env
       - /var/run/docker.sock:/var/run/docker.sock
+      - ${CONFIG_ROOT}:${CONFIG_ROOT}
+      - ${BACKUP_DIR}:${BACKUP_DIR}
     depends_on:
       - sonarr
       - radarr

@@ -1,18 +1,24 @@
 import { NextResponse } from 'next/server';
-import { readdirSync, statSync } from 'fs';
-import { join } from 'path';
+import { readdirSync, statSync, mkdirSync, unlinkSync } from 'fs';
+import { join, dirname, basename } from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { readEnv } from '@/lib/env';
 
 const execFileAsync = promisify(execFile);
+const MAX_BACKUPS = 7;
 
-function getBackupDir(): string {
+function resolvePath(p: string): string {
+  if (p.startsWith('~')) return `${process.env.HOME}${p.slice(1)}`;
+  return p;
+}
+
+function getBackupPaths(): { configRoot: string; backupDir: string } {
   const vars = readEnv();
-  let dir = vars.BACKUP_DIR || `${process.env.HOME}/.mmc/backups`;
-  // Expand ~ to HOME
-  if (dir.startsWith('~')) dir = `${process.env.HOME}${dir.slice(1)}`;
-  return dir;
+  return {
+    configRoot: resolvePath(vars.CONFIG_ROOT || `${process.env.HOME}/.mmc/config`),
+    backupDir: resolvePath(vars.BACKUP_DIR || `${process.env.HOME}/.mmc/backups`),
+  };
 }
 
 export interface BackupInfo {
@@ -32,7 +38,6 @@ function listBackups(dir: string): BackupInfo[] {
     return files.map((filename) => {
       const filepath = join(dir, filename);
       const stat = statSync(filepath);
-      // Parse date from filename: mars-media-centre-backup-YYYY-MM-DD-HHMMSS.tar.gz
       const match = filename.match(/backup-(\d{4}-\d{2}-\d{2}-\d{6})/);
       const dateStr = match ? match[1] : '';
 
@@ -55,11 +60,26 @@ function listBackups(dir: string): BackupInfo[] {
   }
 }
 
+function rotateBackups(dir: string): void {
+  try {
+    const files = readdirSync(dir)
+      .filter((f) => f.startsWith('mars-media-centre-backup-') && f.endsWith('.tar.gz'))
+      .sort()
+      .reverse();
+
+    for (const old of files.slice(MAX_BACKUPS)) {
+      unlinkSync(join(dir, old));
+    }
+  } catch {
+    // non-critical
+  }
+}
+
 export async function GET() {
   try {
-    const dir = getBackupDir();
-    const backups = listBackups(dir);
-    return NextResponse.json({ backups, backupDir: dir });
+    const { backupDir } = getBackupPaths();
+    const backups = listBackups(backupDir);
+    return NextResponse.json({ backups, backupDir });
   } catch (err) {
     return NextResponse.json(
       { error: 'Failed to list backups', details: String(err) },
@@ -69,28 +89,32 @@ export async function GET() {
 }
 
 export async function POST() {
-  const projectDir = process.env.HOST_PROJECT_DIR;
-
-  if (!projectDir) {
-    return NextResponse.json(
-      { error: 'HOST_PROJECT_DIR is not set' },
-      { status: 500 }
-    );
-  }
-
-  const backupScript = `${projectDir}/scripts/backup.sh`;
-
   try {
-    const { stdout } = await execFileAsync('sh', [backupScript], {
-      timeout: 120000,
-      env: { ...process.env, HOME: process.env.HOME },
-    });
+    const { configRoot, backupDir } = getBackupPaths();
 
-    // Reload the list after backup
-    const dir = getBackupDir();
-    const backups = listBackups(dir);
+    // Ensure backup directory exists
+    mkdirSync(backupDir, { recursive: true });
 
-    return NextResponse.json({ status: 'complete', output: stdout, backups });
+    // Create timestamped backup
+    const now = new Date();
+    const pad = (n: number, len = 2) => String(n).padStart(len, '0');
+    const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const filename = `mars-media-centre-backup-${timestamp}.tar.gz`;
+    const backupFile = join(backupDir, filename);
+
+    // tar -czf <backup> -C <parent> <dirname>
+    await execFileAsync('tar', [
+      '-czf', backupFile,
+      '-C', dirname(configRoot),
+      basename(configRoot),
+    ], { timeout: 120000 });
+
+    // Rotate old backups
+    rotateBackups(backupDir);
+
+    // Return updated list
+    const backups = listBackups(backupDir);
+    return NextResponse.json({ status: 'complete', filename, backups });
   } catch (err) {
     return NextResponse.json(
       { error: 'Backup failed', details: String(err) },
