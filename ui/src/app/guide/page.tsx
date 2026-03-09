@@ -510,6 +510,62 @@ UN_RADARR_0_API_KEY: <radarr-api-key>`}</Pre>
               To change the schedule, edit <Code>WATCHTOWER_SCHEDULE</Code> in <Code>.env</Code> (cron format).
             </Tip>
           </AccordionSection>
+
+          <AccordionSection
+            title="Backup & Restore"
+            description="Protect your service configurations with backups"
+          >
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground">What&apos;s Backed Up</h4>
+            <p className="mt-1">
+              All service configuration directories from <Code>CONFIG_ROOT</Code> — databases, settings,
+              API keys, quality profiles, and indexer configs for every service.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Media files (movies, TV shows, downloads), <Code>.env</Code>, Docker images, and the source code
+              are <strong>not</strong> included.
+            </p>
+
+            <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Creating Backups</h4>
+            <p className="mt-1">Use the web UI or the command line:</p>
+            <ul className="ml-4 mt-1 list-disc text-xs text-muted-foreground">
+              <li>
+                <strong>Web UI:</strong> Settings → Backups → &quot;Back Up Now&quot;
+              </li>
+              <li>
+                <strong>CLI:</strong> <Code>./scripts/backup.sh</Code>
+              </li>
+            </ul>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Backups are stored in <Code>BACKUP_DIR</Code> as timestamped <Code>.tar.gz</Code> archives.
+              The CLI script automatically keeps the 7 most recent and deletes older ones.
+            </p>
+
+            <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Restoring</h4>
+            <p className="mt-1">Restoring overwrites all current service configurations with the backup contents.</p>
+            <ul className="ml-4 mt-1 list-disc text-xs text-muted-foreground">
+              <li>
+                <strong>Web UI:</strong> Settings → Backups → click the restore icon on a backup
+              </li>
+              <li>
+                <strong>CLI:</strong>
+              </li>
+            </ul>
+            <Pre>{`./scripts/restore.sh ~/.mmc/backups/mars-media-centre-backup-2024-01-15-030000.tar.gz`}</Pre>
+            <p className="text-xs text-muted-foreground">
+              The restore process stops services, extracts configs, fixes permissions, then restarts everything.
+            </p>
+
+            <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Automated Backups</h4>
+            <p className="mt-1">Add a cron job to run backups on a schedule:</p>
+            <Pre>{`# Daily at 3 AM
+crontab -e
+0 3 * * * /path/to/mmc/scripts/backup.sh`}</Pre>
+
+            <Tip>
+              You can download backups from the web UI to save a copy off-server. Consider keeping
+              at least one off-site backup for disaster recovery.
+            </Tip>
+          </AccordionSection>
         </div>
       </div>
     </div>

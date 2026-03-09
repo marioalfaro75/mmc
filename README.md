@@ -382,7 +382,18 @@ ls -li /data/torrents/movies/SomeMovie/
 
 ## Backup & Restore
 
-### Manual Backup
+Backups protect your service configurations — databases, settings, API keys, quality profiles, and indexer configs for every service. Media files (movies, TV shows, downloads), the `.env` file, and Docker images are **not** included in backups.
+
+### Web UI
+
+The easiest way to manage backups is via the Settings page:
+
+- **Settings → Backups → Back Up Now** — create a new backup
+- **Download** — save a copy to your local machine
+- **Restore** — stops services, overwrites configs, restarts everything
+- **Delete** — remove old backups
+
+### CLI Backup
 
 ```bash
 ./scripts/backup.sh
@@ -398,7 +409,7 @@ crontab -e
 0 3 * * * /path/to/mmc/scripts/backup.sh >> /var/log/mars-media-centre-backup.log 2>&1
 ```
 
-### Restore
+### CLI Restore
 
 ```bash
 ./scripts/restore.sh ~/.mmc/backups/mars-media-centre-backup-2024-01-15-030000.tar.gz
@@ -419,11 +430,14 @@ The Mars Media Centre dashboard at `http://localhost:3000` provides:
 
 ### Settings Page
 
-The Settings page (`http://localhost:3000/settings`) includes:
+The Settings page (`http://localhost:3000/settings`) provides tabbed configuration:
 
-- **Storage Paths** — Edit `DATA_ROOT`, `CONFIG_ROOT`, and `BACKUP_DIR` directly from the browser. Save writes to `.env` and "Restart Stack" recreates all containers with the new paths.
-- **Service Connections** — Test connectivity to each service with one click.
-- **Appearance** — Toggle dark/light theme.
+- **General** — Timezone, user/group IDs, storage paths, appearance
+- **VPN** — Provider, credentials, server country, live VPN status
+- **Network** — Docker/local subnets, all service ports
+- **Services** — Plex claim, Watchtower schedule, image tags, connection testing
+- **Service Control** — Live service status, per-service start/stop/restart, log viewer
+- **Backups** — Create, download, restore, and delete configuration backups
 
 ### Rebuilding the UI
 
