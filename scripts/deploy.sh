@@ -388,9 +388,9 @@ validate_env() {
 
     if [ "$_valid" = "1" ]; then
         pass "All required fields present"
-    elif [ "$DRY_RUN" = "0" ]; then
-        fail "Cannot deploy with missing required fields — fix .env and re-run"
-        exit 1
+    else
+        warn "Some required fields are missing — services depending on them may fail to start"
+        info "You can configure these later via the web UI Settings page or by editing .env"
     fi
 }
 
@@ -710,10 +710,10 @@ stage_vpn() {
         _waited=$((_waited + 2))
     done
 
-    fail "gluetun did not become healthy within ${_max}s — aborting"
+    fail "gluetun did not become healthy within ${_max}s"
     info "Check VPN credentials in .env and gluetun logs:"
     info "  docker logs gluetun"
-    exit 1
+    warn "Continuing deploy — VPN-dependent services may not work until VPN is configured"
 }
 
 stage_download_clients() {
@@ -1247,11 +1247,16 @@ else
     if detect_first_run; then
         info "First run detected — starting staged deploy"
 
+        # Deploy services in stages; failures are logged but don't block media-ui
+        set +e
         stage_vpn
         stage_download_clients
         stage_arr_stack
         stage_media_server
         stage_operations
+        set -e
+
+        # Always deploy the web UI so users can access settings
         stage_media_ui
     else
         quick_deploy
