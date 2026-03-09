@@ -414,20 +414,24 @@ run_setup_wizard() {
     _puid=$(id -u)
     _pgid=$(id -g)
 
-    _vpn_provider=$(prompt_user "VPN provider (e.g. protonvpn, mullvad, airvpn)" "")
-    _wg_key=$(prompt_user "WireGuard private key" "")
-    _wg_addr=$(prompt_user "WireGuard address (e.g. 10.2.0.2/32)" "")
-    _server_country=$(prompt_user "Server country (e.g. Netherlands)" "")
-    _plex_claim=$(prompt_user "Plex claim token (from https://plex.tv/claim)" "")
-    _data_root=$(prompt_user "DATA_ROOT path" "$HOME/.mmc/data")
+    info "${BOLD}Fields marked (required) must be filled in for deploy to succeed.${RESET}"
+    info "Fields marked (optional) can be left blank and configured later."
+    echo ""
+
+    _vpn_provider=$(prompt_user "(required) VPN provider (e.g. protonvpn, mullvad, airvpn)" "")
+    _wg_key=$(prompt_user "(required) WireGuard private key" "")
+    _wg_addr=$(prompt_user "(required) WireGuard address (e.g. 10.2.0.2/32)" "")
+    _server_country=$(prompt_user "(optional) Server country (e.g. Netherlands)" "")
+    _plex_claim=$(prompt_user "(optional) Plex claim token (from https://plex.tv/claim)" "")
+    _data_root=$(prompt_user "(required) DATA_ROOT path" "$HOME/.mmc/data")
     # Expand ~ to $HOME
     case "$_data_root" in "~"*) _data_root="$HOME${_data_root#"~"}" ;; esac
-    _config_root=$(prompt_user "CONFIG_ROOT path" "$HOME/.mmc/config")
+    _config_root=$(prompt_user "(required) CONFIG_ROOT path" "$HOME/.mmc/config")
     case "$_config_root" in "~"*) _config_root="$HOME${_config_root#"~"}" ;; esac
-    _backup_dir=$(prompt_user "BACKUP_DIR path" "$HOME/.mmc/backups")
+    _backup_dir=$(prompt_user "(required) BACKUP_DIR path" "$HOME/.mmc/backups")
     case "$_backup_dir" in "~"*) _backup_dir="$HOME${_backup_dir#"~"}" ;; esac
-    _puid=$(prompt_user "PUID" "$_puid")
-    _pgid=$(prompt_user "PGID" "$_pgid")
+    _puid=$(prompt_user "(optional) PUID" "$_puid")
+    _pgid=$(prompt_user "(optional) PGID" "$_pgid")
 
     echo ""
 
