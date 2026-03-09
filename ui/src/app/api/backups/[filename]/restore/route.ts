@@ -52,32 +52,45 @@ export async function POST(_request: Request, { params }: { params: Promise<{ fi
   try {
     logger.info('restore', `Starting restore from: ${filename}`);
 
-    // Step 1: Stop all services except media-ui
+    // Step 1: Stop all services except media-ui (best-effort)
     const allServices = [
       'gluetun', 'qbittorrent', 'sabnzbd', 'unpackerr', 'prowlarr',
       'sonarr', 'radarr', 'plex', 'bazarr', 'tautulli', 'seerr',
       'recyclarr', 'watchtower',
     ];
-    const stopArgs = [...composeArgs(), 'stop', ...allServices];
-    await execFileAsync('docker', stopArgs, { timeout: 60000 }).catch(() => {
-      // Some services may not be running — that's OK
-    });
+    try {
+      const stopArgs = [...composeArgs(), 'stop', ...allServices];
+      await execFileAsync('docker', stopArgs, { timeout: 60000 });
+    } catch {
+      logger.warn('restore', 'Could not stop services before restore (may not be running)');
+    }
 
     // Step 2: Extract backup over CONFIG_ROOT
     const configParent = require('path').dirname(configRoot);
     await execFileAsync('tar', ['-xzf', filepath, '-C', configParent], { timeout: 120000 });
+    logger.info('restore', 'Backup extracted successfully');
 
-    // Step 3: Fix ownership
+    // Step 3: Fix ownership (best-effort)
     await execFileAsync('chown', ['-R', `${puid}:${pgid}`, configRoot], { timeout: 30000 }).catch(() => {
-      // May fail without sudo — non-critical
+      logger.warn('restore', 'Could not fix ownership (may need sudo)');
     });
 
-    // Step 4: Start all services back up
-    const startArgs = [...composeArgs(), 'start', ...allServices];
-    await execFileAsync('docker', startArgs, { timeout: 120000 });
+    // Step 4: Start all services back up (best-effort)
+    let restartWarning: string | undefined;
+    try {
+      const startArgs = [...composeArgs(), 'start', ...allServices];
+      await execFileAsync('docker', startArgs, { timeout: 120000 });
+    } catch (restartErr) {
+      restartWarning = 'Config restored but services could not be restarted automatically. Use Service Control to restart them.';
+      logger.warn('restore', 'Could not restart services after restore', { error: String(restartErr) });
+    }
 
     logger.info('restore', `Restore completed from: ${filename}`);
-    return NextResponse.json({ status: 'restored', filename });
+    return NextResponse.json({
+      status: 'restored',
+      filename,
+      ...(restartWarning ? { warning: restartWarning } : {}),
+    });
   } catch (err) {
     logger.error('restore', `Restore failed from: ${filename}`, { error: String(err) });
     // Try to restart services even if restore had issues

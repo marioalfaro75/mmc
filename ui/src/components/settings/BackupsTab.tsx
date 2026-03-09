@@ -101,10 +101,14 @@ export function BackupsTab() {
     setRestoring(filename);
     try {
       const res = await fetch(`/api/backups/${filename}/restore`, { method: 'POST' });
+      const data = await res.json();
       if (res.ok) {
-        toast.success('Restore complete — services restarted');
+        if (data.warning) {
+          toast.warning(data.warning);
+        } else {
+          toast.success('Restore complete — services restarted');
+        }
       } else {
-        const data = await res.json();
         toast.error(data.error || 'Restore failed');
       }
     } catch {
