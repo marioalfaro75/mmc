@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { VALID_SERVICES, restartServicesStaged } from '@/lib/docker';
+import { logger } from '@/lib/logger';
 
 export async function POST(_request: Request, { params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
@@ -9,9 +10,12 @@ export async function POST(_request: Request, { params }: { params: Promise<{ na
   }
 
   try {
+    logger.info('services', `Restarting service: ${name}`);
     await restartServicesStaged([name]);
+    logger.info('services', `Service restarted: ${name}`);
     return NextResponse.json({ status: 'restarted', services: [name] });
   } catch (err) {
+    logger.error('services', `Failed to restart ${name}`, { error: String(err) });
     return NextResponse.json(
       { error: `Failed to restart ${name}`, details: String(err) },
       { status: 500 }

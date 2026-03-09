@@ -31,6 +31,7 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'DATA_ROOT', label: 'Data Root', type: 'path', group: 'general', description: 'Root path for all media and downloads', required: true, default: '~/.mmc/data', affectsServices: ALL_SERVICES },
   { key: 'CONFIG_ROOT', label: 'Config Root', type: 'path', group: 'general', description: 'Root path for container configs', required: true, default: '~/.mmc/config', affectsServices: ALL_SERVICES },
   { key: 'BACKUP_DIR', label: 'Backup Directory', type: 'path', group: 'general', description: 'Where backup.sh stores archives', required: true, default: '~/.mmc/backups', affectsServices: [] },
+  { key: 'LOG_LEVEL', label: 'Log Level', type: 'select', group: 'general', description: 'Application log verbosity', default: 'info', options: ['debug', 'info', 'warn', 'error'], affectsServices: ['media-ui'] },
 
   // --- VPN ---
   { key: 'VPN_SERVICE_PROVIDER', label: 'VPN Provider', type: 'select', group: 'vpn', description: 'VPN service provider', required: true, options: ['protonvpn', 'mullvad', 'airvpn', 'nordvpn', 'surfshark', 'expressvpn', 'windscribe', 'privado', 'custom'], affectsServices: VPN_SERVICES },

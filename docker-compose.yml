@@ -306,11 +306,13 @@ services:
       - GLUETUN_URL=http://gluetun:8000
       - ENV_FILE_PATH=/mnt/host-env/.env
       - HOST_PROJECT_DIR=${HOST_PROJECT_DIR}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - ./.env:/mnt/host-env/.env
       - /var/run/docker.sock:/var/run/docker.sock
       - ${CONFIG_ROOT}:${CONFIG_ROOT}
       - ${BACKUP_DIR}:${BACKUP_DIR}
+      - ${HOME}/.mmc/logs:/app/logs
     depends_on:
       - sonarr
       - radarr

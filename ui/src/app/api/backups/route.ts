@@ -4,6 +4,7 @@ import { join, dirname, basename } from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { readEnv } from '@/lib/env';
+import { logger } from '@/lib/logger';
 
 const execFileAsync = promisify(execFile);
 const MAX_BACKUPS = 7;
@@ -112,10 +113,13 @@ export async function POST() {
     // Rotate old backups
     rotateBackups(backupDir);
 
+    logger.info('backup', `Backup created: ${filename}`);
+
     // Return updated list
     const backups = listBackups(backupDir);
     return NextResponse.json({ status: 'complete', filename, backups });
   } catch (err) {
+    logger.error('backup', 'Backup failed', { error: String(err) });
     return NextResponse.json(
       { error: 'Backup failed', details: String(err) },
       { status: 500 }

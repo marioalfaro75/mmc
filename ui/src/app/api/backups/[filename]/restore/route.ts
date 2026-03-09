@@ -4,6 +4,7 @@ import { join } from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { readEnv } from '@/lib/env';
+import { logger } from '@/lib/logger';
 
 const execFileAsync = promisify(execFile);
 
@@ -49,6 +50,8 @@ export async function POST(_request: Request, { params }: { params: Promise<{ fi
   const pgid = vars.PGID || '1000';
 
   try {
+    logger.info('restore', `Starting restore from: ${filename}`);
+
     // Step 1: Stop all services except media-ui
     const allServices = [
       'gluetun', 'qbittorrent', 'sabnzbd', 'unpackerr', 'prowlarr',
@@ -73,8 +76,10 @@ export async function POST(_request: Request, { params }: { params: Promise<{ fi
     const startArgs = [...composeArgs(), 'start', ...allServices];
     await execFileAsync('docker', startArgs, { timeout: 120000 });
 
+    logger.info('restore', `Restore completed from: ${filename}`);
     return NextResponse.json({ status: 'restored', filename });
   } catch (err) {
+    logger.error('restore', `Restore failed from: ${filename}`, { error: String(err) });
     // Try to restart services even if restore had issues
     try {
       const startArgs = [...composeArgs(), 'up', '-d'];

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { readEnv, writeEnv } from '@/lib/env';
 import { ENV_SCHEMA, maskSensitiveValues, isMaskedValue, validateEnvVars, getAffectedServices } from '@/lib/env-schema';
+import { logger } from '@/lib/logger';
 
 export async function GET() {
   try {
@@ -46,6 +47,7 @@ export async function PUT(request: Request) {
 
     // Write
     writeEnv(cleanVars);
+    logger.info('settings', 'Environment variables updated', { keys: Object.keys(cleanVars) });
 
     const affectedServices = getAffectedServices(Object.keys(cleanVars));
 
@@ -55,6 +57,7 @@ export async function PUT(request: Request) {
       backupPath: 'created',
     });
   } catch (err) {
+    logger.error('settings', 'Failed to update .env file', { error: String(err) });
     return NextResponse.json(
       { error: 'Failed to update .env file', details: String(err) },
       { status: 500 }
