@@ -1120,14 +1120,34 @@ install_curl() {
     pass "curl installed"
 }
 
+INSTALL_MARKER="$HOME/.mmc/install-path"
+
 clone_repo() {
     section "Clone Repository"
 
+    # Check marker file for existing install location
+    if [ -f "$INSTALL_MARKER" ]; then
+        _existing=$(cat "$INSTALL_MARKER")
+        if [ -d "$_existing/.git" ]; then
+            pass "Existing install found at $_existing"
+            cd "$_existing"
+            info "Pulling latest changes..."
+            git pull
+            return
+        else
+            warn "Marker points to $_existing but repo not found — will clone fresh"
+        fi
+    fi
+
+    # Check default location in current directory
     if [ -d "$DEFAULT_INSTALL_DIR/.git" ]; then
         pass "Repository already exists at $DEFAULT_INSTALL_DIR"
         cd "$DEFAULT_INSTALL_DIR"
         info "Pulling latest changes..."
         git pull
+        # Save marker
+        mkdir -p "$(dirname "$INSTALL_MARKER")"
+        echo "$DEFAULT_INSTALL_DIR" > "$INSTALL_MARKER"
         return
     fi
 
@@ -1135,6 +1155,10 @@ clone_repo() {
     git clone "$REPO_URL" "$DEFAULT_INSTALL_DIR"
     pass "Repository cloned to $DEFAULT_INSTALL_DIR"
     cd "$DEFAULT_INSTALL_DIR"
+
+    # Save install location for future re-runs
+    mkdir -p "$(dirname "$INSTALL_MARKER")"
+    echo "$DEFAULT_INSTALL_DIR" > "$INSTALL_MARKER"
 }
 
 run_install() {
