@@ -70,3 +70,24 @@ export interface MediaRequest {
   requestedBy: string;
   requestedAt: string;
 }
+
+export interface DockerServiceStatus {
+  name: string;
+  service: string;
+  state: string;
+  health: string;
+  status: string;
+  image: string;
+}
+
+export interface EnvValidationResult {
+  valid: boolean;
+  errors: Record<string, string>;
+  affectedServices: string[];
+}
+
+export interface EnvSaveResult {
+  updated: string[];
+  affectedServices: string[];
+  backupPath: string;
+}

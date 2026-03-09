@@ -1,34 +1,11 @@
 import { NextResponse } from 'next/server';
-import { readFileSync, writeFileSync } from 'fs';
+import { readEnv, writeEnv } from '@/lib/env';
 
-const ENV_FILE_PATH = process.env.ENV_FILE_PATH || '.env';
 const PATH_KEYS = ['DATA_ROOT', 'CONFIG_ROOT', 'BACKUP_DIR'] as const;
-
-function parseEnvFile(content: string): Record<string, string> {
-  const vars: Record<string, string> = {};
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIndex = trimmed.indexOf('=');
-    if (eqIndex === -1) continue;
-    const key = trimmed.slice(0, eqIndex).trim();
-    let value = trimmed.slice(eqIndex + 1).trim();
-    // Strip inline comments (but not inside quoted values)
-    if (!value.startsWith('"') && !value.startsWith("'")) {
-      const commentIndex = value.indexOf('#');
-      if (commentIndex > 0 && value[commentIndex - 1] === ' ') {
-        value = value.slice(0, commentIndex).trim();
-      }
-    }
-    vars[key] = value;
-  }
-  return vars;
-}
 
 export async function GET() {
   try {
-    const content = readFileSync(ENV_FILE_PATH, 'utf-8');
-    const vars = parseEnvFile(content);
+    const vars = readEnv();
     const paths: Record<string, string> = {};
     for (const key of PATH_KEYS) {
       paths[key] = vars[key] || '';
@@ -70,23 +47,15 @@ export async function PUT(request: Request) {
       }
     }
 
-    let content = readFileSync(ENV_FILE_PATH, 'utf-8');
-
+    const toWrite: Record<string, string> = {};
     for (const key of PATH_KEYS) {
-      const value = body[key];
-      if (value === undefined) continue;
-      const regex = new RegExp(`^${key}=.*$`, 'm');
-      if (regex.test(content)) {
-        content = content.replace(regex, `${key}=${value}`);
-      } else {
-        content = content.trimEnd() + `\n${key}=${value}\n`;
-      }
+      if (body[key] !== undefined) toWrite[key] = body[key];
     }
 
-    writeFileSync(ENV_FILE_PATH, content, 'utf-8');
+    writeEnv(toWrite);
 
     // Return updated paths
-    const vars = parseEnvFile(content);
+    const vars = readEnv();
     const paths: Record<string, string> = {};
     for (const key of PATH_KEYS) {
       paths[key] = vars[key] || '';

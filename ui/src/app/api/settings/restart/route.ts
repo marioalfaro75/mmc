@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { exec } from 'child_process';
+import { restartServicesStaged } from '@/lib/docker';
 
-export async function POST() {
+export async function POST(request: Request) {
   const projectDir = process.env.HOST_PROJECT_DIR;
 
   if (!projectDir) {
@@ -11,6 +12,28 @@ export async function POST() {
     );
   }
 
+  let services: string[] | undefined;
+  try {
+    const body = await request.json();
+    services = body.services;
+  } catch {
+    // no body = restart all
+  }
+
+  if (services && services.length > 0) {
+    // Selective staged restart
+    try {
+      await restartServicesStaged(services);
+      return NextResponse.json({ status: 'restarted', services });
+    } catch (err) {
+      return NextResponse.json(
+        { error: 'Selective restart failed', details: String(err) },
+        { status: 500 }
+      );
+    }
+  }
+
+  // Full stack restart (fire-and-forget since media-ui will recycle)
   const envFile = `${projectDir}/.env`;
   const composeFile = `${projectDir}/docker-compose.yml`;
 
@@ -22,7 +45,6 @@ export async function POST() {
     'up -d --force-recreate',
   ].join(' ');
 
-  // Fire-and-forget: respond before the container recycles
   exec(cmd, (err) => {
     if (err) {
       console.error('Restart failed:', err.message);
