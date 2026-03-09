@@ -30,6 +30,30 @@ User → Seerr → Sonarr/Radarr → Prowlarr → Indexers
 
 ## Quick Start
 
+### One-Liner Install (WSL / Linux)
+
+Run this single command on a fresh WSL or Linux system — it installs Docker, Node.js, clones the repo, and deploys everything:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/marioalfaro75/mmc/main/scripts/deploy.sh | bash -s -- --install
+```
+
+The installer will:
+1. Detect WSL and show persistence tips
+2. Install Docker Engine, Node.js 20, and git (skips anything already installed)
+3. Clone the repository (default: `~/mmc`)
+4. Launch the interactive setup wizard and staged deploy
+
+> **WSL users:** To keep containers running after closing the terminal, add this to `C:\Users\<you>\.wslconfig`:
+> ```ini
+> [wsl2]
+> vmIdleTimeout=-1
+> ```
+
+### Manual Install
+
+If you prefer to install prerequisites yourself:
+
 ```bash
 # 1. Clone the repository
 git clone https://github.com/marioalfaro75/mmc.git && cd mmc
@@ -56,6 +80,7 @@ The wizard prompts for these during first run. You can also change them later vi
 
 ```bash
 ./scripts/deploy.sh              # Interactive wizard (first run) or quick deploy
+./scripts/deploy.sh --install    # Full bootstrap: install prerequisites, clone, deploy
 ./scripts/deploy.sh --update     # Pull latest code, migrate .env, rebuild all
 ./scripts/deploy.sh --dry-run    # Pre-flight validation only (no containers)
 ./scripts/deploy.sh --skip-ui    # Skip npm install/build steps
