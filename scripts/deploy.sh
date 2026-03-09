@@ -1,10 +1,15 @@
 #!/bin/sh
 # ============================================================
-# deploy.sh — Pre-flight validation and staged deployment
+# deploy.sh — Bootstrap, install, and staged deployment
 # ============================================================
-# Usage: ./scripts/deploy.sh [--dry-run] [--skip-ui] [--ui-only] [--ui-docker] [--update] [--help]
+# Usage: ./scripts/deploy.sh [--install] [--dry-run] [--skip-ui] [--ui-only] [--ui-docker] [--update] [--help]
+#
+# One-liner install (WSL/Linux):
+#   curl -fsSL https://raw.githubusercontent.com/marioalfaro75/mmc/main/scripts/deploy.sh | bash -s -- --install
 #
 # Modes:
+#   --install    Bootstrap from scratch: install prerequisites, clone repo,
+#                then run full deploy. Designed for curl-pipe-bash usage.
 #   --dry-run    Validate build, configs, and API routes
 #                without starting Docker containers.
 #   --update     Pull latest code, migrate .env, rebuild all containers.
@@ -19,8 +24,14 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# When piped via curl, $0 is "bash" and dirs won't resolve — handle gracefully
+if [ -f "$0" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+else
+    SCRIPT_DIR=""
+    PROJECT_DIR=""
+fi
 
 # --- Defaults ---
 DRY_RUN=0
@@ -28,15 +39,19 @@ SKIP_UI=0
 UPDATE_MODE=0
 UI_ONLY=0
 UI_DOCKER=0
+INSTALL_MODE=0
 PASS_COUNT=0
 WARN_COUNT=0
 FAIL_COUNT=0
 DEV_SERVER_PID=""
+REPO_URL="https://github.com/marioalfaro75/mmc.git"
+DEFAULT_INSTALL_DIR="$HOME/mmc"
 
 # --- Logging ---
 # On first invocation, re-exec ourselves through tee so all output
 # (including child processes) is captured to a timestamped log file.
-if [ -z "$_MMC_LOGGED" ]; then
+# Skip when piped (install mode) — logging starts after re-exec from cloned repo.
+if [ -z "$_MMC_LOGGED" ] && [ -f "$0" ]; then
     _log_dir="${HOME}/.mmc/logs"
     mkdir -p "$_log_dir"
     LOG_FILE="$_log_dir/deploy-$(date +%Y%m%d-%H%M%S).log"
@@ -96,6 +111,35 @@ info() {
     printf "  %s\n" "$1"
 }
 
+# --- Interactive input (works when piped via curl | bash) ---
+prompt_user() {
+    _prompt="$1"
+    _default="$2"
+    if [ -n "$_default" ]; then
+        printf "  %s [%s]: " "$_prompt" "$_default" >/dev/tty
+    else
+        printf "  %s: " "$_prompt" >/dev/tty
+    fi
+    read -r _answer </dev/tty
+    echo "${_answer:-$_default}"
+}
+
+confirm_user() {
+    _prompt="$1"
+    _default="${2:-y}"
+    if [ "$_default" = "y" ]; then
+        printf "  %s [Y/n]: " "$_prompt" >/dev/tty
+    else
+        printf "  %s [y/N]: " "$_prompt" >/dev/tty
+    fi
+    read -r _answer </dev/tty
+    _answer="${_answer:-$_default}"
+    case "$_answer" in
+        [Yy]*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # --- JSON validation (cascade: python3 → node → heuristic) ---
 is_json() {
     _input="$1"
@@ -116,9 +160,13 @@ is_json() {
 
 # --- Help ---
 show_help() {
-    echo "Usage: $0 [--dry-run] [--skip-ui] [--ui-only] [--ui-docker] [--update] [--help]"
+    echo "Usage: $0 [--install] [--dry-run] [--skip-ui] [--ui-only] [--ui-docker] [--update] [--help]"
+    echo ""
+    echo "One-liner install:"
+    echo "  curl -fsSL https://raw.githubusercontent.com/marioalfaro75/mmc/main/scripts/deploy.sh | bash -s -- --install"
     echo ""
     echo "Modes:"
+    echo "  --install    Bootstrap from scratch (install Docker, Node, clone repo, deploy)"
     echo "  --dry-run    Pre-flight validation only (no Docker containers)"
     echo "  --update     Pull latest code, migrate .env, rebuild all containers"
     echo "  --ui-only    Run the web UI locally via Next.js dev server (no Docker)"
@@ -155,6 +203,7 @@ while [ $# -gt 0 ]; do
         --update)   UPDATE_MODE=1 ;;
         --ui-only)  UI_ONLY=1 ;;
         --ui-docker) UI_DOCKER=1 ;;
+        --install)  INSTALL_MODE=1 ;;
         --help|-h)  show_help ;;
         *)
             echo "ERROR: Unknown option: $1" >&2
@@ -365,35 +414,20 @@ run_setup_wizard() {
     _puid=$(id -u)
     _pgid=$(id -g)
 
-    printf "  VPN provider (e.g. protonvpn, mullvad, airvpn): "
-    read -r _vpn_provider
-    printf "  WireGuard private key: "
-    read -r _wg_key
-    printf "  WireGuard address (e.g. 10.2.0.2/32): "
-    read -r _wg_addr
-    printf "  Server country (e.g. Netherlands): "
-    read -r _server_country
-    printf "  Plex claim token (from https://plex.tv/claim): "
-    read -r _plex_claim
-    printf "  DATA_ROOT path [%s/.mmc/data]: " "$HOME"
-    read -r _data_root
-    _data_root="${_data_root:-$HOME/.mmc/data}"
+    _vpn_provider=$(prompt_user "VPN provider (e.g. protonvpn, mullvad, airvpn)" "")
+    _wg_key=$(prompt_user "WireGuard private key" "")
+    _wg_addr=$(prompt_user "WireGuard address (e.g. 10.2.0.2/32)" "")
+    _server_country=$(prompt_user "Server country (e.g. Netherlands)" "")
+    _plex_claim=$(prompt_user "Plex claim token (from https://plex.tv/claim)" "")
+    _data_root=$(prompt_user "DATA_ROOT path" "$HOME/.mmc/data")
     # Expand ~ to $HOME
     case "$_data_root" in "~"*) _data_root="$HOME${_data_root#"~"}" ;; esac
-    printf "  CONFIG_ROOT path [%s/.mmc/config]: " "$HOME"
-    read -r _config_root
-    _config_root="${_config_root:-$HOME/.mmc/config}"
+    _config_root=$(prompt_user "CONFIG_ROOT path" "$HOME/.mmc/config")
     case "$_config_root" in "~"*) _config_root="$HOME${_config_root#"~"}" ;; esac
-    printf "  BACKUP_DIR path [%s/.mmc/backups]: " "$HOME"
-    read -r _backup_dir
-    _backup_dir="${_backup_dir:-$HOME/.mmc/backups}"
+    _backup_dir=$(prompt_user "BACKUP_DIR path" "$HOME/.mmc/backups")
     case "$_backup_dir" in "~"*) _backup_dir="$HOME${_backup_dir#"~"}" ;; esac
-    printf "  PUID [%s]: " "$_puid"
-    read -r _puid_input
-    _puid="${_puid_input:-$_puid}"
-    printf "  PGID [%s]: " "$_pgid"
-    read -r _pgid_input
-    _pgid="${_pgid_input:-$_pgid}"
+    _puid=$(prompt_user "PUID" "$_puid")
+    _pgid=$(prompt_user "PGID" "$_pgid")
 
     echo ""
 
@@ -925,12 +959,190 @@ print_summary() {
 }
 
 # ============================================================
+# INSTALL / BOOTSTRAP FUNCTIONS
+# ============================================================
+
+detect_wsl() {
+    if grep -qi microsoft /proc/version 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+install_docker() {
+    section "Install Docker"
+    if command -v docker >/dev/null 2>&1; then
+        pass "Docker already installed: $(docker --version)"
+        # Check docker compose plugin
+        if docker compose version >/dev/null 2>&1; then
+            pass "Docker Compose plugin available"
+        else
+            info "Installing Docker Compose plugin..."
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq docker-compose-plugin
+            pass "Docker Compose plugin installed"
+        fi
+        return
+    fi
+
+    info "Docker not found — installing Docker Engine..."
+    echo ""
+
+    # Install via official convenience script
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL https://get.docker.com | sudo sh
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO- https://get.docker.com | sudo sh
+    else
+        fail "Neither curl nor wget found — cannot install Docker"
+        info "Install Docker manually: https://docs.docker.com/engine/install/"
+        exit 1
+    fi
+
+    # Add current user to docker group (avoids needing sudo)
+    sudo usermod -aG docker "$USER"
+    pass "Docker installed and user added to docker group"
+
+    # Start Docker daemon if not running (common in WSL without systemd)
+    if ! docker info >/dev/null 2>&1; then
+        info "Starting Docker daemon..."
+        sudo service docker start 2>/dev/null || sudo dockerd &
+        sleep 3
+    fi
+
+    if docker info >/dev/null 2>&1; then
+        pass "Docker daemon is running"
+    else
+        warn "Docker installed but daemon may need a new shell session to work without sudo"
+        info "If docker commands fail, log out and back in, or run: newgrp docker"
+    fi
+}
+
+install_node() {
+    section "Install Node.js"
+    if command -v node >/dev/null 2>&1; then
+        _node_ver=$(node --version)
+        _major=$(echo "$_node_ver" | sed 's/^v//' | cut -d. -f1)
+        if [ "$_major" -ge 18 ]; then
+            pass "Node.js already installed: $_node_ver"
+            return
+        else
+            warn "Node.js $_node_ver is too old (need v18+) — upgrading..."
+        fi
+    else
+        info "Node.js not found — installing..."
+    fi
+
+    # Install Node.js 20.x via NodeSource
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO- https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    else
+        fail "Neither curl nor wget found — cannot install Node.js"
+        exit 1
+    fi
+
+    sudo apt-get install -y -qq nodejs
+    pass "Node.js installed: $(node --version)"
+    pass "npm installed: $(npm --version)"
+}
+
+install_git() {
+    if command -v git >/dev/null 2>&1; then
+        return
+    fi
+
+    info "Installing git..."
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq git
+    pass "git installed"
+}
+
+install_curl() {
+    # curl is needed for deploy checks; if we got here via curl it exists,
+    # but handle the case where wget was used or script was run directly
+    if command -v curl >/dev/null 2>&1; then
+        return
+    fi
+
+    info "Installing curl..."
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq curl
+    pass "curl installed"
+}
+
+clone_repo() {
+    section "Clone Repository"
+
+    if [ -d "$DEFAULT_INSTALL_DIR/.git" ]; then
+        pass "Repository already exists at $DEFAULT_INSTALL_DIR"
+        cd "$DEFAULT_INSTALL_DIR"
+        info "Pulling latest changes..."
+        git pull
+        return
+    fi
+
+    _install_dir=$(prompt_user "Install directory" "$DEFAULT_INSTALL_DIR")
+    # Expand ~ to $HOME
+    case "$_install_dir" in "~"*) _install_dir="$HOME${_install_dir#"~"}" ;; esac
+
+    if [ -d "$_install_dir/.git" ]; then
+        pass "Repository already exists at $_install_dir"
+        cd "$_install_dir"
+        git pull
+        return
+    fi
+
+    info "Cloning $REPO_URL → $_install_dir"
+    git clone "$REPO_URL" "$_install_dir"
+    pass "Repository cloned to $_install_dir"
+    cd "$_install_dir"
+}
+
+run_install() {
+    section "Mars Media Centre — Install"
+    echo ""
+    printf "  ${BOLD}Welcome to Mars Media Centre!${RESET}\n"
+    echo ""
+
+    if detect_wsl; then
+        pass "Running on WSL"
+        info "Tip: Add this to C:\\Users\\<you>\\.wslconfig to keep containers running:"
+        info "  [wsl2]"
+        info "  vmIdleTimeout=-1"
+        echo ""
+    else
+        info "Running on Linux"
+    fi
+
+    # Ensure basic tools
+    install_curl
+    install_git
+    install_docker
+    install_node
+
+    # Clone the repo
+    clone_repo
+
+    # Re-exec from the cloned repo's deploy script (full deploy)
+    _cloned_dir="$(pwd)"
+    info "Handing off to full deploy..."
+    echo ""
+    exec "$_cloned_dir/scripts/deploy.sh"
+}
+
+# ============================================================
 # MAIN
 # ============================================================
 
 setup_colors
 
-if [ "$UI_ONLY" = "1" ]; then
+if [ "$INSTALL_MODE" = "1" ]; then
+    run_install
+    # run_install execs into the cloned deploy.sh — should not reach here
+    exit 0
+elif [ "$UI_ONLY" = "1" ]; then
     section "Mars Media Centre — UI Only"
 
     cd "$PROJECT_DIR/ui"
