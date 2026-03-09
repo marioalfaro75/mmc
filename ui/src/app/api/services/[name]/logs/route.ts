@@ -5,12 +5,19 @@ import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
 interface ServiceLogConfig {
-  /** Path relative to CONFIG_ROOT */
+  /** Path relative to CONFIG_ROOT (or absolute if starts with /) */
   dir: string;
   /** Primary log file name(s) — first match wins */
   files: string[];
   /** If true, list all log files in the dir for the user to pick */
   listAll?: boolean;
+  /** If true, dir is an absolute path, not relative to CONFIG_ROOT */
+  absolute?: boolean;
+}
+
+function getMediaUiLogDir(): string {
+  if (existsSync('/app/logs')) return '/app/logs';
+  return join(process.env.HOME || '/tmp', '.mmc', 'logs');
 }
 
 const SERVICE_LOG_MAP: Record<string, ServiceLogConfig> = {
@@ -22,6 +29,7 @@ const SERVICE_LOG_MAP: Record<string, ServiceLogConfig> = {
   seerr: { dir: 'seerr/logs', files: ['seerr.log'] },
   plex: { dir: 'plex/Library/Application Support/Plex Media Server/Logs', files: ['Plex Media Server.log'] },
   recyclarr: { dir: 'recyclarr/logs/cli', files: [], listAll: true },
+  'media-ui': { dir: getMediaUiLogDir(), files: ['app.log'], absolute: true },
 };
 
 function getConfigRoot(): string {
@@ -109,7 +117,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ name
     }
   }
 
-  const logDir = join(configRoot, logConfig.dir);
+  const logDir = logConfig.absolute ? logConfig.dir : join(configRoot, logConfig.dir);
   const availableFiles = listLogFiles(logDir);
 
   // If a specific file is requested

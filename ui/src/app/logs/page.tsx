@@ -9,35 +9,18 @@ import {
   Terminal,
 } from 'lucide-react';
 
-type Tab = 'app' | 'services' | 'deploy';
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-
-interface LogEntry {
-  timestamp: string;
-  level: LogLevel;
-  component: string;
-  message: string;
-  data?: Record<string, unknown>;
-}
-
-const LEVEL_COLORS: Record<LogLevel, string> = {
-  debug: 'text-muted-foreground',
-  info: 'text-blue-400',
-  warn: 'text-yellow-400',
-  error: 'text-red-400',
-};
+type Tab = 'services' | 'deploy';
+type LogSource = 'app' | 'docker';
 
 const TABS: { key: Tab; label: string; icon: typeof ScrollText }[] = [
-  { key: 'app', label: 'Application', icon: ScrollText },
   { key: 'services', label: 'Services', icon: Server },
   { key: 'deploy', label: 'Deploy', icon: Terminal },
 ];
 
 export default function LogsPage() {
-  const [tab, setTab] = useState<Tab>('app');
-  const [levelFilter, setLevelFilter] = useState<LogLevel | ''>('');
+  const [tab, setTab] = useState<Tab>('services');
   const [lineCount, setLineCount] = useState(200);
-  const [selectedService, setSelectedService] = useState('gluetun');
+  const [selectedService, setSelectedService] = useState('sonarr');
   const [selectedDeployFile, setSelectedDeployFile] = useState('');
 
   return (
@@ -65,14 +48,6 @@ export default function LogsPage() {
         ))}
       </div>
 
-      {tab === 'app' && (
-        <AppLogTab
-          levelFilter={levelFilter}
-          setLevelFilter={setLevelFilter}
-          lineCount={lineCount}
-          setLineCount={setLineCount}
-        />
-      )}
       {tab === 'services' && (
         <ServiceLogTab
           selectedService={selectedService}
@@ -92,83 +67,6 @@ export default function LogsPage() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Application Log Tab                                                 */
-/* ------------------------------------------------------------------ */
-function AppLogTab({
-  levelFilter,
-  setLevelFilter,
-  lineCount,
-  setLineCount,
-}: {
-  levelFilter: LogLevel | '';
-  setLevelFilter: (v: LogLevel | '') => void;
-  lineCount: number;
-  setLineCount: (v: number) => void;
-}) {
-  const query = useQuery<{ entries: LogEntry[] }>({
-    queryKey: ['app-logs', lineCount, levelFilter],
-    queryFn: async () => {
-      const params = new URLSearchParams({ lines: String(lineCount) });
-      if (levelFilter) params.set('level', levelFilter);
-      const res = await fetch(`/api/logs?${params}`);
-      if (!res.ok) throw new Error('Failed to fetch logs');
-      return res.json();
-    },
-    refetchInterval: 5000,
-    staleTime: 2000,
-  });
-
-  const entries = query.data?.entries || [];
-
-  return (
-    <div className="space-y-3">
-      <LogToolbar
-        lineCount={lineCount}
-        setLineCount={setLineCount}
-        onRefresh={() => query.refetch()}
-        isRefreshing={query.isFetching}
-      >
-        <select
-          value={levelFilter}
-          onChange={(e) => setLevelFilter(e.target.value as LogLevel | '')}
-          className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm"
-        >
-          <option value="">All levels</option>
-          <option value="debug">Debug</option>
-          <option value="info">Info</option>
-          <option value="warn">Warn</option>
-          <option value="error">Error</option>
-        </select>
-      </LogToolbar>
-
-      <div className="rounded-lg border border-border bg-black/50 p-3 font-mono text-xs leading-5 max-h-[70vh] overflow-auto">
-        {entries.length === 0 ? (
-          <p className="text-muted-foreground">No log entries found.</p>
-        ) : (
-          entries.map((entry, i) => (
-            <div key={i} className="flex gap-2 hover:bg-white/5">
-              <span className="text-muted-foreground shrink-0">
-                {entry.timestamp.replace('T', ' ').slice(0, 19)}
-              </span>
-              <span className={`uppercase font-bold w-12 shrink-0 ${LEVEL_COLORS[entry.level]}`}>
-                {entry.level.padEnd(5)}
-              </span>
-              <span className="text-purple-400 shrink-0">[{entry.component}]</span>
-              <span className="text-foreground">{entry.message}</span>
-              {entry.data && (
-                <span className="text-muted-foreground">
-                  {JSON.stringify(entry.data)}
-                </span>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /* Service Log Tab                                                     */
 /* ------------------------------------------------------------------ */
 const SERVICE_LIST = [
@@ -176,8 +74,6 @@ const SERVICE_LIST = [
   'seerr', 'recyclarr', 'gluetun', 'qbittorrent', 'sabnzbd',
   'unpackerr', 'watchtower', 'media-ui',
 ];
-
-type LogSource = 'app' | 'docker';
 
 interface ServiceLogResponse {
   service: string;
@@ -382,46 +278,6 @@ function DeployLogTab({
           )
         )}
       </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Shared toolbar                                                      */
-/* ------------------------------------------------------------------ */
-function LogToolbar({
-  lineCount,
-  setLineCount,
-  onRefresh,
-  isRefreshing,
-  children,
-}: {
-  lineCount: number;
-  setLineCount: (v: number) => void;
-  onRefresh: () => void;
-  isRefreshing: boolean;
-  children?: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      {children}
-      <select
-        value={lineCount}
-        onChange={(e) => setLineCount(Number(e.target.value))}
-        className="rounded-md border border-border bg-surface px-2 py-1.5 text-sm"
-      >
-        <option value={100}>100 lines</option>
-        <option value={200}>200 lines</option>
-        <option value={500}>500 lines</option>
-        <option value={1000}>1000 lines</option>
-      </select>
-      <button
-        onClick={onRefresh}
-        className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted"
-        title="Refresh"
-      >
-        <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-      </button>
     </div>
   );
 }
