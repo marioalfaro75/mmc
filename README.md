@@ -439,6 +439,13 @@ The Settings page (`http://localhost:3000/settings`) provides tabbed configurati
 - **Service Control** — Live service status, per-service start/stop/restart, log viewer
 - **Backups** — Create, download, restore, and delete configuration backups
 
+### Logs Page
+
+The Logs page (`http://localhost:3000/logs`) provides two tabs:
+
+- **Services** — View application log files for each service (Sonarr, Radarr, Prowlarr, Bazarr, Plex, Tautulli, Seerr, Recyclarr, media-ui). Toggle between app logs (the actual log files) and Docker container output. A file picker appears for services with multiple log files.
+- **Deploy** — Browse and view deploy script log files
+
 ### Rebuilding the UI
 
 ```bash

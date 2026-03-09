@@ -512,6 +512,41 @@ UN_RADARR_0_API_KEY: <radarr-api-key>`}</Pre>
           </AccordionSection>
 
           <AccordionSection
+            title="Logs"
+            description="View application and container logs for all services"
+          >
+            <p>
+              The <a href="/logs" className="text-primary underline">Logs page</a> lets you view
+              logs from every service in the stack without using the command line.
+            </p>
+
+            <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Services Tab</h4>
+            <p className="mt-1">Select any service from the dropdown to view its logs. Two source modes are available:</p>
+            <ul className="ml-4 mt-1 list-disc text-xs text-muted-foreground">
+              <li>
+                <strong>App Logs</strong> — reads the actual log files from <Code>CONFIG_ROOT</Code> (e.g.
+                Sonarr&apos;s <Code>sonarr.txt</Code>, Radarr&apos;s <Code>radarr.txt</Code>, Plex&apos;s <Code>Plex Media Server.log</Code>)
+              </li>
+              <li>
+                <strong>Docker</strong> — shows container stdout/stderr output (useful for services like
+                Gluetun, qBittorrent, SABnzbd that don&apos;t write log files)
+              </li>
+            </ul>
+            <p className="mt-1 text-xs text-muted-foreground">
+              A file picker appears when a service has multiple log files (e.g. Tautulli, Recyclarr).
+            </p>
+
+            <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Deploy Tab</h4>
+            <p className="mt-1">
+              Browse deploy script log files to review what happened during installation or updates.
+            </p>
+
+            <Tip>
+              Use the line count selector to load more history (up to 1000 lines). Logs auto-refresh every 5 seconds.
+            </Tip>
+          </AccordionSection>
+
+          <AccordionSection
             title="Backup & Restore"
             description="Protect your service configurations with backups"
           >
