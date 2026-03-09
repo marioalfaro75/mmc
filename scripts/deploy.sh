@@ -942,6 +942,26 @@ check_ui_api_routes_live() {
 }
 
 # --- Summary ---
+check_missing_required_vars() {
+    # Returns a space-separated list of missing required .env vars
+    _missing=""
+    ENV_FILE="$PROJECT_DIR/.env"
+    if [ ! -f "$ENV_FILE" ]; then
+        echo "VPN_SERVICE_PROVIDER VPN_TYPE WIREGUARD_PRIVATE_KEY WIREGUARD_ADDRESSES DATA_ROOT CONFIG_ROOT BACKUP_DIR"
+        return
+    fi
+    set -a
+    . "$ENV_FILE"
+    set +a
+    for var in VPN_SERVICE_PROVIDER VPN_TYPE WIREGUARD_PRIVATE_KEY WIREGUARD_ADDRESSES DATA_ROOT CONFIG_ROOT BACKUP_DIR; do
+        eval _val="\$$var"
+        if [ -z "$_val" ]; then
+            _missing="$_missing $var"
+        fi
+    done
+    echo "$_missing"
+}
+
 print_summary() {
     section "Summary"
     printf "  ${GREEN}Passed: %d${RESET}\n" "$PASS_COUNT"
@@ -949,14 +969,38 @@ print_summary() {
     printf "  ${RED}Failed: %d${RESET}\n" "$FAIL_COUNT"
     echo ""
 
-    if [ "$FAIL_COUNT" -gt 0 ]; then
-        printf "  ${RED}${BOLD}RESULT: FAIL${RESET}\n"
-    elif [ "$WARN_COUNT" -gt 0 ]; then
-        printf "  ${YELLOW}${BOLD}RESULT: PASS (with warnings)${RESET}\n"
-    else
-        printf "  ${GREEN}${BOLD}RESULT: PASS${RESET}\n"
+    # Determine actual outcome based on service state, not just counters
+    PORT_UI="${PORT_UI:-3000}"
+    _ui_up=0
+    if curl -s -o /dev/null -m 3 "http://localhost:${PORT_UI}" 2>/dev/null; then
+        _ui_up=1
     fi
 
+    _missing_vars=$(check_missing_required_vars)
+
+    if [ "$_ui_up" = "1" ] && [ -z "$_missing_vars" ] && [ "$FAIL_COUNT" -eq 0 ]; then
+        # Everything working
+        printf "  ${GREEN}${BOLD}✓ DEPLOY COMPLETE${RESET}\n"
+        info "Mars Media Centre is ready at http://localhost:${PORT_UI}"
+    elif [ "$_ui_up" = "1" ] && { [ -n "$_missing_vars" ] || [ "$FAIL_COUNT" -gt 0 ]; }; then
+        # UI running but services need attention
+        printf "  ${YELLOW}${BOLD}⚠ DEPLOY INCOMPLETE — configuration needed${RESET}\n"
+        info "The web UI is running but some services failed to start."
+        echo ""
+        info "${BOLD}Next steps:${RESET}"
+        info "  1. Open http://localhost:${PORT_UI}/settings to configure missing settings"
+        if [ -n "$_missing_vars" ]; then
+            info "  2. Required fields still empty:${_missing_vars}"
+        fi
+        info "  3. After updating settings, restart services from the web UI"
+        info "     Service Control tab, or re-run: ./scripts/deploy.sh"
+    else
+        # UI didn't come up
+        printf "  ${RED}${BOLD}✗ DEPLOY FAILED — web UI did not start${RESET}\n"
+        info "Fix the errors above and re-run: ./scripts/deploy.sh"
+    fi
+
+    echo ""
     if [ -n "$_MMC_LOGGED" ]; then
         info "Full log: $_MMC_LOGGED"
     fi
