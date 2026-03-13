@@ -75,9 +75,5 @@ export function writeEnv(vars: Record<string, string>): void {
     }
   }
 
-  // Atomic write: write to temp then rename
-  const tmpPath = ENV_FILE_PATH + '.tmp';
-  writeFileSync(tmpPath, content, 'utf-8');
-  const { renameSync } = require('fs');
-  renameSync(tmpPath, ENV_FILE_PATH);
+  writeFileSync(ENV_FILE_PATH, content, 'utf-8');
 }

@@ -1,7 +1,7 @@
 const BASE_URL = process.env.GLUETUN_URL || 'http://gluetun:8000';
 
 async function gluetunFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`);
+  const res = await fetch(`${BASE_URL}${path}`, { cache: 'no-store' });
   if (!res.ok) {
     throw new Error(`Gluetun API error: ${res.status} ${res.statusText}`);
   }
@@ -19,7 +19,7 @@ export interface GluetunPublicIP {
 }
 
 export async function getVpnStatus(): Promise<GluetunStatus> {
-  return gluetunFetch<GluetunStatus>('/v1/openvpn/status');
+  return gluetunFetch<GluetunStatus>('/v1/vpn/status');
 }
 
 export async function getPublicIP(): Promise<GluetunPublicIP> {
