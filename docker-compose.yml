@@ -173,24 +173,6 @@ services:
   # ============================================================
   # Media Server & Companions
   # ============================================================
-  plex:
-    image: ${IMAGE_PLEX}
-    container_name: plex
-    network_mode: host
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-      - VERSION=docker
-      - PLEX_CLAIM=${PLEX_CLAIM}
-    volumes:
-      - ${CONFIG_ROOT}/plex:/config
-      - ${DATA_ROOT}/media/tv:/tv
-      - ${DATA_ROOT}/media/movies:/movies
-    restart: unless-stopped
-    labels:
-      - com.centurylinklabs.watchtower.enable=false
-
   bazarr:
     image: ${IMAGE_BAZARR}
     container_name: bazarr
@@ -318,7 +300,6 @@ services:
       - sonarr
       - radarr
       - prowlarr
-      - plex
     restart: unless-stopped
     labels:
       - com.centurylinklabs.watchtower.enable=false

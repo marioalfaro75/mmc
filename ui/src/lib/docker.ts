@@ -23,7 +23,6 @@ export const VALID_SERVICES = new Set([
   'prowlarr',
   'sonarr',
   'radarr',
-  'plex',
   'bazarr',
   'tautulli',
   'seerr',

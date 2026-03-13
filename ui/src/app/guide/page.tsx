@@ -360,21 +360,16 @@ UN_RADARR_0_API_KEY: <radarr-api-key>`}</Pre>
           <AccordionSection
             title="Plex"
             port="localhost:32400/web"
-            description="Media streaming server — streams your library to any device"
+            description="External media streaming server — configure the UI to connect to your existing Plex"
           >
             <Step n={1}>
-              <p>On first access, claim the server with your Plex account. This uses the <Code>PLEX_CLAIM</Code> token set during deploy.</p>
+              <p>Set <Code>PLEX_URL</Code> and <Code>PLEX_TOKEN</Code> in Settings → Services to connect to your Plex server.</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                If the token expired, generate a new one at{' '}
-                <a href="https://plex.tv/claim" target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                  plex.tv/claim
-                  <ExternalLink className="ml-0.5 inline h-3 w-3" />
-                </a>
-                {' '}and update <Code>PLEX_CLAIM</Code> in <Code>.env</Code>.
+                Find your token in Plex config at <Code>Preferences.xml</Code> (look for <Code>PlexOnlineToken</Code>).
               </p>
             </Step>
             <Step n={2}>
-              <p>Add libraries: Settings → Libraries → Add Library:</p>
+              <p>Add libraries in Plex: Settings → Libraries → Add Library:</p>
               <ul className="ml-4 mt-1 list-disc text-xs text-muted-foreground">
                 <li>Movies → Add folder → <Code>/movies</Code></li>
                 <li>TV Shows → Add folder → <Code>/tv</Code></li>

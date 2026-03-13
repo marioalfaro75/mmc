@@ -16,7 +16,7 @@ export interface EnvVarDef {
 
 const ALL_SERVICES = [
   'gluetun', 'qbittorrent', 'sabnzbd', 'unpackerr', 'prowlarr',
-  'sonarr', 'radarr', 'plex', 'bazarr', 'tautulli', 'seerr',
+  'sonarr', 'radarr', 'bazarr', 'tautulli', 'seerr',
   'recyclarr', 'watchtower', 'media-ui',
 ];
 
@@ -51,7 +51,6 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'PORT_PROWLARR', label: 'Prowlarr Port', type: 'port', group: 'network', description: 'Prowlarr web UI port', default: '9696', affectsServices: ['prowlarr'] },
   { key: 'PORT_QBITTORRENT', label: 'qBittorrent Port', type: 'port', group: 'network', description: 'qBittorrent web UI port', default: '8080', affectsServices: ['gluetun'] },
   { key: 'PORT_SABNZBD', label: 'SABnzbd Port', type: 'port', group: 'network', description: 'SABnzbd web UI port', default: '8081', affectsServices: ['gluetun'] },
-  { key: 'PORT_PLEX', label: 'Plex Port', type: 'port', group: 'network', description: 'Plex media server port', default: '32400', affectsServices: ['plex'] },
   { key: 'PORT_SEERR', label: 'Seerr Port', type: 'port', group: 'network', description: 'Seerr web UI port', default: '5055', affectsServices: ['seerr'] },
   { key: 'PORT_BAZARR', label: 'Bazarr Port', type: 'port', group: 'network', description: 'Bazarr web UI port', default: '6767', affectsServices: ['bazarr'] },
   { key: 'PORT_TAUTULLI', label: 'Tautulli Port', type: 'port', group: 'network', description: 'Tautulli web UI port', default: '8181', affectsServices: ['tautulli'] },
@@ -59,7 +58,6 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'PORT_UI', label: 'Web UI Port', type: 'port', group: 'network', description: 'Unified web UI port', default: '3000', affectsServices: ['media-ui'] },
 
   // --- Services ---
-  { key: 'PLEX_CLAIM', label: 'Plex Claim Token', type: 'secret', group: 'services', description: 'Get from https://plex.tv/claim (valid 4 minutes)', sensitive: true, affectsServices: ['plex'] },
   { key: 'WATCHTOWER_SCHEDULE', label: 'Update Schedule', type: 'cron', group: 'services', description: 'Cron expression for Watchtower update checks', default: '0 0 4 * * *', affectsServices: ['watchtower'] },
   { key: 'WATCHTOWER_NOTIFICATIONS', label: 'Notification URL', type: 'string', group: 'services', description: 'Shoutrrr URL for Watchtower notifications (Discord, Slack, Email)', affectsServices: ['watchtower'] },
 
@@ -69,7 +67,6 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'IMAGE_PROWLARR', label: 'Prowlarr Image', type: 'string', group: 'images', description: 'Docker image for Prowlarr', default: 'lscr.io/linuxserver/prowlarr:latest', affectsServices: ['prowlarr'] },
   { key: 'IMAGE_QBITTORRENT', label: 'qBittorrent Image', type: 'string', group: 'images', description: 'Docker image for qBittorrent', default: 'lscr.io/linuxserver/qbittorrent:latest', affectsServices: ['qbittorrent'] },
   { key: 'IMAGE_SABNZBD', label: 'SABnzbd Image', type: 'string', group: 'images', description: 'Docker image for SABnzbd', default: 'lscr.io/linuxserver/sabnzbd:latest', affectsServices: ['sabnzbd'] },
-  { key: 'IMAGE_PLEX', label: 'Plex Image', type: 'string', group: 'images', description: 'Docker image for Plex', default: 'lscr.io/linuxserver/plex:latest', affectsServices: ['plex'] },
   { key: 'IMAGE_SEERR', label: 'Seerr Image', type: 'string', group: 'images', description: 'Docker image for Seerr', default: 'ghcr.io/seerr-team/seerr:latest', affectsServices: ['seerr'] },
   { key: 'IMAGE_BAZARR', label: 'Bazarr Image', type: 'string', group: 'images', description: 'Docker image for Bazarr', default: 'lscr.io/linuxserver/bazarr:latest', affectsServices: ['bazarr'] },
   { key: 'IMAGE_TAUTULLI', label: 'Tautulli Image', type: 'string', group: 'images', description: 'Docker image for Tautulli', default: 'lscr.io/linuxserver/tautulli:latest', affectsServices: ['tautulli'] },
