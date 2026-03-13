@@ -105,10 +105,37 @@ async function waitForHealthy(service: string, timeoutMs = 60000): Promise<boole
   return false;
 }
 
+function selfRestart(): void {
+  // To pick up new env vars, we need `docker compose up -d --force-recreate media-ui`.
+  // But that command kills this container mid-execution.
+  // Solution: run the compose command from a short-lived helper container that
+  // shares the Docker socket and project directory. This container survives
+  // the media-ui restart because it's a separate container.
+  const composeCmd = [
+    'docker compose',
+    `-f ${PROJECT_DIR}/docker-compose.yml`,
+    `--project-directory ${PROJECT_DIR}`,
+    `--env-file ${PROJECT_DIR}/.env`,
+    'up -d --force-recreate media-ui',
+  ].join(' ');
+
+  const args = [
+    'run', '--rm', '-d',
+    '--name', 'mmc-self-restart',
+    '-v', '/var/run/docker.sock:/var/run/docker.sock',
+    '-v', `${PROJECT_DIR}:${PROJECT_DIR}:ro`,
+    'docker:cli',
+    'sh', '-c', composeCmd,
+  ];
+  const child = execFile('docker', args, { timeout: 30000 }, () => {});
+  child.unref();
+}
+
 export async function restartServicesStaged(services: string[]): Promise<void> {
-  // If gluetun is being restarted, do it first and wait for healthy
+  // If media-ui is being restarted, do it last and fire-and-forget (it kills itself)
+  const hasSelf = services.includes('media-ui');
   const hasGluetun = services.includes('gluetun');
-  const remaining = services.filter((s) => s !== 'gluetun');
+  const remaining = services.filter((s) => s !== 'gluetun' && s !== 'media-ui');
 
   if (hasGluetun) {
     // Add VPN-dependent services if not already included
@@ -127,5 +154,11 @@ export async function restartServicesStaged(services: string[]): Promise<void> {
     if (others.length > 0) await recreateServices(others);
   } else {
     if (remaining.length > 0) await recreateServices(remaining);
+  }
+
+  // Self-restart via Docker Engine API — the daemon restarts the container
+  // from outside, so it survives even though our process gets killed
+  if (hasSelf) {
+    selfRestart();
   }
 }

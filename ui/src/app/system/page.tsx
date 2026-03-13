@@ -120,6 +120,23 @@ export default function SystemPage() {
         toast.error(data.error || `Failed to ${action} ${service}`);
       }
     } catch {
+      // If restarting media-ui, the connection drops — that's expected
+      if (service === 'media-ui' && action === 'restart') {
+        toast.info('Web UI is restarting — page will reload shortly');
+        const poll = setInterval(async () => {
+          try {
+            const healthRes = await fetch('/api/health', { signal: AbortSignal.timeout(3000) });
+            if (healthRes.ok) {
+              clearInterval(poll);
+              window.location.reload();
+            }
+          } catch {
+            // expected during restart
+          }
+        }, 3000);
+        setTimeout(() => clearInterval(poll), 60000);
+        return;
+      }
       toast.error(`Failed to ${action} ${service}`);
     } finally {
       setActionInProgress((prev) => {

@@ -54,6 +54,7 @@ export default function SettingsPage() {
 
   const handleRestart = async (services: string[]) => {
     setRestarting(true);
+    const includesSelf = services.includes('media-ui');
     try {
       const res = await fetch('/api/settings/restart', {
         method: 'POST',
@@ -61,14 +62,48 @@ export default function SettingsPage() {
         body: JSON.stringify({ services }),
       });
       if (res.ok) {
-        toast.success(`Restarting ${services.length} service${services.length !== 1 ? 's' : ''}...`);
         setRestartModalOpen(false);
+        if (includesSelf) {
+          toast.info('Web UI is restarting — page will reload shortly');
+          const poll = setInterval(async () => {
+            try {
+              const healthRes = await fetch('/api/health', { signal: AbortSignal.timeout(3000) });
+              if (healthRes.ok) {
+                clearInterval(poll);
+                window.location.reload();
+              }
+            } catch {
+              // expected during restart
+            }
+          }, 3000);
+          setTimeout(() => clearInterval(poll), 60000);
+        } else {
+          toast.success(`Restarting ${services.length} service${services.length !== 1 ? 's' : ''}...`);
+        }
       } else {
         const data = await res.json();
         toast.error(data.error || 'Restart failed');
       }
     } catch {
-      toast.error('Failed to trigger restart');
+      // If media-ui is restarting, connection drop is expected
+      if (includesSelf) {
+        setRestartModalOpen(false);
+        toast.info('Web UI is restarting — page will reload shortly');
+        const poll = setInterval(async () => {
+          try {
+            const healthRes = await fetch('/api/health', { signal: AbortSignal.timeout(3000) });
+            if (healthRes.ok) {
+              clearInterval(poll);
+              window.location.reload();
+            }
+          } catch {
+            // expected during restart
+          }
+        }, 3000);
+        setTimeout(() => clearInterval(poll), 60000);
+      } else {
+        toast.error('Failed to trigger restart');
+      }
     } finally {
       setRestarting(false);
     }

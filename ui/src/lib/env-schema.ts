@@ -12,6 +12,7 @@ export interface EnvVarDef {
   default?: string;
   options?: string[];
   affectsServices: string[];
+  servicePort?: number;
 }
 
 const ALL_SERVICES = [
@@ -58,6 +59,15 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'PORT_UI', label: 'Web UI Port', type: 'port', group: 'network', description: 'Unified web UI port', default: '3000', affectsServices: ['media-ui'] },
 
   // --- Services ---
+  { key: 'SONARR_API_KEY', label: 'Sonarr API Key', type: 'secret', group: 'services', description: 'API key from Sonarr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 8989 },
+  { key: 'RADARR_API_KEY', label: 'Radarr API Key', type: 'secret', group: 'services', description: 'API key from Radarr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 7878 },
+  { key: 'PROWLARR_API_KEY', label: 'Prowlarr API Key', type: 'secret', group: 'services', description: 'API key from Prowlarr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 9696 },
+  { key: 'QBITTORRENT_PASSWORD', label: 'qBittorrent Password', type: 'secret', group: 'services', description: 'qBittorrent web UI password', sensitive: true, affectsServices: ['media-ui'], servicePort: 8080 },
+  { key: 'SABNZBD_API_KEY', label: 'SABnzbd API Key', type: 'secret', group: 'services', description: 'API key from SABnzbd → Config → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 8081 },
+  { key: 'SEERR_API_KEY', label: 'Seerr API Key', type: 'secret', group: 'services', description: 'API key from Seerr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 5055 },
+  { key: 'TAUTULLI_API_KEY', label: 'Tautulli API Key', type: 'secret', group: 'services', description: 'API key from Tautulli → Settings → Web Interface', sensitive: true, affectsServices: ['media-ui'], servicePort: 8181 },
+  { key: 'PLEX_URL', label: 'Plex URL', type: 'string', group: 'services', description: 'Plex server URL (e.g. http://192.168.1.x:32400)', default: 'http://localhost:32400', affectsServices: ['media-ui'] },
+  { key: 'PLEX_TOKEN', label: 'Plex Token', type: 'secret', group: 'services', description: 'Plex authentication token', sensitive: true, affectsServices: ['media-ui'] },
   { key: 'WATCHTOWER_SCHEDULE', label: 'Update Schedule', type: 'cron', group: 'services', description: 'Cron expression for Watchtower update checks', default: '0 0 4 * * *', affectsServices: ['watchtower'] },
   { key: 'WATCHTOWER_NOTIFICATIONS', label: 'Notification URL', type: 'string', group: 'services', description: 'Shoutrrr URL for Watchtower notifications (Discord, Slack, Email)', affectsServices: ['watchtower'] },
 

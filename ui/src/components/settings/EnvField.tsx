@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, ExternalLink } from 'lucide-react';
 import type { EnvVarDef } from '@/lib/env-schema';
 import { cn } from '@/lib/utils';
 
@@ -32,7 +32,22 @@ export function EnvField({ def, value, onChange, error, dirty }: EnvFieldProps) 
         {def.required && <span className="text-danger text-xs">*</span>}
         {dirty && <span className="text-xs text-primary">(modified)</span>}
       </label>
-      <p className="mb-1.5 text-xs text-muted-foreground">{def.description}</p>
+      <p className="mb-1.5 text-xs text-muted-foreground">
+        {def.description}
+        {def.servicePort && (
+          <>
+            {' · '}
+            <a
+              href={`http://localhost:${def.servicePort}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-0.5 text-primary hover:underline"
+            >
+              Open UI <ExternalLink className="inline h-3 w-3" />
+            </a>
+          </>
+        )}
+      </p>
 
       {def.type === 'select' && def.options ? (
         <select
