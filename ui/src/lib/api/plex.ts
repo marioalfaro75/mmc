@@ -8,6 +8,7 @@ async function plexFetch<T>(path: string): Promise<T> {
     headers: {
       Accept: 'application/json',
     },
+    cache: 'no-store',
   });
   if (!res.ok) {
     throw new Error(`Plex API error: ${res.status} ${res.statusText}`);

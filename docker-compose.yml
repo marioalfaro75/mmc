@@ -298,7 +298,7 @@ services:
       - QBITTORRENT_PASSWORD=
       - SABNZBD_URL=http://gluetun:8081
       - SABNZBD_API_KEY=
-      - PLEX_URL=http://localhost:32400
+      - PLEX_URL=http://host.docker.internal:32400
       - PLEX_TOKEN=
       - SEERR_URL=http://seerr:5055
       - SEERR_API_KEY=
