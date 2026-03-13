@@ -2,7 +2,7 @@
 
 A fully automated, containerized media centre stack using Docker Compose. Manages the complete lifecycle: requesting media, finding sources, downloading via VPN-protected clients, organising libraries, and streaming through Plex.
 
-All 14 services are pre-configured to work together with hardlink support, VPN kill-switch protection for download clients, and a unified web dashboard.
+All 13 services are pre-configured to work together with hardlink support, VPN kill-switch protection for download clients, and a unified web dashboard. Plex runs as an external server — the stack connects to it via `PLEX_URL` and `PLEX_TOKEN`.
 
 ## Architecture
 
@@ -24,7 +24,7 @@ User → Seerr → Sonarr/Radarr → Prowlarr → Indexers
 
 - Docker Engine 24+ and Docker Compose v2
 - A VPN account (ProtonVPN, Mullvad, AirVPN, etc.)
-- A Plex account ([plex.tv/claim](https://plex.tv/claim) token needed for first run)
+- An existing Plex Media Server (the stack connects to it externally)
 - A usenet provider (optional, for SABnzbd)
 - Linux host with sufficient storage for media
 
@@ -93,9 +93,9 @@ On first run (no `.env` file), the wizard walks through:
 
 1. VPN provider and credentials
 2. Storage paths (`DATA_ROOT`, `CONFIG_ROOT`, `BACKUP_DIR`)
-3. User/group IDs and Plex claim token
+3. User/group IDs and Plex connection details
 
-Then runs a staged deploy: VPN first (with healthcheck), then download clients, arr stack, media servers, operations, and finally the web UI.
+Then runs a staged deploy: VPN first (with healthcheck), then download clients, arr stack, media companions, operations, and finally the web UI.
 
 ### Subsequent Deploys
 
@@ -118,7 +118,7 @@ This does three things:
 
 ### Automatic Image Updates (Watchtower)
 
-Watchtower checks for updated Docker images daily at 4 AM (configurable via `WATCHTOWER_SCHEDULE`). Only containers with `com.centurylinklabs.watchtower.enable=true` are updated. Plex and the custom UI are excluded.
+Watchtower checks for updated Docker images daily at 4 AM (configurable via `WATCHTOWER_SCHEDULE`). Only containers with `com.centurylinklabs.watchtower.enable=true` are updated. The custom UI is excluded.
 
 ### Manual Image Updates
 
@@ -209,13 +209,11 @@ Complete these steps in order after first deploy. The web UI also has a full int
 
 ### Phase 3: Plex & Companions
 
-8. **Plex** (`localhost:32400/web`):
-   - On first access, claim the server with your Plex account (requires the `PLEX_CLAIM` token set during deploy)
-   - Add libraries: Settings → Libraries → Add Library:
-     - Movies → Add folder → `/movies`
-     - TV Shows → Add folder → `/tv`
-   - Remote access: Settings → Remote Access → Enable Remote Access
-   - If remote access fails, ensure port 32400 is forwarded on your router
+8. **Plex** (external server):
+   - The stack connects to your existing Plex server — it does not run Plex in a container
+   - Set `PLEX_URL` and `PLEX_TOKEN` in the web UI Settings → Services, or in `.env`
+   - To find your Plex token, see [support.plex.tv](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)
+   - Ensure your Plex server's libraries point to the media directories managed by Sonarr/Radarr
 
 9. **Bazarr** (`localhost:6767`):
    - Connect to Sonarr: Settings → Sonarr → Enabled, Address `sonarr`, Port `8989`, API Key
@@ -224,8 +222,7 @@ Complete these steps in order after first deploy. The web UI also has a full int
    - Set languages: Settings → Languages → add your preferred subtitle language(s)
 
 10. **Tautulli** (`localhost:8181`):
-    - Run the setup wizard, which will auto-detect the local Plex server
-    - If prompted for Plex connection: Host `plex`, Port `32400`
+    - Run the setup wizard and point it at your Plex server
     - Sign in with your Plex account to access viewing history and statistics
 
 ### Phase 4: Request Management
@@ -246,7 +243,7 @@ Complete these steps in order after first deploy. The web UI also has a full int
     - Run a sync: `docker exec recyclarr recyclarr sync`
     - Recyclarr runs automatically on a schedule — check logs: `docker logs recyclarr`
 
-13. **Watchtower**: Verify running — `docker logs watchtower`. Watchtower auto-updates enabled containers daily at 4 AM.
+13. **Watchtower**: Verify running — `docker logs watchtower`. Watchtower auto-updates enabled containers daily at 4 AM. Optionally configure notification URL in Settings → Services.
 
 14. **Backup**: Test with `./scripts/backup.sh` — verify the archive is created in your `BACKUP_DIR`
 
@@ -260,7 +257,7 @@ Complete these steps in order after first deploy. The web UI also has a full int
 | Sonarr | `http://localhost:8989` | TV show management |
 | Radarr | `http://localhost:7878` | Movie management |
 | Prowlarr | `http://localhost:9696` | Indexer management |
-| Plex | `http://localhost:32400/web` | Media streaming |
+| Plex | External (configured via `PLEX_URL`) | Media streaming |
 | Seerr | `http://localhost:5055` | Media requests |
 | Bazarr | `http://localhost:6767` | Subtitle management |
 | Tautulli | `http://localhost:8181` | Plex monitoring |
@@ -424,26 +421,25 @@ The Mars Media Centre dashboard at `http://localhost:3000` provides:
 - Combined download queue (torrents + usenet)
 - Merged calendar (TV episodes + movies)
 - Library browsing with search and add
-- System health monitoring and VPN status
+- System page with unified service monitoring (Docker state, API health, descriptions), VPN status, per-service start/stop/restart, and log viewer
 - Media request management
-- Storage path configuration and stack restart
+- Settings with API key management (with direct links to each service's UI), configuration, and backups
 
 ### Settings Page
 
 The Settings page (`http://localhost:3000/settings`) provides tabbed configuration:
 
-- **General** — Timezone, user/group IDs, storage paths, appearance
-- **VPN** — Provider, credentials, server country, live VPN status
+- **General** — Timezone, user/group IDs, storage paths, log level
+- **VPN** — Provider, credentials, server country, port forwarding
 - **Network** — Docker/local subnets, all service ports
-- **Services** — Plex claim, Watchtower schedule, image tags, connection testing
-- **Service Control** — Live service status, per-service start/stop/restart, log viewer
+- **Services** — API keys for all services (with links to each service's UI), Plex connection, Watchtower schedule, Docker image tags
 - **Backups** — Create, download, restore, and delete configuration backups
 
 ### Logs Page
 
 The Logs page (`http://localhost:3000/logs`) provides two tabs:
 
-- **Services** — View application log files for each service (Sonarr, Radarr, Prowlarr, Bazarr, Plex, Tautulli, Seerr, Recyclarr, media-ui). Toggle between app logs (the actual log files) and Docker container output. A file picker appears for services with multiple log files.
+- **Services** — View application log files for each service (Sonarr, Radarr, Prowlarr, Bazarr, Tautulli, Seerr, Recyclarr, media-ui). Toggle between app logs (the actual log files) and Docker container output. A file picker appears for services with multiple log files.
 - **Deploy** — Browse and view deploy script log files
 
 ### Rebuilding the UI
@@ -487,7 +483,7 @@ docker rm -f sonarr        # Force stop and remove a container
 docker logs -f sonarr      # Follow a container's logs
 ```
 
-Replace `sonarr` with any container name: `gluetun`, `qbittorrent`, `sabnzbd`, `prowlarr`, `sonarr`, `radarr`, `unpackerr`, `plex`, `bazarr`, `tautulli`, `seerr`, `recyclarr`, `watchtower`, `media-ui`.
+Replace `sonarr` with any container name: `gluetun`, `qbittorrent`, `sabnzbd`, `prowlarr`, `sonarr`, `radarr`, `unpackerr`, `bazarr`, `tautulli`, `seerr`, `recyclarr`, `watchtower`, `media-ui`.
 
 ### Rebuilding After Removal
 
