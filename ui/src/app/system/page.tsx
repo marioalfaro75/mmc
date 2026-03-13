@@ -15,17 +15,42 @@ import { fetchApi } from '@/lib/utils/fetchApi';
 import { toast } from 'sonner';
 import type { ServiceHealth, VpnStatus, DockerServiceStatus } from '@/lib/types/common';
 
-const serviceLinks: Record<string, { port: number; path?: string; https?: boolean }> = {
-  sonarr: { port: 8989 },
-  radarr: { port: 7878 },
-  prowlarr: { port: 9696 },
-  qbittorrent: { port: 8080 },
-  sabnzbd: { port: 8081 },
-  plex: { port: 32400, path: '/web', https: true },
-  seerr: { port: 5055 },
-  bazarr: { port: 6767 },
-  tautulli: { port: 8181 },
+interface ServiceInfo {
+  description: string;
+  port?: number;
+  path?: string;
+  https?: boolean;
+}
+
+const SERVICE_CATALOG: Record<string, ServiceInfo> = {
+  gluetun: { description: 'VPN client — routes all download traffic through WireGuard/OpenVPN' },
+  qbittorrent: { description: 'Torrent client — downloads from torrent indexers via VPN', port: 8080 },
+  sabnzbd: { description: 'Usenet client — downloads from Usenet providers via VPN', port: 8081 },
+  prowlarr: { description: 'Indexer manager — manages torrent and Usenet sources for Sonarr/Radarr', port: 9696 },
+  sonarr: { description: 'TV show manager — monitors, downloads, and organises TV episodes', port: 8989 },
+  radarr: { description: 'Movie manager — monitors, downloads, and organises movies', port: 7878 },
+  unpackerr: { description: 'Archive extractor — unpacks completed downloads for import' },
+  bazarr: { description: 'Subtitle manager — finds and downloads subtitles automatically', port: 6767 },
+  tautulli: { description: 'Plex analytics — monitors play history and streaming stats', port: 8181 },
+  seerr: { description: 'Request manager — lets users browse and request media', port: 5055 },
+  recyclarr: { description: 'Quality sync — keeps quality profiles aligned with TRaSH Guides' },
+  watchtower: { description: 'Auto-updater — checks for and applies Docker image updates' },
+  'media-ui': { description: 'Unified dashboard — this web interface' },
 };
+
+interface ServiceGroup {
+  label: string;
+  services: string[];
+}
+
+const SERVICE_GROUPS: ServiceGroup[] = [
+  { label: 'VPN Gateway', services: ['gluetun'] },
+  { label: 'Download Clients', services: ['qbittorrent', 'sabnzbd'] },
+  { label: 'Indexer & Media Managers', services: ['prowlarr', 'sonarr', 'radarr', 'unpackerr'] },
+  { label: 'Media Companions', services: ['bazarr', 'tautulli', 'seerr'] },
+  { label: 'Operations', services: ['recyclarr', 'watchtower'] },
+  { label: 'Web UI', services: ['media-ui'] },
+];
 
 function getDockerBadge(svc: DockerServiceStatus) {
   if (svc.state === 'running' && svc.health === 'healthy') return <Badge variant="success">Healthy</Badge>;
@@ -129,10 +154,110 @@ export default function SystemPage() {
     }
   };
 
-  // Build a merged list: use docker services as the base, enrich with health data
   const healthMap = new Map(
     healthData?.services?.map((h) => [h.name.toLowerCase(), h]) ?? []
   );
+  const dockerMap = new Map(
+    dockerServices.map((s) => [s.service, s])
+  );
+
+  function renderServiceRow(serviceName: string) {
+    const svc = dockerMap.get(serviceName);
+    const info = SERVICE_CATALOG[serviceName];
+    const health = healthMap.get(serviceName);
+    const action = actionInProgress[serviceName];
+    const isRunning = svc?.state === 'running';
+    const isSelf = serviceName === 'media-ui';
+
+    return (
+      <div
+        key={serviceName}
+        className="flex items-center justify-between rounded-lg border border-border bg-muted/30 p-3"
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium">{serviceName}</p>
+            {svc && getDockerBadge(svc)}
+            {getApiBadge(health)}
+            {health?.version && (
+              <span className="text-[10px] text-muted-foreground">{health.version}</span>
+            )}
+          </div>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {info?.description}
+          </p>
+        </div>
+
+        <div className="ml-4 flex items-center gap-1.5">
+          {info?.port && (
+            <a
+              href={`${info.https ? 'https' : 'http'}://localhost:${info.port}${info.path || ''}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-md border border-input p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title={`Open ${serviceName}`}
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          )}
+          {svc && (
+            <>
+              <button
+                onClick={() => setLogService(serviceName)}
+                className="rounded-md border border-input p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title="View logs"
+              >
+                <ScrollText className="h-3.5 w-3.5" />
+              </button>
+              {isRunning ? (
+                <>
+                  <button
+                    onClick={() => performAction(serviceName, 'restart')}
+                    disabled={!!action}
+                    className="rounded-md border border-input p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                    title="Restart"
+                  >
+                    {action === 'restart' ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                  {!isSelf && (
+                    <button
+                      onClick={() => performAction(serviceName, 'stop')}
+                      disabled={!!action}
+                      className="rounded-md border border-input p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-danger disabled:opacity-50"
+                      title="Stop"
+                    >
+                      {action === 'stop' ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Square className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <button
+                  onClick={() => performAction(serviceName, 'start')}
+                  disabled={!!action}
+                  className="rounded-md border border-input p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-success disabled:opacity-50"
+                  title="Start"
+                >
+                  {action === 'start' ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Play className="h-3.5 w-3.5" />
+                  )}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -201,100 +326,18 @@ export default function SystemPage() {
               <Skeleton key={i} className="h-14 w-full rounded-lg" />
             ))}
           </div>
-        ) : dockerServices.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            No services found. Is Docker running?
-          </p>
         ) : (
-          <div className="space-y-2">
-            {dockerServices.map((svc) => {
-              const action = actionInProgress[svc.service];
-              const isRunning = svc.state === 'running';
-              const isSelf = svc.service === 'media-ui';
-              const health = healthMap.get(svc.service);
-              const link = serviceLinks[svc.service];
-
+          <div className="space-y-5">
+            {SERVICE_GROUPS.map((group) => {
+              const hasAny = group.services.some((s) => dockerMap.has(s));
+              if (!hasAny) return null;
               return (
-                <div
-                  key={svc.service}
-                  className="flex items-center justify-between rounded-lg border border-border bg-muted/30 p-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium">{svc.service}</p>
-                      {getDockerBadge(svc)}
-                      {getApiBadge(health)}
-                      {health?.version && (
-                        <span className="text-[10px] text-muted-foreground">{health.version}</span>
-                      )}
-                    </div>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {svc.status}
-                    </p>
-                  </div>
-
-                  <div className="ml-4 flex items-center gap-1.5">
-                    {link && (
-                      <a
-                        href={`${link.https ? 'https' : 'http'}://localhost:${link.port}${link.path || ''}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="rounded-md border border-input p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                        title={`Open ${svc.service}`}
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    )}
-                    <button
-                      onClick={() => setLogService(svc.service)}
-                      className="rounded-md border border-input p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      title="View logs"
-                    >
-                      <ScrollText className="h-3.5 w-3.5" />
-                    </button>
-                    {isRunning ? (
-                      <>
-                        <button
-                          onClick={() => performAction(svc.service, 'restart')}
-                          disabled={!!action}
-                          className="rounded-md border border-input p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-                          title="Restart"
-                        >
-                          {action === 'restart' ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <RotateCcw className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                        {!isSelf && (
-                          <button
-                            onClick={() => performAction(svc.service, 'stop')}
-                            disabled={!!action}
-                            className="rounded-md border border-input p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-danger disabled:opacity-50"
-                            title="Stop"
-                          >
-                            {action === 'stop' ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Square className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <button
-                        onClick={() => performAction(svc.service, 'start')}
-                        disabled={!!action}
-                        className="rounded-md border border-input p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-success disabled:opacity-50"
-                        title="Start"
-                      >
-                        {action === 'start' ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Play className="h-3.5 w-3.5" />
-                        )}
-                      </button>
-                    )}
+                <div key={group.label}>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    {group.label}
+                  </p>
+                  <div className="space-y-2">
+                    {group.services.map((s) => dockerMap.has(s) ? renderServiceRow(s) : null)}
                   </div>
                 </div>
               );
