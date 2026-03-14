@@ -94,3 +94,15 @@ export async function updateNaming(naming: Record<string, unknown>): Promise<voi
     body: JSON.stringify(naming),
   });
 }
+
+export async function runCommand(body: Record<string, unknown>): Promise<{ id: number }> {
+  return sonarrFetch('/command', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function getQueueDetails(seriesId?: number): Promise<{ records: { seriesId: number; title: string }[] }> {
+  const params = seriesId ? `?seriesId=${seriesId}&includeUnknownSeriesItems=true` : '?includeUnknownSeriesItems=true';
+  return sonarrFetch(`/queue${params}`);
+}

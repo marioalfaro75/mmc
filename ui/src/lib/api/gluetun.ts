@@ -25,3 +25,11 @@ export async function getVpnStatus(): Promise<GluetunStatus> {
 export async function getPublicIP(): Promise<GluetunPublicIP> {
   return gluetunFetch<GluetunPublicIP>('/v1/publicip/ip');
 }
+
+export interface GluetunPortForward {
+  port: number;
+}
+
+export async function getPortForward(): Promise<GluetunPortForward> {
+  return gluetunFetch<GluetunPortForward>('/v1/portforward');
+}

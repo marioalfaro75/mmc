@@ -18,6 +18,8 @@ export const POLLING = {
   VPN: 10_000,
   /** Docker service status */
   SERVICES: 30_000,
+  /** Network stats */
+  NETWORK: 5_000,
 } as const;
 
 /** Stale times for TanStack Query caching */
@@ -29,6 +31,7 @@ export const STALE_TIME = {
   LIBRARY: 2 * 60_000,
   STATS: 2 * 60_000,
   SERVICES: 15_000,
+  NETWORK: 3_000,
 } as const;
 
 /** Debounce delay for search inputs */

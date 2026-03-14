@@ -91,3 +91,23 @@ export interface EnvSaveResult {
   affectedServices: string[];
   backupPath: string;
 }
+
+export interface TunnelStats {
+  interface: string;
+  rxBytes: number;
+  txBytes: number;
+}
+
+export interface ServiceNetIO {
+  name: string;
+  rx: string;
+  tx: string;
+}
+
+export interface NetworkStats {
+  vpn: VpnStatus;
+  portForward: number | null;
+  tunnel: TunnelStats | null;
+  services: ServiceNetIO[];
+  timestamp: number;
+}

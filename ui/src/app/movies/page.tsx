@@ -1,21 +1,35 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Plus, Search, Loader2 } from 'lucide-react';
 import { MediaCard } from '@/components/media/MediaCard';
 import { MediaGrid } from '@/components/media/MediaGrid';
 import { MediaDetail } from '@/components/media/MediaDetail';
 import { SearchBar } from '@/components/media/SearchBar';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
-import { STALE_TIME } from '@/lib/utils/polling';
+import { POLLING, STALE_TIME } from '@/lib/utils/polling';
 import { fetchApi } from '@/lib/utils/fetchApi';
 import type { RadarrMovie, RadarrLookupResult } from '@/lib/types/radarr';
 import { toast } from 'sonner';
 
 type FilterKey = 'all' | 'monitored' | 'unmonitored' | 'missing';
 type SortKey = 'title' | 'year' | 'added' | 'size';
+
+async function pollForDownload(movieId: number, title: string) {
+  for (let i = 0; i < 6; i++) {
+    await new Promise((r) => setTimeout(r, 5000));
+    try {
+      const data = await fetchApi<{ records: { movieId: number }[] }>(`/api/movies/queue?movieId=${movieId}`);
+      if (data.records?.length > 0) {
+        toast.success(`Download found for "${title}"`);
+        return;
+      }
+    } catch { /* keep polling */ }
+  }
+  toast.warning(`No download found yet for "${title}" — it will be retried automatically every 6 hours`);
+}
 
 export default function MoviesPage() {
   const queryClient = useQueryClient();
@@ -25,11 +39,13 @@ export default function MoviesPage() {
   const [selectedMovie, setSelectedMovie] = useState<RadarrMovie | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [lookupTerm, setLookupTerm] = useState('');
+  const addedTitle = useRef('');
 
   const { data: movies, isLoading, isError } = useQuery<RadarrMovie[]>({
     queryKey: ['movies'],
     queryFn: () => fetchApi<RadarrMovie[]>('/api/movies'),
     staleTime: STALE_TIME.LIBRARY,
+    refetchInterval: POLLING.LIBRARY,
   });
 
   const { data: lookupResults } = useQuery<RadarrLookupResult[]>({
@@ -39,17 +55,33 @@ export default function MoviesPage() {
   });
 
   const addMutation = useMutation({
-    mutationFn: (movie: Partial<RadarrMovie>) =>
-      fetchApi('/api/movies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(movie) }),
-    onSuccess: () => {
+    mutationFn: (movie: Partial<RadarrMovie>) => {
+      addedTitle.current = movie.title || '';
+      return fetchApi<RadarrMovie>('/api/movies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(movie) });
+    },
+    onSuccess: (data: RadarrMovie) => {
       queryClient.invalidateQueries({ queryKey: ['movies'] });
       setShowAdd(false);
-      toast.success('Movie added to Radarr');
+      toast.info(`"${addedTitle.current}" added — searching for downloads...`);
+      pollForDownload(data.id, addedTitle.current);
     },
     onError: () => toast.error('Failed to add movie'),
   });
 
+  const searchMissingMutation = useMutation({
+    mutationFn: () =>
+      fetchApi('/api/movies/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'MissingMoviesSearch' }),
+      }),
+    onSuccess: () => toast.success('Searching for all missing movies...'),
+    onError: () => toast.error('Failed to start missing movies search'),
+  });
+
   const handleSearch = useCallback((q: string) => setSearch(q), []);
+
+  const missingCount = (movies || []).filter(m => m.monitored && !m.hasFile).length;
 
   const filtered = (movies || [])
     .filter((m) => {
@@ -72,13 +104,29 @@ export default function MoviesPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Movies</h1>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Add Movie
-        </button>
+        <div className="flex gap-2">
+          {missingCount > 0 && (
+            <button
+              onClick={() => searchMissingMutation.mutate()}
+              disabled={searchMissingMutation.isPending}
+              className="flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+            >
+              {searchMissingMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="h-4 w-4" />
+              )}
+              Search Missing ({missingCount})
+            </button>
+          )}
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Add Movie
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -134,24 +182,27 @@ export default function MoviesPage() {
         })}
       </MediaGrid>
 
-      {selectedMovie && (
-        <MediaDetail
-          open={!!selectedMovie}
-          onClose={() => setSelectedMovie(null)}
-          title={selectedMovie.title}
-          year={selectedMovie.year}
-          overview={selectedMovie.overview}
-          posterUrl={selectedMovie.images?.find(i => i.coverType === 'poster')?.remoteUrl}
-          monitored={selectedMovie.monitored}
-          hasFile={selectedMovie.hasFile}
-          sizeOnDisk={selectedMovie.sizeOnDisk}
-          path={selectedMovie.path}
-          added={selectedMovie.added}
-          genres={selectedMovie.genres}
-          runtime={selectedMovie.runtime}
-          certification={selectedMovie.certification}
-        />
-      )}
+      {selectedMovie && (() => {
+        const current = movies?.find(m => m.id === selectedMovie.id) || selectedMovie;
+        return (
+          <MediaDetail
+            open={!!selectedMovie}
+            onClose={() => setSelectedMovie(null)}
+            title={current.title}
+            year={current.year}
+            overview={current.overview}
+            posterUrl={current.images?.find(i => i.coverType === 'poster')?.remoteUrl}
+            monitored={current.monitored}
+            hasFile={current.hasFile}
+            sizeOnDisk={current.sizeOnDisk}
+            path={current.path}
+            added={current.added}
+            genres={current.genres}
+            runtime={current.runtime}
+            certification={current.certification}
+          />
+        );
+      })()}
 
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add Movie">
         <div className="space-y-4">

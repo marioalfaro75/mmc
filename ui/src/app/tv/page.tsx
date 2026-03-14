@@ -1,21 +1,35 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Plus, Search, Loader2 } from 'lucide-react';
 import { MediaCard } from '@/components/media/MediaCard';
 import { MediaGrid } from '@/components/media/MediaGrid';
 import { MediaDetail } from '@/components/media/MediaDetail';
 import { SearchBar } from '@/components/media/SearchBar';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
-import { STALE_TIME } from '@/lib/utils/polling';
+import { POLLING, STALE_TIME } from '@/lib/utils/polling';
 import { fetchApi } from '@/lib/utils/fetchApi';
 import type { SonarrSeries, SonarrLookupResult } from '@/lib/types/sonarr';
 import { toast } from 'sonner';
 
 type FilterKey = 'all' | 'monitored' | 'continuing' | 'ended' | 'missing';
 type SortKey = 'title' | 'year' | 'added' | 'episodes';
+
+async function pollForDownload(seriesId: number, title: string) {
+  for (let i = 0; i < 6; i++) {
+    await new Promise((r) => setTimeout(r, 5000));
+    try {
+      const data = await fetchApi<{ records: { seriesId: number }[] }>(`/api/series/queue?seriesId=${seriesId}`);
+      if (data.records?.length > 0) {
+        toast.success(`Download found for "${title}"`);
+        return;
+      }
+    } catch { /* keep polling */ }
+  }
+  toast.warning(`No download found yet for "${title}" — it will be retried automatically every 6 hours`);
+}
 
 export default function TvPage() {
   const queryClient = useQueryClient();
@@ -25,11 +39,13 @@ export default function TvPage() {
   const [selectedSeries, setSelectedSeries] = useState<SonarrSeries | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [lookupTerm, setLookupTerm] = useState('');
+  const addedTitle = useRef('');
 
   const { data: series, isLoading, isError } = useQuery<SonarrSeries[]>({
     queryKey: ['series'],
     queryFn: () => fetchApi<SonarrSeries[]>('/api/series'),
     staleTime: STALE_TIME.LIBRARY,
+    refetchInterval: POLLING.LIBRARY,
   });
 
   const { data: lookupResults } = useQuery<SonarrLookupResult[]>({
@@ -39,17 +55,33 @@ export default function TvPage() {
   });
 
   const addMutation = useMutation({
-    mutationFn: (s: Partial<SonarrSeries>) =>
-      fetchApi('/api/series', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(s) }),
-    onSuccess: () => {
+    mutationFn: (s: Partial<SonarrSeries>) => {
+      addedTitle.current = s.title || '';
+      return fetchApi<SonarrSeries>('/api/series', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(s) });
+    },
+    onSuccess: (data: SonarrSeries) => {
       queryClient.invalidateQueries({ queryKey: ['series'] });
       setShowAdd(false);
-      toast.success('Series added to Sonarr');
+      toast.info(`"${addedTitle.current}" added — searching for downloads...`);
+      pollForDownload(data.id, addedTitle.current);
     },
     onError: () => toast.error('Failed to add series'),
   });
 
+  const searchMissingMutation = useMutation({
+    mutationFn: () =>
+      fetchApi('/api/series/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'MissingEpisodeSearch' }),
+      }),
+    onSuccess: () => toast.success('Searching for all missing episodes...'),
+    onError: () => toast.error('Failed to start missing episode search'),
+  });
+
   const handleSearch = useCallback((q: string) => setSearch(q), []);
+
+  const missingCount = (series || []).filter(s => s.monitored && (s.statistics?.percentOfEpisodes ?? 0) < 100).length;
 
   const filtered = (series || [])
     .filter((s) => {
@@ -73,13 +105,29 @@ export default function TvPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">TV Shows</h1>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Add Series
-        </button>
+        <div className="flex gap-2">
+          {missingCount > 0 && (
+            <button
+              onClick={() => searchMissingMutation.mutate()}
+              disabled={searchMissingMutation.isPending}
+              className="flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+            >
+              {searchMissingMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="h-4 w-4" />
+              )}
+              Search Missing ({missingCount})
+            </button>
+          )}
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Add Series
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -138,24 +186,27 @@ export default function TvPage() {
         })}
       </MediaGrid>
 
-      {selectedSeries && (
-        <MediaDetail
-          open={!!selectedSeries}
-          onClose={() => setSelectedSeries(null)}
-          title={selectedSeries.title}
-          year={selectedSeries.year}
-          overview={selectedSeries.overview}
-          posterUrl={selectedSeries.images?.find(i => i.coverType === 'poster')?.remoteUrl}
-          monitored={selectedSeries.monitored}
-          hasFile={(selectedSeries.statistics?.percentOfEpisodes ?? 0) >= 100}
-          sizeOnDisk={selectedSeries.statistics?.sizeOnDisk}
-          path={selectedSeries.path}
-          added={selectedSeries.added}
-          genres={selectedSeries.genres}
-          runtime={selectedSeries.runtime}
-          certification={selectedSeries.certification}
-        />
-      )}
+      {selectedSeries && (() => {
+        const current = series?.find(s => s.id === selectedSeries.id) || selectedSeries;
+        return (
+          <MediaDetail
+            open={!!selectedSeries}
+            onClose={() => setSelectedSeries(null)}
+            title={current.title}
+            year={current.year}
+            overview={current.overview}
+            posterUrl={current.images?.find(i => i.coverType === 'poster')?.remoteUrl}
+            monitored={current.monitored}
+            hasFile={(current.statistics?.percentOfEpisodes ?? 0) >= 100}
+            sizeOnDisk={current.statistics?.sizeOnDisk}
+            path={current.path}
+            added={current.added}
+            genres={current.genres}
+            runtime={current.runtime}
+            certification={current.certification}
+          />
+        );
+      })()}
 
       <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add Series">
         <div className="space-y-4">

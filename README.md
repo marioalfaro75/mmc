@@ -418,12 +418,14 @@ crontab -e
 
 The Mars Media Centre dashboard at `http://localhost:3000` provides:
 
-- Combined download queue (torrents + usenet)
+- Combined download queue (torrents + usenet) with pause, resume, and force start controls
 - Merged calendar (TV episodes + movies)
-- Library browsing with search and add
+- Library browsing with search, add, and automatic missing content detection
+- Network page with live VPN topology, tunnel bandwidth monitoring, and per-service traffic stats
 - System page with unified service monitoring (Docker state, API health, descriptions), VPN status, per-service start/stop/restart, and log viewer
 - Media request management
 - Settings with API key management (with direct links to each service's UI), configuration, and backups
+- Automatic missing content search every 6 hours (Sonarr + Radarr)
 
 ### Settings Page
 
@@ -441,6 +443,19 @@ The Logs page (`http://localhost:3000/logs`) provides two tabs:
 
 - **Services** — View application log files for each service (Sonarr, Radarr, Prowlarr, Bazarr, Tautulli, Seerr, Recyclarr, media-ui). Toggle between app logs (the actual log files) and Docker container output. A file picker appears for services with multiple log files.
 - **Deploy** — Browse and view deploy script log files
+
+### Network Page
+
+The Network page (`http://localhost:3000/network`) visualises how traffic flows through your stack:
+
+- **VPN Status** — connection state, public IP, country, protocol (WireGuard/OpenVPN), and port forwarding
+- **Live Tunnel Bandwidth** — real-time download/upload rates through the VPN tunnel, updated every 5 seconds
+- **Network Topology** — visual diagram showing which services route through the VPN (qBittorrent, SABnzbd) vs the Docker internal network (Sonarr, Radarr, etc.)
+- **Per-Service Traffic** — cumulative network I/O for each container
+
+### Missing Content Search
+
+When you add a movie or TV show, the UI polls for downloads for 30 seconds and notifies you if nothing was found. Each library page also has a "Search Missing" button to manually trigger a search for all missing content. Additionally, an automatic search runs every 6 hours in the background for both missing movies and TV episodes.
 
 ### Rebuilding the UI
 

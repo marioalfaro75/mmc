@@ -94,3 +94,15 @@ export async function updateNaming(naming: Record<string, unknown>): Promise<voi
     body: JSON.stringify(naming),
   });
 }
+
+export async function runCommand(body: Record<string, unknown>): Promise<{ id: number }> {
+  return radarrFetch('/command', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function getQueueDetails(movieId?: number): Promise<{ records: { movieId: number; title: string }[] }> {
+  const params = movieId ? `?movieId=${movieId}&includeUnknownMovieItems=true` : '?includeUnknownMovieItems=true';
+  return radarrFetch(`/queue${params}`);
+}

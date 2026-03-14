@@ -223,6 +223,67 @@ export function selfRestart(): void {
   child.unref();
 }
 
+export interface TunnelInterfaceStats {
+  interface: string;
+  rxBytes: number;
+  txBytes: number;
+}
+
+export async function getTunnelStats(): Promise<TunnelInterfaceStats | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      'docker', ['exec', 'gluetun', 'cat', '/proc/net/dev'],
+      { timeout: 5000 }
+    );
+    // /proc/net/dev format:
+    // Inter-|   Receive                                                |  Transmit
+    //  face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets ...
+    //   tun0: 123456  789  0  0  0  0  0  0  654321  456  0  0  0  0  0  0
+    for (const line of stdout.split('\n')) {
+      const match = line.match(/^\s*(tun\d+|wg\d+):\s*(\d+)\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)/);
+      if (match) {
+        return {
+          interface: match[1],
+          rxBytes: parseInt(match[2], 10),
+          txBytes: parseInt(match[3], 10),
+        };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export interface ContainerNetIO {
+  name: string;
+  rx: string;
+  tx: string;
+}
+
+export async function getContainerNetworkStats(containers: string[]): Promise<ContainerNetIO[]> {
+  const results: ContainerNetIO[] = [];
+  try {
+    const { stdout } = await execFileAsync(
+      'docker', ['stats', '--no-stream', '--format', '{{.Name}}\t{{.NetIO}}', ...containers],
+      { timeout: 10000 }
+    );
+    for (const line of stdout.trim().split('\n')) {
+      if (!line.trim()) continue;
+      const [name, netIO] = line.split('\t');
+      if (!name || !netIO) continue;
+      // NetIO format: "1.2GB / 345MB"
+      const parts = netIO.split(' / ');
+      results.push({
+        name: name.trim(),
+        rx: parts[0]?.trim() || '0B',
+        tx: parts[1]?.trim() || '0B',
+      });
+    }
+  } catch { /* container might not be running */ }
+  return results;
+}
+
 export async function restartServicesStaged(services: string[]): Promise<void> {
   // If media-ui is being restarted, do it last and fire-and-forget (it kills itself)
   const hasSelf = services.includes('media-ui');
