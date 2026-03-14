@@ -10,6 +10,7 @@ async function prowlarrFetch<T>(path: string, init?: RequestInit): Promise<T> {
       'Content-Type': 'application/json',
       ...init?.headers,
     },
+    cache: 'no-store',
   });
   if (!res.ok) {
     throw new Error(`Prowlarr API error: ${res.status} ${res.statusText}`);
@@ -23,4 +24,17 @@ export async function getSystemStatus() {
 
 export async function getIndexers() {
   return prowlarrFetch<unknown[]>('/indexer');
+}
+
+// --- Configuration APIs ---
+
+export async function getApplications(): Promise<{ id: number; name: string; implementation: string }[]> {
+  return prowlarrFetch('/applications');
+}
+
+export async function addApplication(app: Record<string, unknown>): Promise<void> {
+  await prowlarrFetch('/applications', {
+    method: 'POST',
+    body: JSON.stringify(app),
+  });
 }

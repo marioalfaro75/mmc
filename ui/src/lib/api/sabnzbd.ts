@@ -7,7 +7,7 @@ async function sabnzbdFetch<T>(params: Record<string, string>): Promise<T> {
     output: 'json',
     ...params,
   });
-  const res = await fetch(`${BASE_URL}/api?${searchParams}`);
+  const res = await fetch(`${BASE_URL}/api?${searchParams}`, { cache: 'no-store' });
   if (!res.ok) {
     throw new Error(`SABnzbd API error: ${res.status} ${res.statusText}`);
   }

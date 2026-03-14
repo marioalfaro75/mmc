@@ -7,7 +7,7 @@ async function tautulliFetch<T>(cmd: string, params: Record<string, string> = {}
     cmd,
     ...params,
   });
-  const res = await fetch(`${BASE_URL}/api/v2?${searchParams}`);
+  const res = await fetch(`${BASE_URL}/api/v2?${searchParams}`, { cache: 'no-store' });
   if (!res.ok) {
     throw new Error(`Tautulli API error: ${res.status} ${res.statusText}`);
   }

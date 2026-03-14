@@ -9,6 +9,7 @@ async function login(): Promise<string> {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: `username=${encodeURIComponent(USERNAME)}&password=${encodeURIComponent(PASSWORD)}`,
+    cache: 'no-store',
   });
   const cookie = res.headers.get('set-cookie');
   if (!cookie || !(await res.text()).includes('Ok')) {
@@ -28,6 +29,7 @@ async function qbtFetch<T>(path: string, init?: RequestInit): Promise<T> {
       Cookie: sessionCookie,
       ...init?.headers,
     },
+    cache: 'no-store',
   });
 
   // Re-authenticate on 403
@@ -39,13 +41,16 @@ async function qbtFetch<T>(path: string, init?: RequestInit): Promise<T> {
         Cookie: sessionCookie,
         ...init?.headers,
       },
+      cache: 'no-store',
     });
   }
 
   if (!res.ok) {
     throw new Error(`qBittorrent API error: ${res.status} ${res.statusText}`);
   }
-  return res.json();
+  const text = await res.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text);
 }
 
 export interface QbtTorrent {
@@ -71,18 +76,44 @@ export async function getTorrents(): Promise<QbtTorrent[]> {
 }
 
 export async function pauseTorrent(hash: string): Promise<void> {
-  await qbtFetch<void>(`/api/v2/torrents/pause`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `hashes=${hash}`,
-  });
+  // v5.0+ renamed pause → stop
+  try {
+    await qbtFetch<void>(`/api/v2/torrents/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `hashes=${hash}`,
+    });
+  } catch {
+    await qbtFetch<void>(`/api/v2/torrents/pause`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `hashes=${hash}`,
+    });
+  }
 }
 
 export async function resumeTorrent(hash: string): Promise<void> {
-  await qbtFetch<void>(`/api/v2/torrents/resume`, {
+  // v5.0+ renamed resume → start
+  try {
+    await qbtFetch<void>(`/api/v2/torrents/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `hashes=${hash}`,
+    });
+  } catch {
+    await qbtFetch<void>(`/api/v2/torrents/resume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `hashes=${hash}`,
+    });
+  }
+}
+
+export async function forceStartTorrent(hash: string): Promise<void> {
+  await qbtFetch<void>(`/api/v2/torrents/setForceStart`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `hashes=${hash}`,
+    body: `hashes=${hash}&value=true`,
   });
 }
 
@@ -91,6 +122,22 @@ export async function deleteTorrent(hash: string, deleteFiles = false): Promise<
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: `hashes=${hash}&deleteFiles=${deleteFiles}`,
+  });
+}
+
+export async function setPreferences(prefs: Record<string, unknown>): Promise<void> {
+  await qbtFetch<void>('/api/v2/app/setPreferences', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `json=${encodeURIComponent(JSON.stringify(prefs))}`,
+  });
+}
+
+export async function createCategory(category: string, savePath: string): Promise<void> {
+  await qbtFetch<void>('/api/v2/torrents/createCategory', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `category=${encodeURIComponent(category)}&savePath=${encodeURIComponent(savePath)}`,
   });
 }
 

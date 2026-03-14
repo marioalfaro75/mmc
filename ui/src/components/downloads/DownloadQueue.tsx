@@ -12,10 +12,11 @@ interface DownloadQueueProps {
   activeTab: TabKey;
   onPause?: (id: string) => void;
   onResume?: (id: string) => void;
+  onForceStart?: (id: string) => void;
   onDelete?: (id: string) => void;
 }
 
-export function DownloadQueue({ items, isLoading, activeTab, onPause, onResume, onDelete }: DownloadQueueProps) {
+export function DownloadQueue({ items, isLoading, activeTab, onPause, onResume, onForceStart, onDelete }: DownloadQueueProps) {
   const filtered = items.filter((item) => {
     switch (activeTab) {
       case 'active': return ['downloading', 'paused', 'queued', 'extracting'].includes(item.status);
@@ -53,6 +54,7 @@ export function DownloadQueue({ items, isLoading, activeTab, onPause, onResume, 
           item={item}
           onPause={onPause}
           onResume={onResume}
+          onForceStart={onForceStart}
           onDelete={onDelete}
         />
       ))}

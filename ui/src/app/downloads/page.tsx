@@ -30,6 +30,21 @@ export default function DownloadsPage() {
     refetchInterval: POLLING.VPN,
   });
 
+  const actionMutation = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: string }) =>
+      fetchApi(`/api/downloads/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      }),
+    onSuccess: (_data, { action }) => {
+      queryClient.invalidateQueries({ queryKey: ['downloads'] });
+      const labels: Record<string, string> = { pause: 'paused', resume: 'resumed', forceStart: 'force started' };
+      toast.success(`Download ${labels[action] || action}`);
+    },
+    onError: (_err, { action }) => toast.error(`Failed to ${action} download`),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
       fetchApi(`/api/downloads/${id}`, { method: 'DELETE' }),
@@ -93,6 +108,9 @@ export default function DownloadsPage() {
         items={downloads}
         isLoading={isLoading}
         activeTab={activeTab}
+        onPause={(id) => actionMutation.mutate({ id, action: 'pause' })}
+        onResume={(id) => actionMutation.mutate({ id, action: 'resume' })}
+        onForceStart={(id) => actionMutation.mutate({ id, action: 'forceStart' })}
         onDelete={(id) => deleteMutation.mutate(id)}
       />
     </div>

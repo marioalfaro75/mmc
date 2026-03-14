@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Activity, Shield, ShieldAlert, ExternalLink,
+  Activity, Shield, ShieldAlert, ExternalLink, Info,
   Play, Square, RotateCcw, ScrollText, Loader2, RefreshCw,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
@@ -20,11 +20,12 @@ interface ServiceInfo {
   port?: number;
   path?: string;
   https?: boolean;
+  tip?: string;
 }
 
 const SERVICE_CATALOG: Record<string, ServiceInfo> = {
   gluetun: { description: 'VPN client — routes all download traffic through WireGuard/OpenVPN' },
-  qbittorrent: { description: 'Torrent client — downloads from torrent indexers via VPN', port: 8080 },
+  qbittorrent: { description: 'Torrent client — downloads from torrent indexers via VPN', port: 8080, tip: 'Default login — username: admin, password: your QBITTORRENT_PASSWORD from Settings. Change the default password after first login.' },
   sabnzbd: { description: 'Usenet client — downloads from Usenet providers via VPN', port: 8081 },
   prowlarr: { description: 'Indexer manager — manages torrent and Usenet sources for Sonarr/Radarr', port: 9696 },
   sonarr: { description: 'TV show manager — monitors, downloads, and organises TV episodes', port: 8989 },
@@ -113,11 +114,11 @@ export default function SystemPage() {
     try {
       const res = await fetch(`/api/services/${service}/${action}`, { method: 'POST' });
       if (res.ok) {
-        toast.success(`${service} ${action}ed`);
-        setTimeout(loadDocker, 1000);
+        toast.success(`${service} ${action === 'restart' ? 'restarted' : action === 'stop' ? 'stopped' : 'started'}`);
+        setTimeout(loadDocker, 2000);
       } else {
         const data = await res.json();
-        toast.error(data.error || `Failed to ${action} ${service}`);
+        toast.error(data.details || data.error || `Failed to ${action} ${service}`);
       }
     } catch {
       // If restarting media-ui, the connection drops — that's expected
@@ -137,7 +138,7 @@ export default function SystemPage() {
         setTimeout(() => clearInterval(poll), 60000);
         return;
       }
-      toast.error(`Failed to ${action} ${service}`);
+      toast.error(`Failed to ${action} ${service} — connection lost`);
     } finally {
       setActionInProgress((prev) => {
         const next = { ...prev };
@@ -206,6 +207,14 @@ export default function SystemPage() {
         </div>
 
         <div className="ml-4 flex items-center gap-1.5">
+          {info?.tip && (
+            <span
+              className="rounded-md border border-input p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title={info.tip}
+            >
+              <Info className="h-3.5 w-3.5" />
+            </span>
+          )}
           {info?.port && (
             <a
               href={`${info.https ? 'https' : 'http'}://localhost:${info.port}${info.path || ''}`}

@@ -12,9 +12,11 @@ async function sonarrFetch<T>(path: string, init?: RequestInit): Promise<T> {
       'Content-Type': 'application/json',
       ...init?.headers,
     },
+    cache: 'no-store',
   });
   if (!res.ok) {
-    throw new Error(`Sonarr API error: ${res.status} ${res.statusText}`);
+    const body = await res.text().catch(() => '');
+    throw new Error(`Sonarr API error: ${res.status} ${res.statusText} — ${body}`);
   }
   return res.json();
 }
@@ -56,4 +58,39 @@ export async function getHistory(page = 1, pageSize = 20) {
 
 export async function getLogs(page = 1, pageSize = 50) {
   return sonarrFetch<{ records: unknown[] }>(`/log?page=${page}&pageSize=${pageSize}&sortKey=time&sortDirection=descending`);
+}
+
+// --- Configuration APIs ---
+
+export async function getRootFolders(): Promise<{ id: number; path: string }[]> {
+  return sonarrFetch('/rootfolder');
+}
+
+export async function addRootFolder(path: string): Promise<void> {
+  await sonarrFetch('/rootfolder', {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  });
+}
+
+export async function getDownloadClients(): Promise<{ id: number; name: string; implementation: string }[]> {
+  return sonarrFetch('/downloadclient');
+}
+
+export async function addDownloadClient(client: Record<string, unknown>): Promise<void> {
+  await sonarrFetch('/downloadclient', {
+    method: 'POST',
+    body: JSON.stringify(client),
+  });
+}
+
+export async function getNaming(): Promise<Record<string, unknown>> {
+  return sonarrFetch('/config/naming');
+}
+
+export async function updateNaming(naming: Record<string, unknown>): Promise<void> {
+  await sonarrFetch('/config/naming', {
+    method: 'PUT',
+    body: JSON.stringify(naming),
+  });
 }

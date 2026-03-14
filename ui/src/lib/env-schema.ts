@@ -68,6 +68,8 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'TAUTULLI_API_KEY', label: 'Tautulli API Key', type: 'secret', group: 'services', description: 'API key from Tautulli → Settings → Web Interface', sensitive: true, affectsServices: ['media-ui'], servicePort: 8181 },
   { key: 'PLEX_URL', label: 'Plex URL', type: 'string', group: 'services', description: 'Plex server URL (e.g. http://192.168.1.x:32400)', default: 'http://localhost:32400', affectsServices: ['media-ui'] },
   { key: 'PLEX_TOKEN', label: 'Plex Token', type: 'secret', group: 'services', description: 'Plex authentication token', sensitive: true, affectsServices: ['media-ui'] },
+  { key: 'UN_SONARR_0_API_KEY', label: 'Unpackerr Sonarr Key', type: 'secret', group: 'services', description: 'Sonarr API key for Unpackerr (auto-populated by Detect API Keys)', sensitive: true, affectsServices: ['unpackerr'] },
+  { key: 'UN_RADARR_0_API_KEY', label: 'Unpackerr Radarr Key', type: 'secret', group: 'services', description: 'Radarr API key for Unpackerr (auto-populated by Detect API Keys)', sensitive: true, affectsServices: ['unpackerr'] },
   { key: 'WATCHTOWER_SCHEDULE', label: 'Update Schedule', type: 'cron', group: 'services', description: 'Cron expression for Watchtower update checks', default: '0 0 4 * * *', affectsServices: ['watchtower'] },
   { key: 'WATCHTOWER_NOTIFICATIONS', label: 'Notification URL', type: 'string', group: 'services', description: 'Shoutrrr URL for Watchtower notifications (Discord, Slack, Email)', affectsServices: ['watchtower'] },
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { Pause, Play, Trash2, HardDrive, Wifi } from 'lucide-react';
+import { Pause, Play, Trash2, HardDrive, Wifi, Zap } from 'lucide-react';
 import { ProgressBar } from '@/components/common/ProgressBar';
 import { Badge } from '@/components/common/Badge';
 import { formatBytes, formatSpeed, formatDuration } from '@/lib/utils/formatters';
@@ -10,6 +10,7 @@ interface DownloadItemProps {
   item: DownloadItemType;
   onPause?: (id: string) => void;
   onResume?: (id: string) => void;
+  onForceStart?: (id: string) => void;
   onDelete?: (id: string) => void;
 }
 
@@ -23,7 +24,11 @@ const statusVariant: Record<string, 'default' | 'success' | 'warning' | 'danger'
   extracting: 'warning',
 };
 
-export function DownloadItemRow({ item, onPause, onResume, onDelete }: DownloadItemProps) {
+export function DownloadItemRow({ item, onPause, onResume, onForceStart, onDelete }: DownloadItemProps) {
+  const canPause = item.status === 'downloading';
+  const canResume = item.status === 'paused';
+  const canForceStart = item.status === 'queued' || item.status === 'paused';
+
   return (
     <div className="rounded-lg border border-border bg-card p-3">
       <div className="flex items-start justify-between gap-3">
@@ -48,7 +53,7 @@ export function DownloadItemRow({ item, onPause, onResume, onDelete }: DownloadI
           </div>
         </div>
         <div className="flex shrink-0 gap-1">
-          {item.status === 'downloading' && onPause && (
+          {canPause && onPause && (
             <button
               onClick={() => onPause(item.id)}
               className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -57,13 +62,22 @@ export function DownloadItemRow({ item, onPause, onResume, onDelete }: DownloadI
               <Pause className="h-4 w-4" />
             </button>
           )}
-          {item.status === 'paused' && onResume && (
+          {canResume && onResume && (
             <button
               onClick={() => onResume(item.id)}
               className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               title="Resume"
             >
               <Play className="h-4 w-4" />
+            </button>
+          )}
+          {canForceStart && onForceStart && (
+            <button
+              onClick={() => onForceStart(item.id)}
+              className="rounded p-1.5 text-muted-foreground hover:bg-warning/20 hover:text-warning transition-colors"
+              title="Force start — bypass queue limits"
+            >
+              <Zap className="h-4 w-4" />
             </button>
           )}
           {onDelete && (

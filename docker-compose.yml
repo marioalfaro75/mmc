@@ -101,9 +101,9 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - UN_SONARR_0_URL=http://sonarr:8989
-      - UN_SONARR_0_API_KEY=
+      - UN_SONARR_0_API_KEY=${UN_SONARR_0_API_KEY:-}
       - UN_RADARR_0_URL=http://radarr:7878
-      - UN_RADARR_0_API_KEY=
+      - UN_RADARR_0_API_KEY=${UN_RADARR_0_API_KEY:-}
       - UN_SONARR_0_PATHS_0=/data/torrents/tv
       - UN_SONARR_0_PATHS_1=/data/usenet/tv
       - UN_RADARR_0_PATHS_0=/data/torrents/movies

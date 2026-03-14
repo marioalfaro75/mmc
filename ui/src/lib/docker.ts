@@ -31,7 +31,7 @@ export const VALID_SERVICES = new Set([
   'media-ui',
 ]);
 
-// Services that share gluetun's network and must restart when gluetun restarts
+// Services that share gluetun's network — cannot run without gluetun
 const VPN_DEPENDENT_SERVICES = ['qbittorrent', 'sabnzbd'];
 
 export interface DockerServiceStatus {
@@ -64,19 +64,126 @@ export async function listServices(): Promise<DockerServiceStatus[]> {
   });
 }
 
+async function getServiceState(service: string): Promise<DockerServiceStatus | undefined> {
+  try {
+    const statuses = await listServices();
+    return statuses.find((s) => s.service === service);
+  } catch {
+    return undefined;
+  }
+}
+
+function isRunning(svc: DockerServiceStatus | undefined): boolean {
+  return svc?.state === 'running';
+}
+
+function isHealthy(svc: DockerServiceStatus | undefined): boolean {
+  if (!svc || svc.state !== 'running') return false;
+  return svc.health === 'healthy' || svc.health === 'none';
+}
+
+async function waitForRunning(service: string, timeoutMs = 60000): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (isRunning(await getServiceState(service))) return true;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  return false;
+}
+
+async function waitForHealthy(service: string, timeoutMs = 60000): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (isHealthy(await getServiceState(service))) return true;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  return false;
+}
+
+async function waitForStopped(service: string, timeoutMs = 60000): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const svc = await getServiceState(service);
+    if (!svc || svc.state === 'exited') return true;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  return false;
+}
+
+function requireGluetun(name: string): boolean {
+  return VPN_DEPENDENT_SERVICES.includes(name);
+}
+
+async function assertGluetunRunning(name: string): Promise<void> {
+  if (!requireGluetun(name)) return;
+  const gluetun = await getServiceState('gluetun');
+  if (!isRunning(gluetun)) {
+    throw new Error(`Cannot ${name} — gluetun is not running. Start gluetun first.`);
+  }
+}
+
 export async function restartService(name: string): Promise<void> {
-  const args = [...composeArgs(), 'restart', name];
+  const current = await getServiceState(name);
+
+  // If the service isn't running, start it instead of restarting
+  if (!current || current.state !== 'running') {
+    await startService(name);
+    return;
+  }
+
+  await assertGluetunRunning(name);
+
+  const args = [...composeArgs(), 'restart', '-t', '30', name];
   await execFileAsync('docker', args, { timeout: 120000 });
+
+  const cameUp = await waitForRunning(name, 30000);
+  if (!cameUp) {
+    throw new Error(`${name} did not come back up after restart`);
+  }
 }
 
 export async function stopService(name: string): Promise<void> {
-  const args = [...composeArgs(), 'stop', name];
+  const current = await getServiceState(name);
+
+  // Already stopped — nothing to do
+  if (!current || current.state === 'exited') return;
+
+  // Stopping gluetun — stop VPN-dependent services first (they'll lose network anyway)
+  if (name === 'gluetun') {
+    for (const dep of VPN_DEPENDENT_SERVICES) {
+      const depState = await getServiceState(dep);
+      if (isRunning(depState)) {
+        const depArgs = [...composeArgs(), 'stop', '-t', '30', dep];
+        await execFileAsync('docker', depArgs, { timeout: 60000 });
+      }
+    }
+  }
+
+  const args = [...composeArgs(), 'stop', '-t', '30', name];
   await execFileAsync('docker', args, { timeout: 60000 });
+
+  const stopped = await waitForStopped(name, 30000);
+  if (!stopped) {
+    throw new Error(`${name} did not stop within 30 seconds`);
+  }
 }
 
 export async function startService(name: string): Promise<void> {
-  const args = [...composeArgs(), 'start', name];
+  const current = await getServiceState(name);
+
+  // Already running — nothing to do
+  if (isRunning(current)) return;
+
+  await assertGluetunRunning(name);
+
+  // Use 'up -d' instead of 'start' — works for both stopped and removed containers
+  const args = [...composeArgs(), 'up', '-d', '--no-deps', name];
   await execFileAsync('docker', args, { timeout: 120000 });
+
+  const cameUp = await waitForRunning(name, 30000);
+  if (!cameUp) {
+    throw new Error(`${name} did not start successfully`);
+  }
 }
 
 export async function recreateServices(services: string[]): Promise<void> {
@@ -90,22 +197,7 @@ export async function getServiceLogs(name: string, lines = 100): Promise<string>
   return stdout;
 }
 
-async function waitForHealthy(service: string, timeoutMs = 60000): Promise<boolean> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const statuses = await listServices();
-      const svc = statuses.find((s) => s.service === service);
-      if (svc && svc.state === 'running' && svc.health === 'healthy') return true;
-    } catch {
-      // ignore during restart
-    }
-    await new Promise((r) => setTimeout(r, 2000));
-  }
-  return false;
-}
-
-function selfRestart(): void {
+export function selfRestart(): void {
   // To pick up new env vars, we need `docker compose up -d --force-recreate media-ui`.
   // But that command kills this container mid-execution.
   // Solution: run the compose command from a short-lived helper container that
@@ -138,13 +230,25 @@ export async function restartServicesStaged(services: string[]): Promise<void> {
   const remaining = services.filter((s) => s !== 'gluetun' && s !== 'media-ui');
 
   if (hasGluetun) {
-    // Add VPN-dependent services if not already included
+    // Stop VPN-dependent services before recreating gluetun
+    for (const dep of VPN_DEPENDENT_SERVICES) {
+      const depState = await getServiceState(dep);
+      if (isRunning(depState)) {
+        const depArgs = [...composeArgs(), 'stop', '-t', '30', dep];
+        await execFileAsync('docker', depArgs, { timeout: 60000 });
+      }
+    }
+
+    // Add VPN-dependent services to restart list if not already included
     for (const dep of VPN_DEPENDENT_SERVICES) {
       if (!remaining.includes(dep)) remaining.push(dep);
     }
 
     await recreateServices(['gluetun']);
-    await waitForHealthy('gluetun', 60000);
+    const gluetunUp = await waitForHealthy('gluetun', 60000);
+    if (!gluetunUp) {
+      throw new Error('gluetun did not become healthy after restart');
+    }
 
     // Now restart VPN-dependent services first, then the rest
     const vpnDeps = remaining.filter((s) => VPN_DEPENDENT_SERVICES.includes(s));

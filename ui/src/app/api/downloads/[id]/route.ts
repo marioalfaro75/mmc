@@ -1,6 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { deleteTorrent } from '@/lib/api/qbittorrent';
-import { deleteItem as deleteUsenet } from '@/lib/api/sabnzbd';
+import { deleteTorrent, pauseTorrent, resumeTorrent, forceStartTorrent } from '@/lib/api/qbittorrent';
+import { deleteItem as deleteUsenet, pauseItem as pauseUsenet, resumeItem as resumeUsenet } from '@/lib/api/sabnzbd';
+
+type Action = 'pause' | 'resume' | 'forceStart';
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const { action } = (await request.json()) as { action: Action };
+    const id = params.id;
+
+    if (id.startsWith('torrent-')) {
+      const hash = id.replace('torrent-', '');
+      switch (action) {
+        case 'pause': await pauseTorrent(hash); break;
+        case 'resume': await resumeTorrent(hash); break;
+        case 'forceStart': await forceStartTorrent(hash); break;
+        default:
+          return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
+      }
+    } else if (id.startsWith('usenet-')) {
+      const nzoId = id.replace('usenet-', '');
+      switch (action) {
+        case 'pause': await pauseUsenet(nzoId); break;
+        case 'resume':
+        case 'forceStart': await resumeUsenet(nzoId); break;
+        default:
+          return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
+      }
+    } else {
+      return NextResponse.json({ error: 'Unknown download source' }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: `Failed to update download: ${String(error)}` },
+      { status: 500 }
+    );
+  }
+}
 
 export async function DELETE(
   _request: NextRequest,

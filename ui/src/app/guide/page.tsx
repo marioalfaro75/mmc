@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { BookOpen, ChevronDown, Terminal, ExternalLink } from 'lucide-react';
+import { BookOpen, ChevronDown, Terminal, ExternalLink, Loader2, Zap } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
+import { toast } from 'sonner';
 
 interface AccordionSectionProps {
   title: string;
@@ -64,6 +65,184 @@ function Tip({ children }: { children: React.ReactNode }) {
   return (
     <div className="mt-2 rounded-md border border-primary/30 bg-primary/5 p-2 text-xs text-muted-foreground">
       <strong className="text-foreground">Tip:</strong> {children}
+    </div>
+  );
+}
+
+function QuickSetupQbt() {
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const run = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/qbittorrent/configure', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('qBittorrent configured — save path, categories, VPN binding, and seeding limit applied');
+        setDone(true);
+      } else if (data.authError) {
+        toast.error('qBittorrent login failed — set QBITTORRENT_PASSWORD in Settings to match your current qBittorrent password, then restart the stack');
+      } else {
+        const failed = data.results.filter((r: { status: string }) => r.status === 'error');
+        toast.error(`Some settings failed: ${failed.map((r: { step: string }) => r.step).join(', ')}`);
+      }
+    } catch {
+      toast.error('Could not reach qBittorrent — is it running?');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 rounded-md border border-border bg-muted/30 p-3">
+      <p className="text-xs text-muted-foreground">
+        Auto-configure steps 3-6: save path, categories, VPN interface binding, UPnP, and seeding ratio limit.
+        You still need to change the default password manually (step 2).
+      </p>
+      <button
+        onClick={run}
+        disabled={loading || done}
+        className="mt-2 flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+      >
+        {loading ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Zap className="h-3.5 w-3.5" />
+        )}
+        {done ? 'Applied' : 'Quick Setup'}
+      </button>
+    </div>
+  );
+}
+
+function QuickSetupButton({ label, description, endpoint, successMessage }: {
+  label: string;
+  description: string;
+  endpoint: string;
+  successMessage: string;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const run = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(endpoint, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(successMessage);
+        setDone(true);
+      } else if (data.error) {
+        toast.error(data.error);
+      } else {
+        const failed = data.results?.filter((r: { status: string }) => r.status === 'error') || [];
+        const details = failed.map((r: { step: string; error?: string }) => r.error ? `${r.step}: ${r.error}` : r.step).join('; ');
+        toast.error(`Some settings failed: ${details}`);
+      }
+    } catch {
+      toast.error(`Could not reach ${label} — is it running?`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 rounded-md border border-border bg-muted/30 p-3">
+      <p className="text-xs text-muted-foreground">{description}</p>
+      <button
+        onClick={run}
+        disabled={loading || done}
+        className="mt-2 flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+      >
+        {loading ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Zap className="h-3.5 w-3.5" />
+        )}
+        {done ? 'Applied' : 'Quick Setup'}
+      </button>
+    </div>
+  );
+}
+
+function DetectApiKeys() {
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'restarting' | 'done'>('idle');
+
+  const waitForRestart = async () => {
+    // Wait a moment for the restart to initiate
+    await new Promise((r) => setTimeout(r, 3000));
+    // Poll until media-ui comes back
+    for (let i = 0; i < 30; i++) {
+      try {
+        const res = await fetch('/api/health', { signal: AbortSignal.timeout(2000) });
+        if (res.ok) return true;
+      } catch {
+        // still restarting
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    return false;
+  };
+
+  const run = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/settings/detect-keys', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        const count = data.detected?.length || 0;
+        const missingMsg = data.missing?.length ? ` (not found: ${data.missing.join(', ')})` : '';
+        toast.info(`Detected ${count} API key${count !== 1 ? 's' : ''}${missingMsg}. Restarting services...`);
+        setStatus('restarting');
+        const cameBack = await waitForRestart();
+        if (cameBack) {
+          toast.success('API keys applied — services restarted. You can now run Quick Setup below.');
+          setStatus('done');
+        } else {
+          toast.warning('API keys saved but the UI is taking a while to restart. Refresh the page in a moment.');
+          setStatus('done');
+        }
+      } else {
+        toast.error(data.error || 'Failed to detect API keys');
+      }
+    } catch {
+      // The fetch may fail if media-ui restarts before the response completes
+      toast.info('Detecting keys and restarting services...');
+      setStatus('restarting');
+      const cameBack = await waitForRestart();
+      if (cameBack) {
+        toast.success('API keys applied — services restarted. You can now run Quick Setup below.');
+        setStatus('done');
+      } else {
+        toast.warning('Services are restarting. Refresh the page in a moment.');
+        setStatus('done');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
+      <p className="text-sm font-medium">Auto-detect API Keys</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Reads API keys directly from Sonarr, Radarr, and Prowlarr config files and saves them to Settings.
+        Also populates Unpackerr keys automatically. Automatically restarts services to apply.
+      </p>
+      <button
+        onClick={run}
+        disabled={loading || status !== 'idle'}
+        className="mt-2 flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+      >
+        {loading ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Zap className="h-3.5 w-3.5" />
+        )}
+        {status === 'restarting' ? 'Restarting...' : status === 'done' ? 'Keys Applied' : 'Detect API Keys'}
+      </button>
     </div>
   );
 }
@@ -200,7 +379,8 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
               <Pre>docker logs qbittorrent 2&gt;&amp;1 | grep &quot;temporary password&quot;</Pre>
             </Step>
             <Step n={2}>
-              <p><strong>Change the default password</strong> immediately: Options → Web UI → Authentication</p>
+              <p><strong>Change the default password</strong> immediately: Options → Web UI → Authentication.</p>
+              <p className="text-xs text-muted-foreground">Then set the same password in this web UI under Settings → <Code>QBITTORRENT_PASSWORD</Code> and restart the stack so the dashboard can connect.</p>
             </Step>
             <Step n={3}>
               <p>Set default save path: Options → Downloads → Default Save Path → <Code>/data/torrents</Code></p>
@@ -222,6 +402,7 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
             <Tip>
               Set seeding limits under Options → BitTorrent → Seeding Limits to automatically stop seeding after a ratio/time target.
             </Tip>
+            <QuickSetupQbt />
           </AccordionSection>
 
           <AccordionSection
@@ -260,6 +441,7 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
       <div>
         <h2 className="mb-3 text-lg font-semibold">Phase 2: Indexers & Media Managers</h2>
         <div className="space-y-3">
+          <DetectApiKeys />
           <AccordionSection
             title="Prowlarr"
             port="localhost:9696"
@@ -281,6 +463,12 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
             <Tip>
               Use container hostnames (e.g. <Code>sonarr</Code>, <Code>radarr</Code>) not <Code>localhost</Code> — containers communicate over the Docker network.
             </Tip>
+            <QuickSetupButton
+              label="Prowlarr"
+              endpoint="/api/prowlarr/configure"
+              description="Auto-configure steps 2-3: connect Sonarr and Radarr as applications. You still need to add indexers manually (step 1)."
+              successMessage="Prowlarr configured — Sonarr and Radarr connected as applications"
+            />
           </AccordionSection>
 
           <AccordionSection
@@ -306,6 +494,12 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
             <Step n={4}>
               <p>Note your API key: Settings → General → API Key (needed for Prowlarr, Bazarr, Seerr, Unpackerr, Recyclarr)</p>
             </Step>
+            <QuickSetupButton
+              label="Sonarr"
+              endpoint="/api/sonarr/configure"
+              description="Auto-configure steps 1-3: root folder, download clients (qBittorrent + SABnzbd if key is set), and episode renaming format."
+              successMessage="Sonarr configured — root folder, download clients, and naming format applied"
+            />
           </AccordionSection>
 
           <AccordionSection
@@ -331,6 +525,12 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
             <Step n={4}>
               <p>Note your API key: Settings → General → API Key (needed for Prowlarr, Bazarr, Seerr, Unpackerr, Recyclarr)</p>
             </Step>
+            <QuickSetupButton
+              label="Radarr"
+              endpoint="/api/radarr/configure"
+              description="Auto-configure steps 1-3: root folder, download clients (qBittorrent + SABnzbd if key is set), and movie renaming format."
+              successMessage="Radarr configured — root folder, download clients, and naming format applied"
+            />
           </AccordionSection>
 
           <AccordionSection
@@ -338,13 +538,10 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
             description="Automatically extracts archived downloads for Sonarr and Radarr"
           >
             <Step n={1}>
-              <p>Edit <Code>docker-compose.yml</Code> under the <Code>unpackerr</Code> service and add your API keys:</p>
-              <Pre>{`UN_SONARR_0_API_KEY: <sonarr-api-key>
-UN_RADARR_0_API_KEY: <radarr-api-key>`}</Pre>
+              <p>If you ran <strong>Detect API Keys</strong> above, the Unpackerr keys are already set. Otherwise, set <Code>UN_SONARR_0_API_KEY</Code> and <Code>UN_RADARR_0_API_KEY</Code> in Settings to match your Sonarr and Radarr API keys.</p>
             </Step>
             <Step n={2}>
-              <p>Recreate the container to apply changes:</p>
-              <Pre>docker compose up -d unpackerr</Pre>
+              <p>Restart the stack so Unpackerr picks up the new keys.</p>
             </Step>
             <Step n={3}>
               <p>Verify it connected: <Code>docker logs unpackerr</Code> — look for &quot;Sonarr&quot; and &quot;Radarr&quot; connected messages.</p>

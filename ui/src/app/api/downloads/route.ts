@@ -5,11 +5,11 @@ import type { DownloadItem } from '@/lib/types/common';
 
 function mapTorrentStatus(state: string): DownloadItem['status'] {
   switch (state) {
-    case 'downloading': case 'metaDL': case 'forcedDL': return 'downloading';
-    case 'pausedDL': case 'pausedUP': return 'paused';
+    case 'downloading': case 'metaDL': case 'forcedDL': case 'forcedMetaDL': return 'downloading';
+    case 'pausedDL': case 'pausedUP': case 'stoppedDL': case 'stoppedUP': return 'paused';
     case 'queuedDL': case 'queuedUP': case 'stalledDL': case 'allocating': return 'queued';
     case 'uploading': case 'stalledUP': case 'forcedUP': return 'seeding';
-    case 'checkingDL': case 'checkingUP': case 'checkingResumeData': return 'downloading';
+    case 'checkingDL': case 'checkingUP': case 'checkingResumeData': case 'moving': return 'downloading';
     case 'error': case 'missingFiles': return 'failed';
     default: return 'downloading';
   }

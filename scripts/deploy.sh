@@ -267,6 +267,44 @@ find_free_subnet() {
     return 1
 }
 
+detect_local_subnet() {
+    # On WSL, the Linux network is virtual — detect the real LAN from Windows
+    if grep -qi microsoft /proc/version 2>/dev/null; then
+        _win_net=$(powershell.exe -NoProfile -Command \
+            "Get-NetIPAddress -AddressFamily IPv4 | Where-Object { \$_.InterfaceAlias -notmatch 'Loopback|vEthernet|Bluetooth' -and \$_.PrefixOrigin -eq 'Dhcp' } | Select-Object -First 1 IPAddress, PrefixLength | ForEach-Object { \"\$(\$_.IPAddress)/\$(\$_.PrefixLength)\" }" 2>/dev/null | tr -d '\r')
+        if [ -n "$_win_net" ]; then
+            _ip="${_win_net%/*}"
+            _mask="${_win_net#*/}"
+            if [ "$_mask" = "24" ]; then
+                echo "${_ip%.*}.0/24"
+                return 0
+            fi
+            echo "$_win_net"
+            return 0
+        fi
+    fi
+
+    # Native Linux: find the default route interface, then get its subnet
+    _iface=$(ip route show default 2>/dev/null | awk '{print $5; exit}')
+    if [ -n "$_iface" ]; then
+        _cidr=$(ip -4 addr show "$_iface" 2>/dev/null | awk '/inet / {print $2; exit}')
+        if [ -n "$_cidr" ]; then
+            _ip="${_cidr%/*}"
+            _mask="${_cidr#*/}"
+            if [ "$_mask" = "24" ]; then
+                echo "${_ip%.*}.0/24"
+                return 0
+            fi
+            echo "$_cidr"
+            return 0
+        fi
+    fi
+
+    # Fallback if detection fails
+    echo "192.168.1.0/24"
+    return 1
+}
+
 check_env_file() {
     section "Environment"
     ENV_FILE="$PROJECT_DIR/.env"
@@ -450,6 +488,11 @@ run_setup_wizard() {
     _subnet=$(find_free_subnet)
     sed -i "s|^DOCKER_SUBNET=.*|DOCKER_SUBNET=$_subnet|" "$ENV_FILE"
     pass "DOCKER_SUBNET=$_subnet (auto-detected free range)"
+
+    # Auto-detect local LAN subnet
+    _local_subnet=$(detect_local_subnet)
+    sed -i "s|^LOCAL_SUBNET=.*|LOCAL_SUBNET=$_local_subnet|" "$ENV_FILE"
+    pass "LOCAL_SUBNET=$_local_subnet (auto-detected from default network interface)"
 
     pass ".env written with your values"
     info "You can edit $ENV_FILE to fine-tune other settings."

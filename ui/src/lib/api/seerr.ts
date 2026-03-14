@@ -10,6 +10,7 @@ async function seerrFetch<T>(path: string, init?: RequestInit): Promise<T> {
       'Content-Type': 'application/json',
       ...init?.headers,
     },
+    cache: 'no-store',
   });
   if (!res.ok) {
     throw new Error(`Seerr API error: ${res.status} ${res.statusText}`);

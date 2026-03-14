@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { VALID_SERVICES, restartServicesStaged } from '@/lib/docker';
+import { VALID_SERVICES, restartService, restartServicesStaged } from '@/lib/docker';
 import { logger } from '@/lib/logger';
 
 export async function POST(_request: Request, { params }: { params: Promise<{ name: string }> }) {
@@ -11,7 +11,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ na
 
   try {
     logger.info('services', `Restarting service: ${name}`);
-    await restartServicesStaged([name]);
+
+    if (name === 'media-ui') {
+      await restartServicesStaged(['media-ui']);
+    } else {
+      await restartService(name);
+    }
+
     logger.info('services', `Service restarted: ${name}`);
     return NextResponse.json({ status: 'restarted', services: [name] });
   } catch (err) {
