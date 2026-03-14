@@ -197,6 +197,28 @@ export async function getServiceLogs(name: string, lines = 100): Promise<string>
   return stdout;
 }
 
+export function selfStop(): void {
+  // Similar to selfRestart — use a helper container to stop media-ui from outside
+  const composeCmd = [
+    'docker compose',
+    `-f ${PROJECT_DIR}/docker-compose.yml`,
+    `--project-directory ${PROJECT_DIR}`,
+    `--env-file ${PROJECT_DIR}/.env`,
+    'stop -t 30 media-ui',
+  ].join(' ');
+
+  const args = [
+    'run', '--rm', '-d',
+    '--name', 'mmc-self-stop',
+    '-v', '/var/run/docker.sock:/var/run/docker.sock',
+    '-v', `${PROJECT_DIR}:${PROJECT_DIR}:ro`,
+    'docker:cli',
+    'sh', '-c', composeCmd,
+  ];
+  const child = execFile('docker', args, { timeout: 30000 }, () => {});
+  child.unref();
+}
+
 export function selfRestart(): void {
   // To pick up new env vars, we need `docker compose up -d --force-recreate media-ui`.
   // But that command kills this container mid-execution.

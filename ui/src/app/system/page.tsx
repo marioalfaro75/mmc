@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Activity, Shield, ShieldAlert, ExternalLink, Info,
   Play, Square, RotateCcw, ScrollText, Loader2, RefreshCw,
+  Power,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
@@ -172,6 +173,45 @@ export default function SystemPage() {
     }
   };
 
+  const [stopAllLoading, setStopAllLoading] = useState(false);
+  const [stopSelfLoading, setStopSelfLoading] = useState(false);
+
+  const stopAll = async () => {
+    setStopAllLoading(true);
+    try {
+      const res = await fetch('/api/services/stop-all', { method: 'POST' });
+      if (res.ok || res.status === 207) {
+        const data = await res.json();
+        if (data.status === 'partial') {
+          toast.warning(`Some services failed to stop: ${data.error}`);
+        } else {
+          toast.success('All services stopped (except Media UI)');
+        }
+        loadDocker();
+      } else {
+        toast.error('Failed to stop services');
+      }
+    } catch {
+      toast.error('Failed to stop services — connection lost');
+    } finally {
+      setStopAllLoading(false);
+    }
+  };
+
+  const stopSelf = async () => {
+    try {
+      const res = await fetch('/api/services/stop-self', { method: 'POST' });
+      if (res.ok) {
+        toast.info('Media UI is shutting down — this page will become unreachable');
+        setStopSelfLoading(true);
+      } else {
+        toast.error('Failed to stop Media UI');
+      }
+    } catch {
+      toast.error('Failed to stop Media UI — connection lost');
+    }
+  };
+
   const healthMap = new Map(
     healthData?.services?.map((h) => [h.name.toLowerCase(), h]) ?? []
   );
@@ -328,7 +368,7 @@ export default function SystemPage() {
               Services
             </div>
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={loadDocker}
               className="flex items-center gap-1.5 rounded-md border border-input px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted"
@@ -342,6 +382,23 @@ export default function SystemPage() {
             >
               <RotateCcw className="h-3.5 w-3.5" />
               Restart All
+            </button>
+            <button
+              onClick={stopAll}
+              disabled={stopAllLoading}
+              className="flex items-center gap-1.5 rounded-md border border-danger px-3 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger hover:text-white disabled:opacity-50"
+            >
+              {stopAllLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5" />}
+              Stop All
+            </button>
+            <button
+              onClick={stopSelf}
+              disabled={stopSelfLoading}
+              className="flex items-center gap-1.5 rounded-md border border-warning px-3 py-1.5 text-xs font-medium text-warning transition-colors hover:bg-warning hover:text-white disabled:opacity-50"
+              title="Stop the Media UI service — this page will become unreachable"
+            >
+              {stopSelfLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
+              Stop UI
             </button>
           </div>
         </CardHeader>
