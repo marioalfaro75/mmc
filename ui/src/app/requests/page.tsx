@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MessageSquare, Check, X, Loader2, Search, Film, Tv, Plus } from 'lucide-react';
+import { MessageSquare, Check, X, Loader2, Search, Film, Tv, Plus, Trash2 } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Skeleton } from '@/components/common/Skeleton';
@@ -76,6 +76,16 @@ export default function RequestsPage() {
       queryClient.invalidateQueries({ queryKey: ['requests'] });
       toast.success('Request declined');
     },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) =>
+      fetch(`/api/requests`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', id }) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['requests'] });
+      toast.success('Request deleted');
+    },
+    onError: () => toast.error('Failed to delete request'),
   });
 
   const requestMutation = useMutation({
@@ -253,24 +263,33 @@ export default function RequestsPage() {
                       </p>
                     </div>
                     <Badge variant={status.variant}>{status.label}</Badge>
-                    {req.status === 1 && (
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => approveMutation.mutate(req.id)}
-                          className="rounded p-1.5 text-success hover:bg-success/20 transition-colors"
-                          title="Approve"
-                        >
-                          <Check className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => declineMutation.mutate(req.id)}
-                          className="rounded p-1.5 text-danger hover:bg-danger/20 transition-colors"
-                          title="Decline"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    )}
+                    <div className="flex gap-1">
+                      {req.status === 1 && (
+                        <>
+                          <button
+                            onClick={() => approveMutation.mutate(req.id)}
+                            className="rounded p-1.5 text-success hover:bg-success/20 transition-colors"
+                            title="Approve"
+                          >
+                            <Check className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => declineMutation.mutate(req.id)}
+                            className="rounded p-1.5 text-danger hover:bg-danger/20 transition-colors"
+                            title="Decline"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => deleteMutation.mutate(req.id)}
+                        className="rounded p-1.5 text-muted-foreground hover:bg-danger/20 hover:text-danger transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </Card>
                 );
               })

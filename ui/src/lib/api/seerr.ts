@@ -62,6 +62,10 @@ export async function createRequest(body: { mediaType: string; mediaId: number }
   });
 }
 
+export async function deleteRequest(requestId: number): Promise<void> {
+  await seerrFetch(`/request/${requestId}`, { method: 'DELETE' });
+}
+
 export async function getStatus(): Promise<{ version: string }> {
   return seerrFetch('/status');
 }
