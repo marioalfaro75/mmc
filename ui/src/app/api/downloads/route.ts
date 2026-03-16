@@ -80,7 +80,13 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json(items);
+    return NextResponse.json({
+      items,
+      clients: {
+        torrent: torrentsResult.status === 'fulfilled',
+        usenet: sabnzbdResult.status === 'fulfilled',
+      },
+    });
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to fetch downloads', service: 'downloads', statusCode: 500 },

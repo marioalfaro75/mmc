@@ -13,16 +13,24 @@ import { toast } from 'sonner';
 
 type TabKey = 'active' | 'completed' | 'failed';
 
+interface DownloadsResponse {
+  items: DownloadItem[];
+  clients: { torrent: boolean; usenet: boolean };
+}
+
 export default function DownloadsPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabKey>('active');
 
-  const { data: downloads = [], isLoading, isError: downloadsError } = useQuery<DownloadItem[]>({
+  const { data: downloadsData, isLoading } = useQuery<DownloadsResponse>({
     queryKey: ['downloads'],
-    queryFn: () => fetchApi<DownloadItem[]>('/api/downloads'),
+    queryFn: () => fetchApi<DownloadsResponse>('/api/downloads'),
     refetchInterval: POLLING.DOWNLOADS,
     staleTime: STALE_TIME.DOWNLOADS,
   });
+
+  const downloads = downloadsData?.items ?? [];
+  const clients = downloadsData?.clients;
 
   const { data: vpn } = useQuery<VpnStatus>({
     queryKey: ['vpn'],
@@ -86,10 +94,10 @@ export default function DownloadsPage() {
         </div>
       )}
 
-      {downloadsError && (
+      {clients && !clients.torrent && !clients.usenet && (
         <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
           <Download className="h-4 w-4 shrink-0" />
-          Download clients are unreachable. qBittorrent or SABnzbd may be offline.
+          Both download clients are unreachable. qBittorrent and SABnzbd may be offline.
         </div>
       )}
 
