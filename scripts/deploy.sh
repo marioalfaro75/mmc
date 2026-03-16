@@ -1157,6 +1157,7 @@ install_curl() {
 }
 
 INSTALL_MARKER="$HOME/.mmc/install-path"
+EXISTING_INSTALL=0
 
 clone_repo() {
     section "Clone Repository"
@@ -1169,6 +1170,7 @@ clone_repo() {
             cd "$_existing"
             info "Pulling latest changes..."
             git pull
+            EXISTING_INSTALL=1
             return
         else
             warn "Marker points to $_existing but repo not found — will clone fresh"
@@ -1184,6 +1186,7 @@ clone_repo() {
         # Save marker
         mkdir -p "$(dirname "$INSTALL_MARKER")"
         echo "$DEFAULT_INSTALL_DIR" > "$INSTALL_MARKER"
+        EXISTING_INSTALL=1
         return
     fi
 
@@ -1222,11 +1225,17 @@ run_install() {
     # Clone the repo
     clone_repo
 
-    # Re-exec from the cloned repo's deploy script (full deploy)
+    # Re-exec from the cloned repo's deploy script
     _cloned_dir="$(pwd)"
-    info "Handing off to full deploy..."
-    echo ""
-    exec "$_cloned_dir/scripts/deploy.sh"
+    if [ "$EXISTING_INSTALL" = "1" ]; then
+        info "Existing install detected — handing off to update..."
+        echo ""
+        exec "$_cloned_dir/scripts/deploy.sh" --update
+    else
+        info "Handing off to full deploy..."
+        echo ""
+        exec "$_cloned_dir/scripts/deploy.sh"
+    fi
 }
 
 # ============================================================
