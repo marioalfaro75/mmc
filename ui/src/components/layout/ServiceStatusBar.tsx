@@ -26,8 +26,17 @@ export function ServiceStatusBar() {
   useEffect(() => {
     if (!data?.services) return;
 
-    const currentOffline = new Set(
+    const DOWNLOAD_CLIENTS = ['qBittorrent', 'SABnzbd'];
+    const currentOfflineAll = new Set(
       data.services.filter(s => s.status === 'offline').map(s => s.name)
+    );
+    // Only track download clients as offline if both are down
+    const bothDown = DOWNLOAD_CLIENTS.every(n => currentOfflineAll.has(n));
+    const currentOffline = new Set(
+      Array.from(currentOfflineAll).filter(n => {
+        if (DOWNLOAD_CLIENTS.includes(n)) return bothDown;
+        return true;
+      })
     );
 
     // Don't show recovery toasts on first load
@@ -45,15 +54,28 @@ export function ServiceStatusBar() {
 
   if (!data?.services) return null;
 
-  const offline = data.services.filter(s => s.status === 'offline');
-  if (offline.length === 0) return null;
+  const DOWNLOAD_CLIENTS = ['qBittorrent', 'SABnzbd'];
+  const allOffline = data.services.filter(s => s.status === 'offline');
+
+  // Only report download clients if BOTH are down
+  const bothDownloadClientsDown = DOWNLOAD_CLIENTS.every(
+    name => allOffline.some(s => s.name === name)
+  );
+  const offlineNames = allOffline
+    .filter(s => {
+      if (DOWNLOAD_CLIENTS.includes(s.name)) return bothDownloadClientsDown;
+      return true;
+    })
+    .map(s => s.name);
+
+  if (offlineNames.length === 0) return null;
 
   return (
     <div className="mb-4 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-2.5 text-sm text-warning">
       <AlertTriangle className="h-4 w-4 shrink-0" />
       <span>
         <span className="font-medium">Offline: </span>
-        {offline.map(s => s.name).join(', ')}
+        {offlineNames.join(', ')}
         <span className="text-warning/70"> — some features may be unavailable</span>
       </span>
     </div>
