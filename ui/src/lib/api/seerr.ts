@@ -62,6 +62,14 @@ export async function createRequest(body: { mediaType: string; mediaId: number }
   });
 }
 
+export async function getMovieDetails(tmdbId: number): Promise<{ title: string; posterPath: string | null; releaseDate: string }> {
+  return seerrFetch(`/movie/${tmdbId}`);
+}
+
+export async function getTvDetails(tmdbId: number): Promise<{ name: string; posterPath: string | null; firstAirDate: string }> {
+  return seerrFetch(`/tv/${tmdbId}`);
+}
+
 export async function deleteRequest(requestId: number): Promise<void> {
   await seerrFetch(`/request/${requestId}`, { method: 'DELETE' });
 }

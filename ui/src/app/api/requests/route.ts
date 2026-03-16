@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRequests, createRequest, deleteRequest } from '@/lib/api/seerr';
+import { getRequests, createRequest, deleteRequest, getMovieDetails, getTvDetails } from '@/lib/api/seerr';
 import { sanitizeError } from '@/lib/security';
 
 export async function GET() {
@@ -11,7 +11,28 @@ export async function GET() {
   }
   try {
     const data = await getRequests();
-    return NextResponse.json(data);
+
+    // Enrich requests with titles from TMDB via Seerr
+    const enriched = await Promise.all(
+      data.results.map(async (req) => {
+        if (req.media?.title || req.media?.name) return req;
+        const tmdbId = req.media?.tmdbId;
+        if (!tmdbId) return req;
+        try {
+          if (req.type === 'movie') {
+            const details = await getMovieDetails(tmdbId);
+            return { ...req, media: { ...req.media, title: details.title, posterPath: details.posterPath } };
+          } else {
+            const details = await getTvDetails(tmdbId);
+            return { ...req, media: { ...req.media, name: details.name, posterPath: details.posterPath } };
+          }
+        } catch {
+          return req;
+        }
+      })
+    );
+
+    return NextResponse.json({ ...data, results: enriched });
   } catch (error) {
     const msg = String(error);
     if (msg.includes('403')) {
