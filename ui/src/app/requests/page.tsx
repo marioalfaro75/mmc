@@ -103,10 +103,19 @@ export default function RequestsPage() {
     onError: (_err, item) => toast.error(`Failed to request "${item.title || item.name}"`),
   });
 
+  const { data: seerrStatus } = useQuery<{ radarr: number; sonarr: number }>({
+    queryKey: ['seerr', 'status'],
+    queryFn: () => fetchApi('/api/seerr/configure'),
+    enabled: !isError,
+  });
+
+  const seerrConfigured = (seerrStatus?.radarr ?? 0) > 0 && (seerrStatus?.sonarr ?? 0) > 0;
+
   const configureMutation = useMutation({
     mutationFn: () => fetchApi('/api/seerr/configure', { method: 'POST' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['requests'] });
+      queryClient.invalidateQueries({ queryKey: ['seerr', 'status'] });
       toast.success('Seerr configured with Sonarr and Radarr');
     },
     onError: () => toast.error('Failed to auto-configure Seerr'),
@@ -125,12 +134,16 @@ export default function RequestsPage() {
           <h1 className="text-2xl font-bold">Requests</h1>
         </div>
         <button
-          onClick={() => configureMutation.mutate()}
-          disabled={configureMutation.isPending}
+          onClick={() => !seerrConfigured && configureMutation.mutate()}
+          disabled={configureMutation.isPending || seerrConfigured}
           className="flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
         >
-          {configureMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-          Auto-configure Seerr
+          {configureMutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <span className={`inline-block h-2.5 w-2.5 rounded-full ${seerrConfigured ? 'bg-green-500' : 'bg-orange-500'}`} />
+          )}
+          {seerrConfigured ? 'Configured' : 'Auto-configure Seerr'}
         </button>
       </div>
 

@@ -10,6 +10,18 @@ import {
 import { sanitizeError } from '@/lib/security';
 import { logger } from '@/lib/logger';
 
+export async function GET() {
+  try {
+    const [radarr, sonarr] = await Promise.all([
+      getRadarrSettings(),
+      getSonarrSettings(),
+    ]);
+    return NextResponse.json({ radarr: radarr.length, sonarr: sonarr.length });
+  } catch {
+    return NextResponse.json({ radarr: 0, sonarr: 0 });
+  }
+}
+
 export async function POST() {
   const sonarrUrl = process.env.SONARR_URL || 'http://sonarr:8989';
   const sonarrKey = process.env.SONARR_API_KEY || '';
