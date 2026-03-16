@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { readEnv, writeEnv } from '@/lib/env';
 import { ENV_SCHEMA, maskSensitiveValues, isMaskedValue, validateEnvVars, getAffectedServices } from '@/lib/env-schema';
 import { logger } from '@/lib/logger';
+import { sanitizeError } from '@/lib/security';
 
 export async function GET() {
   try {
@@ -12,7 +13,7 @@ export async function GET() {
     });
   } catch (err) {
     return NextResponse.json(
-      { error: 'Failed to read .env file', details: String(err) },
+      { error: 'Failed to read .env file', details: sanitizeError(err) },
       { status: 500 }
     );
   }
@@ -59,7 +60,7 @@ export async function PUT(request: Request) {
   } catch (err) {
     logger.error('settings', 'Failed to update .env file', { error: String(err) });
     return NextResponse.json(
-      { error: 'Failed to update .env file', details: String(err) },
+      { error: 'Failed to update .env file', details: sanitizeError(err) },
       { status: 500 }
     );
   }

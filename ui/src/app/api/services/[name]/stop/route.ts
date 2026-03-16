@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { VALID_SERVICES, stopService } from '@/lib/docker';
 import { logger } from '@/lib/logger';
+import { sanitizeError } from '@/lib/security';
 
 export async function POST(_request: Request, { params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
@@ -21,7 +22,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ na
   } catch (err) {
     logger.error('services', `Failed to stop ${name}`, { error: String(err) });
     return NextResponse.json(
-      { error: `Failed to stop ${name}`, details: String(err) },
+      { error: `Failed to stop ${name}`, details: sanitizeError(err) },
       { status: 500 }
     );
   }

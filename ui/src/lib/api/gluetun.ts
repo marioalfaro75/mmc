@@ -1,7 +1,13 @@
 const BASE_URL = process.env.GLUETUN_URL || 'http://gluetun:8000';
+const GLUETUN_USER = 'mmc';
+const GLUETUN_PASS = process.env.GLUETUN_CONTROL_PASSWORD || 'changeme';
 
 async function gluetunFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, { cache: 'no-store' });
+  const credentials = Buffer.from(`${GLUETUN_USER}:${GLUETUN_PASS}`).toString('base64');
+  const res = await fetch(`${BASE_URL}${path}`, {
+    cache: 'no-store',
+    headers: { Authorization: `Basic ${credentials}` },
+  });
   if (!res.ok) {
     throw new Error(`Gluetun API error: ${res.status} ${res.statusText}`);
   }

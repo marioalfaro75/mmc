@@ -33,6 +33,8 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'CONFIG_ROOT', label: 'Config Root', type: 'path', group: 'general', description: 'Root path for container configs', required: true, default: '~/.mmc/config', affectsServices: ALL_SERVICES },
   { key: 'BACKUP_DIR', label: 'Backup Directory', type: 'path', group: 'general', description: 'Where backup.sh stores archives', required: true, default: '~/.mmc/backups', affectsServices: [] },
   { key: 'LOG_LEVEL', label: 'Log Level', type: 'select', group: 'general', description: 'Application log verbosity', default: 'info', options: ['debug', 'info', 'warn', 'error'], affectsServices: ['media-ui'] },
+  { key: 'MMC_API_KEY', label: 'API Key', type: 'secret', group: 'general', description: 'Optional API key to require authentication for the web UI (leave blank to disable)', sensitive: true, affectsServices: ['media-ui'] },
+  { key: 'GLUETUN_CONTROL_PASSWORD', label: 'Gluetun Control Password', type: 'secret', group: 'general', description: 'Password for the Gluetun VPN control API (basic auth)', sensitive: true, default: 'changeme', affectsServices: ['gluetun'] },
 
   // --- VPN ---
   { key: 'VPN_SERVICE_PROVIDER', label: 'VPN Provider', type: 'select', group: 'vpn', description: 'VPN service provider', required: true, options: ['protonvpn', 'mullvad', 'airvpn', 'nordvpn', 'surfshark', 'expressvpn', 'windscribe', 'privado', 'custom'], affectsServices: VPN_SERVICES },
@@ -74,18 +76,18 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'WATCHTOWER_NOTIFICATIONS', label: 'Notification URL', type: 'string', group: 'services', description: 'Shoutrrr URL for Watchtower notifications (Discord, Slack, Email)', affectsServices: ['watchtower'] },
 
   // --- Images ---
-  { key: 'IMAGE_SONARR', label: 'Sonarr Image', type: 'string', group: 'images', description: 'Docker image for Sonarr', default: 'lscr.io/linuxserver/sonarr:latest', affectsServices: ['sonarr'] },
-  { key: 'IMAGE_RADARR', label: 'Radarr Image', type: 'string', group: 'images', description: 'Docker image for Radarr', default: 'lscr.io/linuxserver/radarr:latest', affectsServices: ['radarr'] },
-  { key: 'IMAGE_PROWLARR', label: 'Prowlarr Image', type: 'string', group: 'images', description: 'Docker image for Prowlarr', default: 'lscr.io/linuxserver/prowlarr:latest', affectsServices: ['prowlarr'] },
-  { key: 'IMAGE_QBITTORRENT', label: 'qBittorrent Image', type: 'string', group: 'images', description: 'Docker image for qBittorrent', default: 'lscr.io/linuxserver/qbittorrent:latest', affectsServices: ['qbittorrent'] },
-  { key: 'IMAGE_SABNZBD', label: 'SABnzbd Image', type: 'string', group: 'images', description: 'Docker image for SABnzbd', default: 'lscr.io/linuxserver/sabnzbd:latest', affectsServices: ['sabnzbd'] },
-  { key: 'IMAGE_SEERR', label: 'Seerr Image', type: 'string', group: 'images', description: 'Docker image for Seerr', default: 'ghcr.io/seerr-team/seerr:latest', affectsServices: ['seerr'] },
-  { key: 'IMAGE_BAZARR', label: 'Bazarr Image', type: 'string', group: 'images', description: 'Docker image for Bazarr', default: 'lscr.io/linuxserver/bazarr:latest', affectsServices: ['bazarr'] },
-  { key: 'IMAGE_TAUTULLI', label: 'Tautulli Image', type: 'string', group: 'images', description: 'Docker image for Tautulli', default: 'lscr.io/linuxserver/tautulli:latest', affectsServices: ['tautulli'] },
-  { key: 'IMAGE_GLUETUN', label: 'Gluetun Image', type: 'string', group: 'images', description: 'Docker image for Gluetun', default: 'qmcgaw/gluetun:latest', affectsServices: ['gluetun'] },
-  { key: 'IMAGE_RECYCLARR', label: 'Recyclarr Image', type: 'string', group: 'images', description: 'Docker image for Recyclarr', default: 'ghcr.io/recyclarr/recyclarr:latest', affectsServices: ['recyclarr'] },
-  { key: 'IMAGE_UNPACKERR', label: 'Unpackerr Image', type: 'string', group: 'images', description: 'Docker image for Unpackerr', default: 'golift/unpackerr:latest', affectsServices: ['unpackerr'] },
-  { key: 'IMAGE_WATCHTOWER', label: 'Watchtower Image', type: 'string', group: 'images', description: 'Docker image for Watchtower', default: 'containrrr/watchtower:latest', affectsServices: ['watchtower'] },
+  { key: 'IMAGE_SONARR', label: 'Sonarr Image', type: 'string', group: 'images', description: 'Docker image for Sonarr', default: 'lscr.io/linuxserver/sonarr:4.0.14', affectsServices: ['sonarr'] },
+  { key: 'IMAGE_RADARR', label: 'Radarr Image', type: 'string', group: 'images', description: 'Docker image for Radarr', default: 'lscr.io/linuxserver/radarr:5.21.1', affectsServices: ['radarr'] },
+  { key: 'IMAGE_PROWLARR', label: 'Prowlarr Image', type: 'string', group: 'images', description: 'Docker image for Prowlarr', default: 'lscr.io/linuxserver/prowlarr:1.31.2', affectsServices: ['prowlarr'] },
+  { key: 'IMAGE_QBITTORRENT', label: 'qBittorrent Image', type: 'string', group: 'images', description: 'Docker image for qBittorrent', default: 'lscr.io/linuxserver/qbittorrent:5.0.4', affectsServices: ['qbittorrent'] },
+  { key: 'IMAGE_SABNZBD', label: 'SABnzbd Image', type: 'string', group: 'images', description: 'Docker image for SABnzbd', default: 'lscr.io/linuxserver/sabnzbd:4.4.1', affectsServices: ['sabnzbd'] },
+  { key: 'IMAGE_SEERR', label: 'Seerr Image', type: 'string', group: 'images', description: 'Docker image for Seerr', default: 'ghcr.io/seerr-team/seerr:2.3.0', affectsServices: ['seerr'] },
+  { key: 'IMAGE_BAZARR', label: 'Bazarr Image', type: 'string', group: 'images', description: 'Docker image for Bazarr', default: 'lscr.io/linuxserver/bazarr:1.5.1', affectsServices: ['bazarr'] },
+  { key: 'IMAGE_TAUTULLI', label: 'Tautulli Image', type: 'string', group: 'images', description: 'Docker image for Tautulli', default: 'lscr.io/linuxserver/tautulli:2.15.0', affectsServices: ['tautulli'] },
+  { key: 'IMAGE_GLUETUN', label: 'Gluetun Image', type: 'string', group: 'images', description: 'Docker image for Gluetun', default: 'qmcgaw/gluetun:v3.40', affectsServices: ['gluetun'] },
+  { key: 'IMAGE_RECYCLARR', label: 'Recyclarr Image', type: 'string', group: 'images', description: 'Docker image for Recyclarr', default: 'ghcr.io/recyclarr/recyclarr:7.4.0', affectsServices: ['recyclarr'] },
+  { key: 'IMAGE_UNPACKERR', label: 'Unpackerr Image', type: 'string', group: 'images', description: 'Docker image for Unpackerr', default: 'golift/unpackerr:0.14.5', affectsServices: ['unpackerr'] },
+  { key: 'IMAGE_WATCHTOWER', label: 'Watchtower Image', type: 'string', group: 'images', description: 'Docker image for Watchtower', default: 'containrrr/watchtower:1.7.1', affectsServices: ['watchtower'] },
 ];
 
 const MASKED_VALUE = '••••••••';

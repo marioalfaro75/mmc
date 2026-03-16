@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { restartServicesStaged } from '@/lib/docker';
+import { sanitizeError } from '@/lib/security';
 
 export async function POST(request: Request) {
   const projectDir = process.env.HOST_PROJECT_DIR;
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: 'restarted', services });
     } catch (err) {
       return NextResponse.json(
-        { error: 'Selective restart failed', details: String(err) },
+        { error: 'Selective restart failed', details: sanitizeError(err) },
         { status: 500 }
       );
     }
@@ -37,19 +38,19 @@ export async function POST(request: Request) {
   const envFile = `${projectDir}/.env`;
   const composeFile = `${projectDir}/docker-compose.yml`;
 
-  const cmd = [
-    'docker compose',
-    `-f ${composeFile}`,
-    `--project-directory ${projectDir}`,
-    `--env-file ${envFile}`,
-    'up -d --force-recreate',
-  ].join(' ');
+  const args = [
+    'compose',
+    '-f', composeFile,
+    '--project-directory', projectDir,
+    '--env-file', envFile,
+    'up', '-d', '--force-recreate',
+  ];
 
-  exec(cmd, (err) => {
+  execFile('docker', args, (err) => {
     if (err) {
       console.error('Restart failed:', err.message);
     }
   });
 
-  return NextResponse.json({ status: 'restarting', command: cmd });
+  return NextResponse.json({ status: 'restarting' });
 }

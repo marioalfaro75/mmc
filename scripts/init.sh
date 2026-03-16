@@ -75,12 +75,12 @@ done
 
 # --- Set ownership and permissions ---
 echo ""
-echo "Setting ownership ($PUID:$PGID) and permissions (775)..."
+echo "Setting ownership ($PUID:$PGID) and permissions (750)..."
 chown -R "$PUID:$PGID" "$DATA_ROOT" 2>/dev/null || echo "  ⚠ Could not chown $DATA_ROOT (run with sudo if needed)"
-chmod -R 775 "$DATA_ROOT" 2>/dev/null || echo "  ⚠ Could not chmod $DATA_ROOT"
+chmod -R 750 "$DATA_ROOT" 2>/dev/null || echo "  ⚠ Could not chmod $DATA_ROOT"
 
 chown -R "$PUID:$PGID" "$CONFIG_ROOT" 2>/dev/null || echo "  ⚠ Could not chown $CONFIG_ROOT (run with sudo if needed)"
-chmod -R 775 "$CONFIG_ROOT" 2>/dev/null || echo "  ⚠ Could not chmod $CONFIG_ROOT"
+chmod -R 750 "$CONFIG_ROOT" 2>/dev/null || echo "  ⚠ Could not chmod $CONFIG_ROOT"
 
 echo ""
 echo "=== Done! ==="

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import { sanitizeError } from '@/lib/security';
 
 function getDeployLogDir(): string {
   // Deploy logs are stored in ~/.mmc/logs by the deploy script
@@ -25,7 +26,11 @@ export async function GET(request: NextRequest) {
     if (file) {
       // Return contents of a specific deploy log
       const safeName = file.replace(/[^a-zA-Z0-9._-]/g, '');
-      const filepath = join(dir, safeName);
+      const resolvedPath = join(dir, safeName);
+      if (!resolvedPath.startsWith(dir)) {
+        return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
+      }
+      const filepath = resolvedPath;
       if (!existsSync(filepath)) {
         return NextResponse.json({ error: 'Log file not found' }, { status: 404 });
       }
@@ -51,7 +56,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ files });
   } catch (err) {
     return NextResponse.json(
-      { error: 'Failed to read deploy logs', details: String(err) },
+      { error: 'Failed to read deploy logs', details: sanitizeError(err) },
       { status: 500 }
     );
   }

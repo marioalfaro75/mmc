@@ -3,6 +3,7 @@ import { VALID_SERVICES, getServiceLogs } from '@/lib/docker';
 import { readEnv } from '@/lib/env';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { sanitizeError } from '@/lib/security';
 
 interface ServiceLogConfig {
   /** Path relative to CONFIG_ROOT (or absolute if starts with /) */
@@ -89,7 +90,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ name
       return NextResponse.json({ service: name, source: 'docker', logs });
     } catch (err) {
       return NextResponse.json(
-        { error: `Failed to get docker logs for ${name}`, details: String(err) },
+        { error: `Failed to get docker logs for ${name}`, details: sanitizeError(err) },
         { status: 500 }
       );
     }
@@ -111,7 +112,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ name
       });
     } catch (err) {
       return NextResponse.json(
-        { error: `No app logs available for ${name} and docker logs failed`, details: String(err) },
+        { error: `No app logs available for ${name} and docker logs failed`, details: sanitizeError(err) },
         { status: 500 }
       );
     }
@@ -123,7 +124,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ name
   // If a specific file is requested
   if (file) {
     const safeName = file.replace(/[^a-zA-Z0-9._-]/g, '');
-    const content = readLogFile(join(logDir, safeName), lines);
+    const resolvedPath = join(logDir, safeName);
+    if (!resolvedPath.startsWith(logDir)) {
+      return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
+    }
+    const content = readLogFile(resolvedPath, lines);
     if (content === null) {
       return NextResponse.json({ error: `Log file not found: ${safeName}` }, { status: 404 });
     }

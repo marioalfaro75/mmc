@@ -495,6 +495,13 @@ run_setup_wizard() {
     pass "LOCAL_SUBNET=$_local_subnet (auto-detected from default network interface)"
 
     pass ".env written with your values"
+
+    # Redact secrets from log file
+    if [ -n "$_MMC_LOGGED" ] && [ -f "$_MMC_LOGGED" ]; then
+        sed -i 's/WIREGUARD_PRIVATE_KEY=.*/WIREGUARD_PRIVATE_KEY=[REDACTED]/' "$_MMC_LOGGED"
+        sed -i 's/WIREGUARD_PRESHARED_KEY=.*/WIREGUARD_PRESHARED_KEY=[REDACTED]/' "$_MMC_LOGGED"
+    fi
+
     info "You can edit $ENV_FILE to fine-tune other settings."
 }
 

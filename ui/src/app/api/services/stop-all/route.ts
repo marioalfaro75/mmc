@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { VALID_SERVICES, stopService } from '@/lib/docker';
 import { logger } from '@/lib/logger';
+import { sanitizeError } from '@/lib/security';
 
 export async function POST() {
   const servicesToStop = Array.from(VALID_SERVICES).filter((s) => s !== 'media-ui');
@@ -19,7 +20,7 @@ export async function POST() {
       results.push({ service, status: 'stopped' });
     } catch (err) {
       logger.error('services', `Failed to stop ${service}`, { error: String(err) });
-      results.push({ service, status: 'error', error: String(err) });
+      results.push({ service, status: 'error', error: sanitizeError(err) });
     }
   }
 

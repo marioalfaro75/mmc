@@ -5,6 +5,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { readEnv } from '@/lib/env';
 import { logger } from '@/lib/logger';
+import { sanitizeError } from '@/lib/security';
 
 const execFileAsync = promisify(execFile);
 const MAX_BACKUPS = 7;
@@ -83,7 +84,7 @@ export async function GET() {
     return NextResponse.json({ backups, backupDir });
   } catch (err) {
     return NextResponse.json(
-      { error: 'Failed to list backups', details: String(err) },
+      { error: 'Failed to list backups', details: sanitizeError(err) },
       { status: 500 }
     );
   }
@@ -121,7 +122,7 @@ export async function POST() {
   } catch (err) {
     logger.error('backup', 'Backup failed', { error: String(err) });
     return NextResponse.json(
-      { error: 'Backup failed', details: String(err) },
+      { error: 'Backup failed', details: sanitizeError(err) },
       { status: 500 }
     );
   }

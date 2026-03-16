@@ -14,16 +14,18 @@ services:
     container_name: gluetun
     cap_add:
       - NET_ADMIN
+    cap_drop:
+      - ALL
     devices:
       - /dev/net/tun:/dev/net/tun
     networks:
       - medianet
     ports:
-      - "${PORT_QBITTORRENT}:8080"       # qBittorrent WebUI
-      - "${PORT_SABNZBD}:8081"           # SABnzbd WebUI
+      - "127.0.0.1:${PORT_QBITTORRENT}:8080"       # qBittorrent WebUI
+      - "127.0.0.1:${PORT_SABNZBD}:8081"           # SABnzbd WebUI
       - "6881:6881/tcp"                   # Torrent listening
       - "6881:6881/udp"
-      - "${PORT_GLUETUN_CONTROL}:8000"   # Gluetun control API
+      - "127.0.0.1:${PORT_GLUETUN_CONTROL}:8000"   # Gluetun control API
     environment:
       - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
       - VPN_TYPE=${VPN_TYPE}
@@ -38,12 +40,12 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - UPDATER_PERIOD=24h
-      - HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"none"}
+      - HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"basic","username":"mmc","password":"${GLUETUN_CONTROL_PASSWORD:-changeme}"}
     volumes:
       - ${CONFIG_ROOT}/gluetun:/gluetun
     restart: always
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8000/v1/vpn/status"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null --user mmc --password '${GLUETUN_CONTROL_PASSWORD:-changeme}' http://localhost:8000/v1/vpn/status"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -123,7 +125,7 @@ services:
     networks:
       - medianet
     ports:
-      - "${PORT_PROWLARR}:9696"
+      - "127.0.0.1:${PORT_PROWLARR}:9696"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -140,7 +142,7 @@ services:
     networks:
       - medianet
     ports:
-      - "${PORT_SONARR}:8989"
+      - "127.0.0.1:${PORT_SONARR}:8989"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -158,7 +160,7 @@ services:
     networks:
       - medianet
     ports:
-      - "${PORT_RADARR}:7878"
+      - "127.0.0.1:${PORT_RADARR}:7878"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -179,7 +181,7 @@ services:
     networks:
       - medianet
     ports:
-      - "${PORT_BAZARR}:6767"
+      - "127.0.0.1:${PORT_BAZARR}:6767"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -197,7 +199,7 @@ services:
     networks:
       - medianet
     ports:
-      - "${PORT_TAUTULLI}:8181"
+      - "127.0.0.1:${PORT_TAUTULLI}:8181"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -217,7 +219,7 @@ services:
     networks:
       - medianet
     ports:
-      - "${PORT_SEERR}:5055"
+      - "127.0.0.1:${PORT_SEERR}:5055"
     environment:
       - TZ=${TZ}
       - LOG_LEVEL=info
@@ -267,7 +269,7 @@ services:
     networks:
       - medianet
     ports:
-      - "${PORT_UI}:3000"
+      - "127.0.0.1:${PORT_UI}:3000"
     environment:
       - SONARR_URL=http://sonarr:8989
       - SONARR_API_KEY=${SONARR_API_KEY:-}
@@ -290,6 +292,8 @@ services:
       - HOST_PROJECT_DIR=${HOST_PROJECT_DIR}
       - ENV_FILE_PATH=${HOST_PROJECT_DIR}/.env
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - MMC_API_KEY=${MMC_API_KEY:-}
+      - GLUETUN_CONTROL_PASSWORD=${GLUETUN_CONTROL_PASSWORD:-changeme}
     volumes:
       - ./:${HOST_PROJECT_DIR}
       - /var/run/docker.sock:/var/run/docker.sock

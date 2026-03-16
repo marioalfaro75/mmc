@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { existsSync, readFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { readEnv } from '@/lib/env';
+import { sanitizeError } from '@/lib/security';
 
 function getBackupDir(): string {
   const vars = readEnv();
@@ -39,7 +40,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ fil
     });
   } catch (err) {
     return NextResponse.json(
-      { error: 'Failed to read backup file', details: String(err) },
+      { error: 'Failed to read backup file', details: sanitizeError(err) },
       { status: 500 }
     );
   }
@@ -63,7 +64,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     return NextResponse.json({ status: 'deleted', filename });
   } catch (err) {
     return NextResponse.json(
-      { error: 'Failed to delete backup', details: String(err) },
+      { error: 'Failed to delete backup', details: sanitizeError(err) },
       { status: 500 }
     );
   }

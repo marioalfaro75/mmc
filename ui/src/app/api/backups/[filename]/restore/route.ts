@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { readEnv } from '@/lib/env';
 import { logger } from '@/lib/logger';
+import { sanitizeError } from '@/lib/security';
 
 const execFileAsync = promisify(execFile);
 
@@ -66,8 +67,8 @@ export async function POST(_request: Request, { params }: { params: Promise<{ fi
     }
 
     // Step 2: Extract backup over CONFIG_ROOT
-    const configParent = require('path').dirname(configRoot);
-    await execFileAsync('tar', ['-xzf', filepath, '-C', configParent], { timeout: 120000 });
+    const configParent = dirname(configRoot);
+    await execFileAsync('tar', ['-xzf', filepath, '--no-same-owner', '-C', configParent], { timeout: 120000 });
     logger.info('restore', 'Backup extracted successfully');
 
     // Step 3: Fix ownership (best-effort)
@@ -102,7 +103,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ fi
     }
 
     return NextResponse.json(
-      { error: 'Restore failed', details: String(err) },
+      { error: 'Restore failed', details: sanitizeError(err) },
       { status: 500 }
     );
   }

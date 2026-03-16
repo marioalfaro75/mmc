@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { sanitizeError } from '@/lib/security';
 import { deleteTorrent, pauseTorrent, resumeTorrent, forceStartTorrent } from '@/lib/api/qbittorrent';
 import { deleteItem as deleteUsenet, pauseItem as pauseUsenet, resumeItem as resumeUsenet } from '@/lib/api/sabnzbd';
 
@@ -37,7 +38,7 @@ export async function PATCH(
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json(
-      { error: `Failed to update download: ${String(error)}` },
+      { error: `Failed to update download: ${sanitizeError(error)}` },
       { status: 500 }
     );
   }
