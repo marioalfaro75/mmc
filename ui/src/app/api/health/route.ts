@@ -4,10 +4,8 @@ import { getSystemStatus as getRadarrStatus } from '@/lib/api/radarr';
 import { getSystemStatus as getProwlarrStatus } from '@/lib/api/prowlarr';
 import { getVersion as getQbtVersion } from '@/lib/api/qbittorrent';
 import { getVersion as getSabnzbdVersion } from '@/lib/api/sabnzbd';
-import { getIdentity as getPlexIdentity } from '@/lib/api/plex';
 import { getVpnStatus } from '@/lib/api/gluetun';
 import { getStatus as getSeerrStatus } from '@/lib/api/seerr';
-import { getServerInfo as getTautulliInfo } from '@/lib/api/tautulli';
 import type { ServiceHealth } from '@/lib/types/common';
 
 async function checkService(
@@ -43,10 +41,6 @@ export async function GET() {
     checkService('SABnzbd', '/sabnzbd', async () => {
       return await getSabnzbdVersion();
     }),
-    checkService('Plex', '/plex', async () => {
-      const id = await getPlexIdentity();
-      return id.version;
-    }),
     checkService('Gluetun', '/gluetun', async () => {
       const s = await getVpnStatus();
       return s.status;
@@ -54,10 +48,6 @@ export async function GET() {
     checkService('Seerr', '/seerr', async () => {
       const s = await getSeerrStatus();
       return s.version;
-    }),
-    checkService('Tautulli', '/tautulli', async () => {
-      const s = await getTautulliInfo();
-      return s.pms_version;
     }),
   ]);
 

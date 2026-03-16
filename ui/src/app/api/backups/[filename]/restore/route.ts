@@ -56,7 +56,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ fi
     // Step 1: Stop all services except media-ui (best-effort)
     const allServices = [
       'gluetun', 'qbittorrent', 'sabnzbd', 'unpackerr', 'prowlarr',
-      'sonarr', 'radarr', 'plex', 'bazarr', 'tautulli', 'seerr',
+      'sonarr', 'radarr', 'bazarr', 'seerr',
       'recyclarr', 'watchtower',
     ];
     try {

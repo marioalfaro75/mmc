@@ -26,9 +26,7 @@ const SERVICE_LOG_MAP: Record<string, ServiceLogConfig> = {
   radarr: { dir: 'radarr/logs', files: ['radarr.txt'] },
   prowlarr: { dir: 'prowlarr/logs', files: ['prowlarr.txt'] },
   bazarr: { dir: 'bazarr/log', files: ['bazarr.log'] },
-  tautulli: { dir: 'tautulli/logs', files: ['tautulli.log'] },
   seerr: { dir: 'seerr/logs', files: ['seerr.log'] },
-  plex: { dir: 'plex/Library/Application Support/Plex Media Server/Logs', files: ['Plex Media Server.log'] },
   recyclarr: { dir: 'recyclarr/logs/cli', files: [], listAll: true },
   'media-ui': { dir: getMediaUiLogDir(), files: ['app.log'], absolute: true },
 };

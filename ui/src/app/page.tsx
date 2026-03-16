@@ -1,7 +1,6 @@
 import { StatsCards } from '@/components/dashboard/StatsCards';
 import { ActiveDownloads } from '@/components/dashboard/ActiveDownloads';
 import { UpcomingReleases } from '@/components/dashboard/UpcomingReleases';
-import { RecentlyAdded } from '@/components/dashboard/RecentlyAdded';
 import { SystemHealth } from '@/components/dashboard/SystemHealth';
 import { DownloadStats } from '@/components/dashboard/DownloadStats';
 import { PendingRequests } from '@/components/dashboard/PendingRequests';
@@ -14,7 +13,6 @@ export default function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <ActiveDownloads />
         <UpcomingReleases />
-        <RecentlyAdded />
         <SystemHealth />
         <DownloadStats />
         <PendingRequests />

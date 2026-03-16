@@ -189,7 +189,7 @@ show_help() {
     echo "  1. gluetun (VPN)           — fail-fast, 60s healthcheck"
     echo "  2. qbittorrent, sabnzbd    — download clients"
     echo "  3. prowlarr, sonarr, radarr, unpackerr — arr stack"
-    echo "  4. bazarr, tautulli, seerr — media companions"
+    echo "  4. bazarr, seerr — media companions"
     echo "  5. recyclarr, watchtower   — operations"
     echo "  6. media-ui                — unified dashboard"
     exit 0
@@ -639,7 +639,6 @@ print_services_summary() {
     PORT_SABNZBD="${PORT_SABNZBD:-8081}"
     PORT_SEERR="${PORT_SEERR:-5055}"
     PORT_BAZARR="${PORT_BAZARR:-6767}"
-    PORT_TAUTULLI="${PORT_TAUTULLI:-8181}"
     PORT_GLUETUN_CONTROL="${PORT_GLUETUN_CONTROL:-8000}"
 
     printf "\n  ${GREEN}${BOLD}Mars Media Centre${RESET}  ${GREEN}http://localhost:${PORT_UI}${RESET}\n"
@@ -659,7 +658,6 @@ print_services_summary() {
 
     info "${BOLD}Media Companions${RESET}"
     info "  Bazarr         http://localhost:${PORT_BAZARR}        Subtitle management"
-    info "  Tautulli       http://localhost:${PORT_TAUTULLI}        Plex analytics"
     echo ""
 
     info "${BOLD}Operations${RESET}"
@@ -819,16 +817,15 @@ stage_arr_stack() {
 stage_media_server() {
     section "Stage 4: Media Companions"
     cd "$PROJECT_DIR"
-    info "Starting bazarr, tautulli, seerr..."
-    docker compose up -d bazarr tautulli seerr
+    info "Starting bazarr, seerr..."
+    docker compose up -d bazarr seerr
 
     sleep 10
 
     PORT_BAZARR="${PORT_BAZARR:-6767}"
-    PORT_TAUTULLI="${PORT_TAUTULLI:-8181}"
     PORT_SEERR="${PORT_SEERR:-5055}"
 
-    for _svc_port in "bazarr:$PORT_BAZARR" "tautulli:$PORT_TAUTULLI" "seerr:$PORT_SEERR"; do
+    for _svc_port in "bazarr:$PORT_BAZARR" "seerr:$PORT_SEERR"; do
         _svc="${_svc_port%%:*}"
         _port="${_svc_port##*:}"
         if wait_for_port "$_port" 10; then
@@ -882,7 +879,7 @@ check_all_containers() {
     section "Container Status"
     cd "$PROJECT_DIR"
 
-    _expected="gluetun qbittorrent sabnzbd prowlarr sonarr radarr unpackerr bazarr tautulli seerr recyclarr watchtower media-ui"
+    _expected="gluetun qbittorrent sabnzbd prowlarr sonarr radarr unpackerr bazarr seerr recyclarr watchtower media-ui"
     _running_count=0
     _expected_count=0
 
@@ -928,7 +925,6 @@ check_service_ports() {
     PORT_SONARR="${PORT_SONARR:-8989}"
     PORT_RADARR="${PORT_RADARR:-7878}"
     PORT_BAZARR="${PORT_BAZARR:-6767}"
-    PORT_TAUTULLI="${PORT_TAUTULLI:-8181}"
     PORT_SEERR="${PORT_SEERR:-5055}"
     PORT_GLUETUN_CONTROL="${PORT_GLUETUN_CONTROL:-8000}"
     PORT_UI="${PORT_UI:-3000}"
@@ -941,7 +937,6 @@ check_service_ports() {
         "sonarr:$PORT_SONARR" \
         "radarr:$PORT_RADARR" \
         "bazarr:$PORT_BAZARR" \
-        "tautulli:$PORT_TAUTULLI" \
         "seerr:$PORT_SEERR" \
         "media-ui:$PORT_UI"; do
         _svc="${_svc_port%%:*}"
@@ -1329,7 +1324,7 @@ elif [ "$UPDATE_MODE" = "1" ]; then
 
     section "Rebuild & Restart"
     cd "$PROJECT_DIR"
-    cleanup_stale_containers "gluetun qbittorrent sabnzbd prowlarr sonarr radarr unpackerr bazarr tautulli seerr recyclarr watchtower media-ui"
+    cleanup_stale_containers "gluetun qbittorrent sabnzbd prowlarr sonarr radarr unpackerr bazarr seerr recyclarr watchtower media-ui"
     info "Running docker compose up -d --build..."
     docker compose up -d --build
     pass "docker compose up -d --build completed"
@@ -1363,7 +1358,7 @@ else
     run_init
     build_ui
 
-    cleanup_stale_containers "gluetun qbittorrent sabnzbd prowlarr sonarr radarr unpackerr bazarr tautulli seerr recyclarr watchtower media-ui"
+    cleanup_stale_containers "gluetun qbittorrent sabnzbd prowlarr sonarr radarr unpackerr bazarr seerr recyclarr watchtower media-ui"
     if detect_first_run; then
         info "First run detected — starting staged deploy"
 

@@ -193,23 +193,6 @@ services:
     labels:
       - com.centurylinklabs.watchtower.enable=true
 
-  tautulli:
-    image: ${IMAGE_TAUTULLI}
-    container_name: tautulli
-    networks:
-      - medianet
-    ports:
-      - "127.0.0.1:${PORT_TAUTULLI}:8181"
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-    volumes:
-      - ${CONFIG_ROOT}/tautulli:/config
-    restart: unless-stopped
-    labels:
-      - com.centurylinklabs.watchtower.enable=true
-
   # ============================================================
   # Request Management
   # ============================================================
@@ -283,11 +266,8 @@ services:
       - SABNZBD_URL=http://gluetun:8081
       - SABNZBD_API_KEY=${SABNZBD_API_KEY:-}
       - PLEX_URL=${PLEX_URL:-http://host.docker.internal:32400}
-      - PLEX_TOKEN=${PLEX_TOKEN:-}
       - SEERR_URL=http://seerr:5055
       - SEERR_API_KEY=${SEERR_API_KEY:-}
-      - TAUTULLI_URL=http://tautulli:8181
-      - TAUTULLI_API_KEY=${TAUTULLI_API_KEY:-}
       - GLUETUN_URL=http://gluetun:8000
       - HOST_PROJECT_DIR=${HOST_PROJECT_DIR}
       - ENV_FILE_PATH=${HOST_PROJECT_DIR}/.env

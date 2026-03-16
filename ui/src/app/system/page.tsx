@@ -33,7 +33,6 @@ const SERVICE_CATALOG: Record<string, ServiceInfo> = {
   radarr: { description: 'Movie manager — monitors, downloads, and organises movies', port: 7878 },
   unpackerr: { description: 'Archive extractor — unpacks completed downloads for import' },
   bazarr: { description: 'Subtitle manager — finds and downloads subtitles automatically', port: 6767 },
-  tautulli: { description: 'Plex analytics — monitors play history and streaming stats', port: 8181 },
   seerr: { description: 'Request manager — lets users browse and request media', port: 5055 },
   recyclarr: { description: 'Quality sync — keeps quality profiles aligned with TRaSH Guides' },
   watchtower: { description: 'Auto-updater — checks for and applies Docker image updates' },
@@ -49,7 +48,7 @@ const SERVICE_GROUPS: ServiceGroup[] = [
   { label: 'VPN Gateway', services: ['gluetun'] },
   { label: 'Download Clients', services: ['qbittorrent', 'sabnzbd'] },
   { label: 'Indexer & Media Managers', services: ['prowlarr', 'sonarr', 'radarr', 'unpackerr'] },
-  { label: 'Media Companions', services: ['bazarr', 'tautulli', 'seerr'] },
+  { label: 'Media Companions', services: ['bazarr', 'seerr'] },
   { label: 'Operations', services: ['recyclarr', 'watchtower'] },
   { label: 'Web UI', services: ['media-ui'] },
 ];

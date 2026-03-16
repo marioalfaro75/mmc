@@ -24,7 +24,6 @@ export const VALID_SERVICES = new Set([
   'sonarr',
   'radarr',
   'bazarr',
-  'tautulli',
   'seerr',
   'recyclarr',
   'watchtower',

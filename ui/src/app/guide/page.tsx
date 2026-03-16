@@ -555,33 +555,6 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
         <h2 className="mb-3 text-lg font-semibold">Phase 3: Media Server & Companions</h2>
         <div className="space-y-3">
           <AccordionSection
-            title="Plex"
-            port="localhost:32400/web"
-            description="External media streaming server — configure the UI to connect to your existing Plex"
-          >
-            <Step n={1}>
-              <p>Set <Code>PLEX_URL</Code> and <Code>PLEX_TOKEN</Code> in Settings → Services to connect to your Plex server.</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Find your token in Plex config at <Code>Preferences.xml</Code> (look for <Code>PlexOnlineToken</Code>).
-              </p>
-            </Step>
-            <Step n={2}>
-              <p>Add libraries in Plex: Settings → Libraries → Add Library:</p>
-              <ul className="ml-4 mt-1 list-disc text-xs text-muted-foreground">
-                <li>Movies → Add folder → <Code>/movies</Code></li>
-                <li>TV Shows → Add folder → <Code>/tv</Code></li>
-              </ul>
-            </Step>
-            <Step n={3}>
-              <p>Enable remote access: Settings → Remote Access → Enable Remote Access</p>
-              <p className="text-xs text-muted-foreground">If it fails, ensure port 32400 is forwarded on your router.</p>
-            </Step>
-            <Tip>
-              Plex claim tokens expire after 4 minutes. Generate and use it quickly during first setup.
-            </Tip>
-          </AccordionSection>
-
-          <AccordionSection
             title="Bazarr"
             port="localhost:6767"
             description="Subtitle management — automatically downloads subtitles for your media"
@@ -605,24 +578,6 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
             </Step>
           </AccordionSection>
 
-          <AccordionSection
-            title="Tautulli"
-            port="localhost:8181"
-            description="Plex monitoring — tracks viewing history, statistics, and notifications"
-          >
-            <Step n={1}>
-              <p>Complete the setup wizard on first access. It will auto-detect the local Plex server.</p>
-            </Step>
-            <Step n={2}>
-              <p>If prompted, use Plex connection details: Host <Code>plex</Code>, Port <Code>32400</Code></p>
-            </Step>
-            <Step n={3}>
-              <p>Sign in with your Plex account to access viewing history and statistics.</p>
-            </Step>
-            <Tip>
-              Tautulli can send notifications (Discord, email, etc.) for new additions and playback events. Configure under Settings → Notification Agents.
-            </Tip>
-          </AccordionSection>
         </div>
       </div>
 
@@ -717,7 +672,7 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
             <ul className="ml-4 mt-1 list-disc text-xs text-muted-foreground">
               <li>
                 <strong>App Logs</strong> — reads the actual log files from <Code>CONFIG_ROOT</Code> (e.g.
-                Sonarr&apos;s <Code>sonarr.txt</Code>, Radarr&apos;s <Code>radarr.txt</Code>, Plex&apos;s <Code>Plex Media Server.log</Code>)
+                Sonarr&apos;s <Code>sonarr.txt</Code>, Radarr&apos;s <Code>radarr.txt</Code>)
               </li>
               <li>
                 <strong>Docker</strong> — shows container stdout/stderr output (useful for services like
@@ -725,7 +680,7 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
               </li>
             </ul>
             <p className="mt-1 text-xs text-muted-foreground">
-              A file picker appears when a service has multiple log files (e.g. Tautulli, Recyclarr).
+              A file picker appears when a service has multiple log files (e.g. Recyclarr).
             </p>
 
             <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Deploy Tab</h4>

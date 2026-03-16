@@ -66,7 +66,7 @@ done
 # --- Config directories ---
 echo ""
 echo "Creating config directories..."
-CONFIG_SERVICES="gluetun qbittorrent sabnzbd sonarr radarr prowlarr plex seerr bazarr tautulli recyclarr"
+CONFIG_SERVICES="gluetun qbittorrent sabnzbd sonarr radarr prowlarr seerr bazarr recyclarr"
 
 for svc in $CONFIG_SERVICES; do
     mkdir -p "$CONFIG_ROOT/$svc"

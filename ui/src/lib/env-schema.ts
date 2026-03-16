@@ -17,7 +17,7 @@ export interface EnvVarDef {
 
 const ALL_SERVICES = [
   'gluetun', 'qbittorrent', 'sabnzbd', 'unpackerr', 'prowlarr',
-  'sonarr', 'radarr', 'bazarr', 'tautulli', 'seerr',
+  'sonarr', 'radarr', 'bazarr', 'seerr',
   'recyclarr', 'watchtower', 'media-ui',
 ];
 
@@ -56,7 +56,6 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'PORT_SABNZBD', label: 'SABnzbd Port', type: 'port', group: 'network', description: 'SABnzbd web UI port', default: '8081', affectsServices: ['gluetun'] },
   { key: 'PORT_SEERR', label: 'Seerr Port', type: 'port', group: 'network', description: 'Seerr web UI port', default: '5055', affectsServices: ['seerr'] },
   { key: 'PORT_BAZARR', label: 'Bazarr Port', type: 'port', group: 'network', description: 'Bazarr web UI port', default: '6767', affectsServices: ['bazarr'] },
-  { key: 'PORT_TAUTULLI', label: 'Tautulli Port', type: 'port', group: 'network', description: 'Tautulli web UI port', default: '8181', affectsServices: ['tautulli'] },
   { key: 'PORT_GLUETUN_CONTROL', label: 'Gluetun Control Port', type: 'port', group: 'network', description: 'Gluetun HTTP control port', default: '8000', affectsServices: ['gluetun'] },
   { key: 'PORT_UI', label: 'Web UI Port', type: 'port', group: 'network', description: 'Unified web UI port', default: '3000', affectsServices: ['media-ui'] },
 
@@ -67,9 +66,7 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'QBITTORRENT_PASSWORD', label: 'qBittorrent Password', type: 'secret', group: 'services', description: 'qBittorrent web UI password', sensitive: true, affectsServices: ['media-ui'], servicePort: 8080 },
   { key: 'SABNZBD_API_KEY', label: 'SABnzbd API Key', type: 'secret', group: 'services', description: 'API key from SABnzbd → Config → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 8081 },
   { key: 'SEERR_API_KEY', label: 'Seerr API Key', type: 'secret', group: 'services', description: 'API key from Seerr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 5055 },
-  { key: 'TAUTULLI_API_KEY', label: 'Tautulli API Key', type: 'secret', group: 'services', description: 'API key from Tautulli → Settings → Web Interface', sensitive: true, affectsServices: ['media-ui'], servicePort: 8181 },
   { key: 'PLEX_URL', label: 'Plex URL', type: 'string', group: 'services', description: 'Plex server URL (e.g. http://192.168.1.x:32400)', default: 'http://localhost:32400', affectsServices: ['media-ui'] },
-  { key: 'PLEX_TOKEN', label: 'Plex Token', type: 'secret', group: 'services', description: 'Plex authentication token', sensitive: true, affectsServices: ['media-ui'] },
   { key: 'UN_SONARR_0_API_KEY', label: 'Unpackerr Sonarr Key', type: 'secret', group: 'services', description: 'Sonarr API key for Unpackerr (auto-populated by Detect API Keys)', sensitive: true, affectsServices: ['unpackerr'] },
   { key: 'UN_RADARR_0_API_KEY', label: 'Unpackerr Radarr Key', type: 'secret', group: 'services', description: 'Radarr API key for Unpackerr (auto-populated by Detect API Keys)', sensitive: true, affectsServices: ['unpackerr'] },
   { key: 'WATCHTOWER_SCHEDULE', label: 'Update Schedule', type: 'cron', group: 'services', description: 'Cron expression for Watchtower update checks', default: '0 0 4 * * *', affectsServices: ['watchtower'] },
@@ -83,7 +80,6 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'IMAGE_SABNZBD', label: 'SABnzbd Image', type: 'string', group: 'images', description: 'Docker image for SABnzbd', default: 'lscr.io/linuxserver/sabnzbd:4.4.1', affectsServices: ['sabnzbd'] },
   { key: 'IMAGE_SEERR', label: 'Seerr Image', type: 'string', group: 'images', description: 'Docker image for Seerr', default: 'ghcr.io/seerr-team/seerr:2.3.0', affectsServices: ['seerr'] },
   { key: 'IMAGE_BAZARR', label: 'Bazarr Image', type: 'string', group: 'images', description: 'Docker image for Bazarr', default: 'lscr.io/linuxserver/bazarr:1.5.1', affectsServices: ['bazarr'] },
-  { key: 'IMAGE_TAUTULLI', label: 'Tautulli Image', type: 'string', group: 'images', description: 'Docker image for Tautulli', default: 'lscr.io/linuxserver/tautulli:2.15.0', affectsServices: ['tautulli'] },
   { key: 'IMAGE_GLUETUN', label: 'Gluetun Image', type: 'string', group: 'images', description: 'Docker image for Gluetun', default: 'qmcgaw/gluetun:v3.40', affectsServices: ['gluetun'] },
   { key: 'IMAGE_RECYCLARR', label: 'Recyclarr Image', type: 'string', group: 'images', description: 'Docker image for Recyclarr', default: 'ghcr.io/recyclarr/recyclarr:7.4.0', affectsServices: ['recyclarr'] },
   { key: 'IMAGE_UNPACKERR', label: 'Unpackerr Image', type: 'string', group: 'images', description: 'Docker image for Unpackerr', default: 'golift/unpackerr:0.14.5', affectsServices: ['unpackerr'] },
