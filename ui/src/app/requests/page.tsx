@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MessageSquare, Check, X } from 'lucide-react';
+import { MessageSquare, Check, X, Loader2 } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Skeleton } from '@/components/common/Skeleton';
@@ -61,22 +61,46 @@ export default function RequestsPage() {
     },
   });
 
+  const configureMutation = useMutation({
+    mutationFn: () => fetchApi('/api/seerr/configure', { method: 'POST' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['requests'] });
+      toast.success('Seerr configured with Sonarr and Radarr');
+    },
+    onError: () => toast.error('Failed to auto-configure Seerr'),
+  });
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <MessageSquare className="h-6 w-6" />
-        <h1 className="text-2xl font-bold">Requests</h1>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <MessageSquare className="h-6 w-6" />
+          <h1 className="text-2xl font-bold">Requests</h1>
+        </div>
+        <button
+          onClick={() => configureMutation.mutate()}
+          disabled={configureMutation.isPending}
+          className="flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+        >
+          {configureMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+          Auto-configure Seerr
+        </button>
       </div>
 
       {isError && (
-        <Card className="p-6 text-center">
+        <Card className="p-6 text-center space-y-3">
           <p className="text-muted-foreground">
             {error instanceof ApiError && error.reason === 'no_api_key'
               ? 'Seerr API key not configured. Add it in Settings → Services to enable media requests.'
               : error instanceof ApiError && error.reason === 'setup_required'
-              ? 'Seerr setup not complete. Open Seerr at localhost:5055 and sign in to finish setup.'
+              ? 'Seerr setup not complete. Open Seerr at localhost:5055 and sign in with your Plex account to finish setup.'
               : 'Seerr is unavailable. Check that the Seerr container is running.'}
           </p>
+          {error instanceof ApiError && error.reason === 'setup_required' && (
+            <p className="text-xs text-muted-foreground">
+              After signing in, return here and click the button below to connect Sonarr and Radarr automatically.
+            </p>
+          )}
         </Card>
       )}
 

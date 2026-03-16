@@ -591,25 +591,16 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
             description="Media request management — lets users request movies and TV shows"
           >
             <Step n={1}>
-              <p>Sign in with your Plex account on first access.</p>
+              <p>Open Seerr at <Code>localhost:5055</Code> and sign in with your Plex account. This creates the admin user and connects Seerr to your Plex library.</p>
             </Step>
             <Step n={2}>
-              <p>Add Radarr: Settings → Radarr → Add Server:</p>
+              <p>Connect Sonarr and Radarr — choose one option:</p>
               <ul className="ml-4 mt-1 list-disc text-xs text-muted-foreground">
-                <li>Server Name: <Code>Radarr</Code></li>
-                <li>Hostname: <Code>radarr</Code>, Port: <Code>7878</Code></li>
-                <li>API Key, Root Folder: <Code>/data/media/movies</Code>, Quality Profile</li>
+                <li><strong>Automatic:</strong> Go to the <a href="/requests" className="text-primary underline">Requests</a> page and click &quot;Auto-configure Seerr&quot; — this connects Sonarr and Radarr using your existing API keys and default profiles.</li>
+                <li><strong>Manual:</strong> In Seerr → Settings → Services, add Sonarr (<Code>hostname: sonarr, port: 8989</Code>) and Radarr (<Code>hostname: radarr, port: 7878</Code>) with their API keys.</li>
               </ul>
             </Step>
             <Step n={3}>
-              <p>Add Sonarr: Settings → Sonarr → Add Server:</p>
-              <ul className="ml-4 mt-1 list-disc text-xs text-muted-foreground">
-                <li>Server Name: <Code>Sonarr</Code></li>
-                <li>Hostname: <Code>sonarr</Code>, Port: <Code>8989</Code></li>
-                <li>API Key, Root Folder: <Code>/data/media/tv</Code>, Quality Profile</li>
-              </ul>
-            </Step>
-            <Step n={4}>
               <p>Configure user permissions: Settings → Users → click a user → set request limits and auto-approve rules.</p>
             </Step>
             <Tip>

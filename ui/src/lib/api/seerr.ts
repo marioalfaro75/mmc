@@ -61,3 +61,56 @@ export async function createRequest(body: { mediaType: string; mediaId: number }
 export async function getStatus(): Promise<{ version: string }> {
   return seerrFetch('/status');
 }
+
+export async function getSonarrSettings(): Promise<{ id: number }[]> {
+  return seerrFetch('/settings/sonarr');
+}
+
+export async function getRadarrSettings(): Promise<{ id: number }[]> {
+  return seerrFetch('/settings/radarr');
+}
+
+export async function testSonarrConnection(hostname: string, port: number, apiKey: string): Promise<{ profiles: { id: number; name: string }[]; rootFolders: { id: number; path: string }[] }> {
+  return seerrFetch('/settings/sonarr/test', {
+    method: 'POST',
+    body: JSON.stringify({ hostname, port, apiKey, useSsl: false, baseUrl: '' }),
+  });
+}
+
+export async function testRadarrConnection(hostname: string, port: number, apiKey: string): Promise<{ profiles: { id: number; name: string }[]; rootFolders: { id: number; path: string }[] }> {
+  return seerrFetch('/settings/radarr/test', {
+    method: 'POST',
+    body: JSON.stringify({ hostname, port, apiKey, useSsl: false, baseUrl: '' }),
+  });
+}
+
+export async function addSonarrServer(config: {
+  name: string;
+  hostname: string;
+  port: number;
+  apiKey: string;
+  activeProfileId: number;
+  rootFolder: string;
+  activeLanguageProfileId?: number;
+  isDefault: boolean;
+}): Promise<void> {
+  await seerrFetch('/settings/sonarr', {
+    method: 'POST',
+    body: JSON.stringify({ ...config, useSsl: false, baseUrl: '', is4k: false, enableSeasonFolders: true }),
+  });
+}
+
+export async function addRadarrServer(config: {
+  name: string;
+  hostname: string;
+  port: number;
+  apiKey: string;
+  activeProfileId: number;
+  rootFolder: string;
+  isDefault: boolean;
+}): Promise<void> {
+  await seerrFetch('/settings/radarr', {
+    method: 'POST',
+    body: JSON.stringify({ ...config, useSsl: false, baseUrl: '', is4k: false, minimumAvailability: 'released' }),
+  });
+}
