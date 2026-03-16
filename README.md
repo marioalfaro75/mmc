@@ -2,7 +2,7 @@
 
 A fully automated, containerized media centre stack using Docker Compose. Manages the complete lifecycle: requesting media, finding sources, downloading via VPN-protected clients, organising libraries, and streaming through Plex.
 
-All 13 services are pre-configured to work together with hardlink support, VPN kill-switch protection for download clients, and a unified web dashboard. Plex runs as an external server — the stack connects to it via `PLEX_URL` and `PLEX_TOKEN`.
+All 11 services are pre-configured to work together with hardlink support, VPN kill-switch protection for download clients, and a unified web dashboard. Plex runs as an external server — set `PLEX_URL` in Settings to add a sidebar link.
 
 ## Architecture
 
@@ -16,8 +16,6 @@ User → Seerr → Sonarr/Radarr → Prowlarr → Indexers
               Sonarr/Radarr (import/rename)
                     │
               Plex (stream) ← Bazarr (subtitles)
-                    │
-              Tautulli (monitoring)
 ```
 
 ## Prerequisites
@@ -43,6 +41,8 @@ The installer will:
 2. Install Docker Engine, Node.js 20, and git (skips anything already installed)
 3. Clone the repository into an `mmc` folder in the current directory
 4. Launch the interactive setup wizard and staged deploy
+
+> **Re-running on an existing install** automatically switches to `--update` mode (pulls latest code, migrates `.env`, graceful restart — no data loss).
 
 > **WSL users:** To keep containers running after closing the terminal, add this to `C:\Users\<you>\.wslconfig`:
 > ```ini
@@ -93,7 +93,7 @@ On first run (no `.env` file), the wizard walks through:
 
 1. VPN provider and credentials
 2. Storage paths (`DATA_ROOT`, `CONFIG_ROOT`, `BACKUP_DIR`)
-3. User/group IDs and Plex connection details
+3. User/group IDs
 
 Then runs a staged deploy: VPN first (with healthcheck), then download clients, arr stack, media companions, operations, and finally the web UI.
 
@@ -120,25 +120,22 @@ This does three things:
 
 Watchtower checks for updated Docker images daily at 4 AM (configurable via `WATCHTOWER_SCHEDULE`). Only containers with `com.centurylinklabs.watchtower.enable=true` are updated. The custom UI is excluded.
 
-### Manual Image Updates
+### Pinning Versions
+
+All Docker images are pinned to specific versions by default in `.env.example`. To update manually:
 
 ```bash
 docker compose pull    # Pull latest images
 docker compose up -d   # Recreate changed containers
 ```
 
-### Pinning Versions
-
-Edit `.env` to pin specific versions instead of `latest`:
-
-```env
-IMAGE_SONARR=lscr.io/linuxserver/sonarr:4.0.0
-IMAGE_RADARR=lscr.io/linuxserver/radarr:5.2.0
-```
-
 ## Post-Deploy Configuration
 
-Complete these steps in order after first deploy. The web UI also has a full interactive guide at `http://localhost:3000/guide`.
+Complete these steps in order after first deploy. The web UI also has a full interactive guide with Quick Setup buttons at `http://localhost:3000/guide`.
+
+### Auto-Detect API Keys
+
+After first deploy, go to the Guide page and click **Detect API Keys**. This reads API keys from Sonarr, Radarr, Prowlarr, and Seerr config files and saves them to Settings automatically. Also populates Unpackerr keys.
 
 ### Phase 1: VPN & Download Clients
 
@@ -154,13 +151,7 @@ Complete these steps in order after first deploy. The web UI also has a full int
      docker logs qbittorrent 2>&1 | grep "temporary password"
      ```
    - **Change the default password** immediately: Options → Web UI → Authentication
-   - Set default save path: Options → Downloads → Default Save Path → `/data/torrents`
-   - Add categories (right-click left panel → New Category):
-     - `radarr` → Save path: `/data/torrents/movies`
-     - `sonarr` → Save path: `/data/torrents/tv`
-   - **Network binding** (important for VPN kill-switch): Options → Advanced → Network Interface → `tun0`
-   - Disable UPnP/NAT-PMP: Options → Connection → uncheck both
-   - Recommended: Options → BitTorrent → Seeding Limits → set ratio/time limits
+   - Use Quick Setup in the Guide page to auto-configure save paths, categories, VPN binding, and seeding limits
 
 3. **SABnzbd** (`localhost:8081`):
    - Run through the setup wizard on first access
@@ -176,76 +167,44 @@ Complete these steps in order after first deploy. The web UI also has a full int
 
 4. **Prowlarr** (`localhost:9696`):
    - Add indexers: Indexers → Add Indexer → search and configure your trackers/usenet indexers
-   - Connect to arr apps: Settings → Apps → Add Application:
-     - Sonarr: Prowlarr Server `http://prowlarr:9696`, Sonarr Server `http://sonarr:8989`, API Key from Sonarr
-     - Radarr: Prowlarr Server `http://prowlarr:9696`, Radarr Server `http://radarr:7878`, API Key from Radarr
-   - After adding apps, click "Sync App Indexers" to push indexers to Sonarr/Radarr
+   - Use Quick Setup to auto-connect Sonarr and Radarr, or manually add via Settings → Apps
 
 5. **Sonarr** (`localhost:8989`):
-   - Root folder: Settings → Media Management → Add Root Folder → `/data/media/tv`
-   - Download clients: Settings → Download Clients → Add:
-     - qBittorrent: Host `gluetun`, Port `8080`, Category `sonarr`
-     - SABnzbd: Host `gluetun`, Port `8081`, API Key from SABnzbd, Category `tv`
-   - Naming: Settings → Media Management → Rename Episodes → Yes
-   - Recommended episode format: `{Series TitleYear} - S{season:00}E{episode:00} - {Episode CleanTitle} [{Quality Full}]{[MediaInfo VideoDynamicRangeType]}`
-   - Find your API key: Settings → General → API Key (needed for other services)
+   - Use Quick Setup to auto-configure root folder, download clients, and naming, or configure manually
+   - Find your API key: Settings → General → API Key
 
 6. **Radarr** (`localhost:7878`):
-   - Root folder: Settings → Media Management → Add Root Folder → `/data/media/movies`
-   - Download clients: Settings → Download Clients → Add:
-     - qBittorrent: Host `gluetun`, Port `8080`, Category `radarr`
-     - SABnzbd: Host `gluetun`, Port `8081`, API Key from SABnzbd, Category `movies`
-   - Naming: Settings → Media Management → Rename Movies → Yes
-   - Recommended movie format: `{Movie CleanTitle} {(Release Year)} [imdbid-{ImdbId}] - [{Quality Full}]{[MediaInfo VideoDynamicRangeType]}`
+   - Use Quick Setup to auto-configure root folder, download clients, and naming, or configure manually
    - Find your API key: Settings → General → API Key
 
 7. **Unpackerr**:
-   - Add Sonarr/Radarr API keys to `docker-compose.yml` under the `unpackerr` service environment variables:
-     ```yaml
-     UN_SONARR_0_API_KEY: <sonarr-api-key>
-     UN_RADARR_0_API_KEY: <radarr-api-key>
-     ```
-   - Recreate the container: `docker compose up -d unpackerr`
+   - If you ran Detect API Keys, Unpackerr keys are already set. Otherwise, set `UN_SONARR_0_API_KEY` and `UN_RADARR_0_API_KEY` in Settings.
 
-### Phase 3: Plex & Companions
+### Phase 3: Subtitles & Requests
 
-8. **Plex** (external server):
-   - The stack connects to your existing Plex server — it does not run Plex in a container
-   - Set `PLEX_URL` and `PLEX_TOKEN` in the web UI Settings → Services, or in `.env`
-   - To find your Plex token, see [support.plex.tv](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)
-   - Ensure your Plex server's libraries point to the media directories managed by Sonarr/Radarr
-
-9. **Bazarr** (`localhost:6767`):
+8. **Bazarr** (`localhost:6767`):
    - Connect to Sonarr: Settings → Sonarr → Enabled, Address `sonarr`, Port `8989`, API Key
    - Connect to Radarr: Settings → Radarr → Enabled, Address `radarr`, Port `7878`, API Key
    - Add subtitle providers: Settings → Providers → Add (OpenSubtitles, Addic7ed, etc.)
    - Set languages: Settings → Languages → add your preferred subtitle language(s)
 
-10. **Tautulli** (`localhost:8181`):
-    - Run the setup wizard and point it at your Plex server
-    - Sign in with your Plex account to access viewing history and statistics
+9. **Seerr** (`localhost:5055`):
+   - Sign in with your Plex account on first access (creates admin user)
+   - Use Quick Setup in the Guide page or the "Auto-configure Seerr" button on the Requests page to connect Sonarr and Radarr automatically
+   - Configure user permissions: Settings → Users → click a user → set request limits and auto-approve rules
 
-### Phase 4: Request Management
+### Phase 4: Operations
 
-11. **Seerr** (`localhost:5055`):
-    - Sign in with your Plex account on first access
-    - Add Radarr: Settings → Radarr → Add Server:
-      - Server Name: `Radarr`, Hostname `radarr`, Port `7878`, API Key, Root Folder `/data/media/movies`, Quality Profile
-    - Add Sonarr: Settings → Sonarr → Add Server:
-      - Server Name: `Sonarr`, Hostname `sonarr`, Port `8989`, API Key, Root Folder `/data/media/tv`, Quality Profile
-    - Configure user permissions: Settings → Users → click a user → set request limits and auto-approve rules
-
-### Phase 5: Operations
-
-12. **Recyclarr**:
+10. **Recyclarr**:
     - Edit `config/recyclarr/recyclarr.yml` with your Sonarr/Radarr API keys and base URLs
     - Reference [TRaSH-Guides](https://trash-guides.info/) for recommended custom formats and quality profiles
     - Run a sync: `docker exec recyclarr recyclarr sync`
-    - Recyclarr runs automatically on a schedule — check logs: `docker logs recyclarr`
 
-13. **Watchtower**: Verify running — `docker logs watchtower`. Watchtower auto-updates enabled containers daily at 4 AM. Optionally configure notification URL in Settings → Services.
+11. **Watchtower**: Verify running — `docker logs watchtower`. Auto-updates enabled containers daily at 4 AM.
 
-14. **Backup**: Test with `./scripts/backup.sh` — verify the archive is created in your `BACKUP_DIR`
+12. **Plex**: Set `PLEX_URL` in Settings → Services to add a sidebar link to your Plex server.
+
+13. **Backup**: Test with `./scripts/backup.sh` — verify the archive is created in your `BACKUP_DIR`
 
 ## Service URLs
 
@@ -257,11 +216,22 @@ Complete these steps in order after first deploy. The web UI also has a full int
 | Sonarr | `http://localhost:8989` | TV show management |
 | Radarr | `http://localhost:7878` | Movie management |
 | Prowlarr | `http://localhost:9696` | Indexer management |
-| Plex | External (configured via `PLEX_URL`) | Media streaming |
 | Seerr | `http://localhost:5055` | Media requests |
 | Bazarr | `http://localhost:6767` | Subtitle management |
-| Tautulli | `http://localhost:8181` | Plex monitoring |
 | Gluetun | `http://localhost:8000` | VPN control API |
+
+> All ports are bound to `127.0.0.1` (localhost only) by default. Plex runs externally and is accessed via the sidebar link.
+
+## Security
+
+The stack includes security hardening out of the box:
+
+- **All ports localhost-only** — services are not exposed to the network (except torrent port 6881)
+- **Optional authentication** — set `MMC_API_KEY` in `.env` to require login for the web UI
+- **VPN control auth** — Gluetun control API uses basic auth (`GLUETUN_CONTROL_PASSWORD`)
+- **Security headers** — CSP, X-Frame-Options, rate limiting (120 req/min), CSRF protection
+- **Docker images pinned** — specific version tags, not `:latest`
+- **Secrets redacted** — deploy logs automatically redact VPN keys
 
 ## VPN Configuration
 
@@ -291,33 +261,6 @@ WIREGUARD_ADDRESSES=<your-address>/32
 SERVER_COUNTRIES=Switzerland
 ```
 
-Get your WireGuard key from [mullvad.net/account](https://mullvad.net/account) → WireGuard configuration.
-
-### AirVPN
-
-```env
-VPN_SERVICE_PROVIDER=airvpn
-VPN_TYPE=wireguard
-WIREGUARD_PRIVATE_KEY=<your-private-key>
-WIREGUARD_ADDRESSES=<your-address>/32
-WIREGUARD_PRESHARED_KEY=<your-preshared-key>
-SERVER_COUNTRIES=Netherlands
-```
-
-Generate keys at [airvpn.org](https://airvpn.org) → Client Area → VPN Devices.
-
-### Private Internet Access (PIA)
-
-```env
-VPN_SERVICE_PROVIDER=private internet access
-VPN_TYPE=openvpn
-OPENVPN_USER=<your-pia-username>
-OPENVPN_PASSWORD=<your-pia-password>
-SERVER_REGIONS=Netherlands
-```
-
-PIA also supports WireGuard — Gluetun handles key generation automatically with your credentials.
-
 ### NordVPN
 
 ```env
@@ -327,32 +270,9 @@ WIREGUARD_PRIVATE_KEY=<your-private-key>
 SERVER_COUNTRIES=Netherlands
 ```
 
-Generate a WireGuard private key via the [NordVPN Linux app](https://support.nordvpn.com/hc/en-us/articles/20196094470929) or use OpenVPN with your service credentials from [my.nordaccount.com](https://my.nordaccount.com).
+### Other Providers
 
-### Surfshark
-
-```env
-VPN_SERVICE_PROVIDER=surfshark
-VPN_TYPE=openvpn
-OPENVPN_USER=<your-surfshark-username>
-OPENVPN_PASSWORD=<your-surfshark-password>
-SERVER_COUNTRIES=Netherlands
-```
-
-Get your service credentials from [my.surfshark.com](https://my.surfshark.com) → Manual setup → Router → OpenVPN.
-
-### Windscribe
-
-```env
-VPN_SERVICE_PROVIDER=windscribe
-VPN_TYPE=wireguard
-WIREGUARD_PRIVATE_KEY=<your-private-key>
-WIREGUARD_ADDRESSES=<your-address>/32
-WIREGUARD_PRESHARED_KEY=<your-preshared-key>
-SERVER_COUNTRIES=Netherlands
-```
-
-Generate WireGuard config at [windscribe.com/getconfig/wireguard](https://windscribe.com/getconfig/wireguard).
+AirVPN, Surfshark, PIA, Windscribe, and 50+ more are supported. See the [Gluetun wiki](https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers) for provider-specific configuration.
 
 ## Verifying VPN Works
 
@@ -366,16 +286,38 @@ docker exec qbittorrent wget -qO- https://ipinfo.io
 # Both should show the same VPN IP address
 ```
 
-## Hardlink Verification
+## Web UI
 
-Hardlinks save disk space by avoiding duplicate copies. All paths must be on the same filesystem.
+The Mars Media Centre dashboard at `http://localhost:3000` provides:
 
-```bash
-# Check inodes — same inode number = hardlink working
-ls -li /data/media/movies/SomeMovie/
-ls -li /data/torrents/movies/SomeMovie/
-# If inode numbers match, hardlinks are working correctly
-```
+- Combined download queue (torrents + usenet) with pause, resume, and force start controls
+- Merged calendar (TV episodes + movies)
+- Library browsing with search, add, and automatic missing content detection
+- TV show episode details: progress bars, per-season breakdowns, next-to-download, missing episodes
+- Media request management with search, request, approve/decline, and delete
+- Network page with live VPN topology, tunnel bandwidth monitoring, and per-service traffic stats
+- System page with unified service monitoring (Docker state, API health), VPN status, per-service start/stop/restart, and log viewer
+- Settings with API key management, auto-detection, configuration, and backups
+- Global service status bar showing offline services with recovery notifications
+- Plex sidebar link for quick access to your media server
+- Automatic missing content search every 6 hours (Sonarr + Radarr)
+
+### Settings Page
+
+The Settings page (`http://localhost:3000/settings`) provides tabbed configuration:
+
+- **General** — Timezone, user/group IDs, storage paths, log level, API key (authentication)
+- **VPN** — Provider, credentials, server country, port forwarding
+- **Network** — Docker/local subnets, all service ports
+- **Services** — API keys for all services (with auto-detect and direct links to each service's UI), Plex URL, Watchtower schedule, Docker image tags
+- **Backups** — Create, download, restore, and delete configuration backups
+
+### Logs Page
+
+The Logs page (`http://localhost:3000/logs`) provides two tabs:
+
+- **Services** — View application log files for each service (Sonarr, Radarr, Prowlarr, Bazarr, Seerr, Recyclarr, media-ui). Toggle between app logs and Docker container output.
+- **Deploy** — Browse and view deploy script log files
 
 ## Backup & Restore
 
@@ -414,58 +356,6 @@ crontab -e
 # Then run: docker compose up -d
 ```
 
-## Web UI
-
-The Mars Media Centre dashboard at `http://localhost:3000` provides:
-
-- Combined download queue (torrents + usenet) with pause, resume, and force start controls
-- Merged calendar (TV episodes + movies)
-- Library browsing with search, add, and automatic missing content detection
-- Network page with live VPN topology, tunnel bandwidth monitoring, and per-service traffic stats
-- System page with unified service monitoring (Docker state, API health, descriptions), VPN status, per-service start/stop/restart, and log viewer
-- Media request management
-- Settings with API key management (with direct links to each service's UI), configuration, and backups
-- Automatic missing content search every 6 hours (Sonarr + Radarr)
-
-### Settings Page
-
-The Settings page (`http://localhost:3000/settings`) provides tabbed configuration:
-
-- **General** — Timezone, user/group IDs, storage paths, log level
-- **VPN** — Provider, credentials, server country, port forwarding
-- **Network** — Docker/local subnets, all service ports
-- **Services** — API keys for all services (with links to each service's UI), Plex connection, Watchtower schedule, Docker image tags
-- **Backups** — Create, download, restore, and delete configuration backups
-
-### Logs Page
-
-The Logs page (`http://localhost:3000/logs`) provides two tabs:
-
-- **Services** — View application log files for each service (Sonarr, Radarr, Prowlarr, Bazarr, Tautulli, Seerr, Recyclarr, media-ui). Toggle between app logs (the actual log files) and Docker container output. A file picker appears for services with multiple log files.
-- **Deploy** — Browse and view deploy script log files
-
-### Network Page
-
-The Network page (`http://localhost:3000/network`) visualises how traffic flows through your stack:
-
-- **VPN Status** — connection state, public IP, country, protocol (WireGuard/OpenVPN), and port forwarding
-- **Live Tunnel Bandwidth** — real-time download/upload rates through the VPN tunnel, updated every 5 seconds
-- **Network Topology** — visual diagram showing which services route through the VPN (qBittorrent, SABnzbd) vs the Docker internal network (Sonarr, Radarr, etc.)
-- **Per-Service Traffic** — cumulative network I/O for each container
-
-### Missing Content Search
-
-When you add a movie or TV show, the UI polls for downloads for 30 seconds and notifies you if nothing was found. Each library page also has a "Search Missing" button to manually trigger a search for all missing content. Additionally, an automatic search runs every 6 hours in the background for both missing movies and TV episodes.
-
-### Rebuilding the UI
-
-```bash
-docker compose build media-ui
-docker compose up -d media-ui
-```
-
-Individual service web UIs remain accessible at their respective ports for advanced configuration.
-
 ## Troubleshooting
 
 | Problem | Solution |
@@ -477,6 +367,7 @@ Individual service web UIs remain accessible at their respective ports for advan
 | Hardlinks not working | All paths must be on the same filesystem/volume. Verify `DATA_ROOT` is a single mount point. |
 | Permission errors | Verify `PUID`/`PGID` match your host user (`id` command). Re-run `sudo ./scripts/init.sh`. |
 | Container keeps restarting | Check logs: `docker logs <container-name>`. Common cause: missing or invalid config. |
+| Web UI shows login page | `MMC_API_KEY` is set in `.env`. Clear it to disable auth, or enter the key to log in. |
 
 ## Managing Containers
 
@@ -498,7 +389,7 @@ docker rm -f sonarr        # Force stop and remove a container
 docker logs -f sonarr      # Follow a container's logs
 ```
 
-Replace `sonarr` with any container name: `gluetun`, `qbittorrent`, `sabnzbd`, `prowlarr`, `sonarr`, `radarr`, `unpackerr`, `bazarr`, `tautulli`, `seerr`, `recyclarr`, `watchtower`, `media-ui`.
+Replace `sonarr` with any container name: `gluetun`, `qbittorrent`, `sabnzbd`, `prowlarr`, `sonarr`, `radarr`, `unpackerr`, `bazarr`, `seerr`, `recyclarr`, `watchtower`, `media-ui`.
 
 ### Rebuilding After Removal
 
