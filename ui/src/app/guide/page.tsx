@@ -166,6 +166,57 @@ function QuickSetupButton({ label, description, endpoint, successMessage }: {
   );
 }
 
+function QuickSetupSeerr() {
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const run = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/seerr/configure', { method: 'POST' });
+      const data = await res.json();
+      const configured = data.results?.filter((r: { status: string }) => r.status === 'configured') || [];
+      const alreadyDone = data.results?.filter((r: { status: string }) => r.status === 'already_configured') || [];
+      const errors = data.results?.filter((r: { status: string }) => r.status === 'error') || [];
+
+      if (configured.length > 0 || alreadyDone.length > 0) {
+        const names = [...configured, ...alreadyDone].map((r: { service: string }) => r.service).join(', ');
+        toast.success(`Seerr configured with ${names}`);
+        setDone(true);
+      } else if (errors.length > 0) {
+        toast.error(`Failed: ${errors.map((r: { service: string; error?: string }) => `${r.service}: ${r.error || 'unknown'}`).join('; ')}`);
+      } else {
+        toast.error('No services could be configured — check API keys in Settings');
+      }
+    } catch {
+      toast.error('Could not reach Seerr — is it running? Have you signed in at localhost:5055?');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 rounded-md border border-border bg-muted/30 p-3">
+      <p className="text-xs text-muted-foreground">
+        Auto-connect Sonarr and Radarr to Seerr using your existing API keys and default quality profiles.
+        You must sign in to Seerr first (step 1).
+      </p>
+      <button
+        onClick={run}
+        disabled={loading || done}
+        className="mt-2 flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+      >
+        {loading ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Zap className="h-3.5 w-3.5" />
+        )}
+        {done ? 'Applied' : 'Quick Setup'}
+      </button>
+    </div>
+  );
+}
+
 function DetectApiKeys() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<'idle' | 'restarting' | 'done'>('idle');
@@ -228,7 +279,7 @@ function DetectApiKeys() {
     <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
       <p className="text-sm font-medium">Auto-detect API Keys</p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Reads API keys directly from Sonarr, Radarr, and Prowlarr config files and saves them to Settings.
+        Reads API keys directly from Sonarr, Radarr, Prowlarr, and Seerr config files and saves them to Settings.
         Also populates Unpackerr keys automatically. Automatically restarts services to apply.
       </p>
       <button
@@ -594,12 +645,13 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
               <p>Open Seerr at <Code>localhost:5055</Code> and sign in with your Plex account. This creates the admin user and connects Seerr to your Plex library.</p>
             </Step>
             <Step n={2}>
-              <p>Connect Sonarr and Radarr — choose one option:</p>
+              <p>Connect Sonarr and Radarr — use Quick Setup below or configure manually in Seerr → Settings → Services:</p>
               <ul className="ml-4 mt-1 list-disc text-xs text-muted-foreground">
-                <li><strong>Automatic:</strong> Go to the <a href="/requests" className="text-primary underline">Requests</a> page and click &quot;Auto-configure Seerr&quot; — this connects Sonarr and Radarr using your existing API keys and default profiles.</li>
-                <li><strong>Manual:</strong> In Seerr → Settings → Services, add Sonarr (<Code>hostname: sonarr, port: 8989</Code>) and Radarr (<Code>hostname: radarr, port: 7878</Code>) with their API keys.</li>
+                <li>Sonarr: <Code>hostname: sonarr, port: 8989</Code></li>
+                <li>Radarr: <Code>hostname: radarr, port: 7878</Code></li>
               </ul>
             </Step>
+            <QuickSetupSeerr />
             <Step n={3}>
               <p>Configure user permissions: Settings → Users → click a user → set request limits and auto-approve rules.</p>
             </Step>
