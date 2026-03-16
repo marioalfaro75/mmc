@@ -12,6 +12,19 @@ function extractApiKey(xmlContent: string): string | null {
   return match ? match[1] : null;
 }
 
+function extractSeerrApiKey(configRoot: string): string | null {
+  try {
+    const settingsPath = join(configRoot, 'seerr', 'settings.json');
+    const content = readFileSync(settingsPath, 'utf-8');
+    const settings = JSON.parse(content);
+    // settings.json may have multiple apiKey fields; the top-level one is the main key
+    if (settings.apiKey && typeof settings.apiKey === 'string' && settings.apiKey.length > 0) {
+      return settings.apiKey;
+    }
+  } catch { /* not available */ }
+  return null;
+}
+
 export function readApiKeysFromConfig(configRoot: string): {
   detected: Record<string, string>;
   missing: string[];
@@ -32,6 +45,14 @@ export function readApiKeysFromConfig(configRoot: string): {
     } catch {
       missing.push(service);
     }
+  }
+
+  // Seerr stores its key in settings.json
+  const seerrKey = extractSeerrApiKey(configRoot);
+  if (seerrKey) {
+    detected.SEERR_API_KEY = seerrKey;
+  } else {
+    missing.push('seerr');
   }
 
   return { detected, missing };
