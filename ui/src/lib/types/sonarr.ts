@@ -25,6 +25,7 @@ export interface SonarrSeries {
   genres: string[];
   tags: number[];
   added: string;
+  nextAiring?: string;
   ratings: { votes: number; value: number };
   statistics: SonarrStatistics;
 }

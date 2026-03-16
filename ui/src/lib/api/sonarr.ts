@@ -1,4 +1,4 @@
-import type { SonarrSeries, SonarrCalendarItem, SonarrSystemStatus, SonarrLookupResult } from '@/lib/types/sonarr';
+import type { SonarrSeries, SonarrCalendarItem, SonarrSystemStatus, SonarrLookupResult, SonarrEpisode } from '@/lib/types/sonarr';
 
 const BASE_URL = process.env.SONARR_URL || 'http://sonarr:8989';
 const API_KEY = process.env.SONARR_API_KEY || '';
@@ -100,6 +100,10 @@ export async function runCommand(body: Record<string, unknown>): Promise<{ id: n
     method: 'POST',
     body: JSON.stringify(body),
   });
+}
+
+export async function getEpisodes(seriesId: number): Promise<SonarrEpisode[]> {
+  return sonarrFetch<SonarrEpisode[]>(`/episode?seriesId=${seriesId}`);
 }
 
 export async function getQueueDetails(seriesId?: number): Promise<{ records: { seriesId: number; title: string }[] }> {

@@ -6,6 +6,7 @@ import { Plus, Search, Loader2 } from 'lucide-react';
 import { MediaCard } from '@/components/media/MediaCard';
 import { MediaGrid } from '@/components/media/MediaGrid';
 import { MediaDetail } from '@/components/media/MediaDetail';
+import { SeriesEpisodes } from '@/components/media/SeriesEpisodes';
 import { SearchBar } from '@/components/media/SearchBar';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
@@ -180,6 +181,10 @@ export default function TvPage() {
               monitored={s.monitored}
               hasFile={completion >= 100}
               subtitle={`${s.statistics?.seasonCount || 0} seasons · ${Math.round(completion)}%`}
+              episodeProgress={{
+                have: s.statistics?.episodeFileCount || 0,
+                total: s.statistics?.episodeCount || 0,
+              }}
               onClick={() => setSelectedSeries(s)}
             />
           );
@@ -204,7 +209,18 @@ export default function TvPage() {
             genres={current.genres}
             runtime={current.runtime}
             certification={current.certification}
-          />
+            seriesStatus={current.status}
+            network={current.network}
+            nextAiring={current.nextAiring}
+            episodeStats={{
+              fileCount: current.statistics?.episodeFileCount || 0,
+              totalCount: current.statistics?.episodeCount || 0,
+              percent: current.statistics?.percentOfEpisodes || 0,
+            }}
+            seasons={current.seasons}
+          >
+            <SeriesEpisodes seriesId={current.id} />
+          </MediaDetail>
         );
       })()}
 

@@ -10,6 +10,7 @@ interface MediaCardProps {
   monitored?: boolean;
   hasFile?: boolean;
   subtitle?: string;
+  episodeProgress?: { have: number; total: number };
   onClick?: () => void;
   className?: string;
 }
@@ -21,6 +22,7 @@ export function MediaCard({
   monitored = true,
   hasFile = false,
   subtitle,
+  episodeProgress,
   onClick,
   className,
 }: MediaCardProps) {
@@ -57,6 +59,19 @@ export function MediaCard({
           {year && <span>{year}</span>}
           {subtitle && <span>{subtitle}</span>}
         </div>
+        {episodeProgress && episodeProgress.total > 0 && (
+          <div className="mt-1.5">
+            <div className="flex justify-between text-[11px] text-muted-foreground mb-0.5">
+              <span>{episodeProgress.have}/{episodeProgress.total} episodes</span>
+            </div>
+            <div className="h-1 w-full rounded-full bg-muted">
+              <div
+                className="h-1 rounded-full bg-primary transition-all"
+                style={{ width: `${Math.round((episodeProgress.have / Math.max(episodeProgress.total, 1)) * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
