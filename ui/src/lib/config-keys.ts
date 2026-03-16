@@ -17,9 +17,10 @@ function extractSeerrApiKey(configRoot: string): string | null {
     const settingsPath = join(configRoot, 'seerr', 'settings.json');
     const content = readFileSync(settingsPath, 'utf-8');
     const settings = JSON.parse(content);
-    // settings.json may have multiple apiKey fields; the top-level one is the main key
-    if (settings.apiKey && typeof settings.apiKey === 'string' && settings.apiKey.length > 0) {
-      return settings.apiKey;
+    // The key may be at settings.main.apiKey or settings.apiKey depending on Seerr version
+    const key = settings.main?.apiKey || settings.apiKey;
+    if (key && typeof key === 'string' && key.length > 0) {
+      return key;
     }
   } catch { /* not available */ }
   return null;
