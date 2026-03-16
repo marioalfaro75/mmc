@@ -6,7 +6,7 @@ import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Skeleton } from '@/components/common/Skeleton';
 import { POLLING } from '@/lib/utils/polling';
-import { fetchApi } from '@/lib/utils/fetchApi';
+import { fetchApi, ApiError } from '@/lib/utils/fetchApi';
 import { formatDate } from '@/lib/utils/formatters';
 import { toast } from 'sonner';
 
@@ -37,7 +37,7 @@ interface RequestData {
 export default function RequestsPage() {
   const queryClient = useQueryClient();
 
-  const { data, isLoading, isError } = useQuery<RequestData>({
+  const { data, isLoading, isError, error } = useQuery<RequestData>({
     queryKey: ['requests'],
     queryFn: () => fetchApi<RequestData>('/api/requests'),
     refetchInterval: POLLING.REQUESTS,
@@ -71,7 +71,9 @@ export default function RequestsPage() {
       {isError && (
         <Card className="p-6 text-center">
           <p className="text-muted-foreground">
-            Seerr is not configured or unavailable. Configure Seerr in Settings to enable media requests.
+            {error instanceof ApiError && error.reason === 'no_api_key'
+              ? 'Seerr API key not configured. Add it in Settings → Services to enable media requests.'
+              : 'Seerr is unavailable. Check that the Seerr container is running.'}
           </p>
         </Card>
       )}

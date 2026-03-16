@@ -2,12 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRequests, createRequest } from '@/lib/api/seerr';
 
 export async function GET() {
+  if (!process.env.SEERR_API_KEY) {
+    return NextResponse.json(
+      { error: 'Seerr API key not configured', reason: 'no_api_key', service: 'seerr' },
+      { status: 503 }
+    );
+  }
   try {
     const data = await getRequests();
     return NextResponse.json(data);
   } catch (error) {
     return NextResponse.json(
-      { error: 'Failed to fetch requests', service: 'seerr', statusCode: 500 },
+      { error: 'Failed to fetch requests', reason: 'unavailable', service: 'seerr' },
       { status: 500 }
     );
   }

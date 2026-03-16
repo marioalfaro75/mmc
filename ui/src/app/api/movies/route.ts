@@ -2,12 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getMovies, addMovie } from '@/lib/api/radarr';
 
 export async function GET() {
+  if (!process.env.RADARR_API_KEY) {
+    return NextResponse.json(
+      { error: 'Radarr API key not configured', reason: 'no_api_key', service: 'radarr' },
+      { status: 503 }
+    );
+  }
   try {
     const movies = await getMovies();
     return NextResponse.json(movies);
   } catch (error) {
     return NextResponse.json(
-      { error: 'Failed to fetch movies', service: 'radarr', statusCode: 500 },
+      { error: 'Failed to fetch movies', reason: 'unavailable', service: 'radarr' },
       { status: 500 }
     );
   }

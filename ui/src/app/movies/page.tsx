@@ -10,7 +10,7 @@ import { SearchBar } from '@/components/media/SearchBar';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
-import { fetchApi } from '@/lib/utils/fetchApi';
+import { fetchApi, ApiError } from '@/lib/utils/fetchApi';
 import type { RadarrMovie, RadarrLookupResult } from '@/lib/types/radarr';
 import { toast } from 'sonner';
 
@@ -41,7 +41,7 @@ export default function MoviesPage() {
   const [lookupTerm, setLookupTerm] = useState('');
   const addedTitle = useRef('');
 
-  const { data: movies, isLoading, isError } = useQuery<RadarrMovie[]>({
+  const { data: movies, isLoading, isError, error } = useQuery<RadarrMovie[]>({
     queryKey: ['movies'],
     queryFn: () => fetchApi<RadarrMovie[]>('/api/movies'),
     staleTime: STALE_TIME.LIBRARY,
@@ -159,7 +159,9 @@ export default function MoviesPage() {
 
       {isError && (
         <div className="rounded-lg border border-danger/50 bg-danger/10 px-4 py-3 text-sm text-danger">
-          Radarr is not configured or unavailable. Check your .env settings and ensure Radarr is running.
+          {error instanceof ApiError && error.reason === 'no_api_key'
+            ? 'Radarr API key not configured. Add it in Settings → Services to connect to Radarr.'
+            : 'Radarr is unavailable. Check that the Radarr container is running.'}
         </div>
       )}
 

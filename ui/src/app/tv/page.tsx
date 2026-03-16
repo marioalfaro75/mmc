@@ -11,7 +11,7 @@ import { SearchBar } from '@/components/media/SearchBar';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
-import { fetchApi } from '@/lib/utils/fetchApi';
+import { fetchApi, ApiError } from '@/lib/utils/fetchApi';
 import type { SonarrSeries, SonarrLookupResult } from '@/lib/types/sonarr';
 import { toast } from 'sonner';
 
@@ -42,7 +42,7 @@ export default function TvPage() {
   const [lookupTerm, setLookupTerm] = useState('');
   const addedTitle = useRef('');
 
-  const { data: series, isLoading, isError } = useQuery<SonarrSeries[]>({
+  const { data: series, isLoading, isError, error } = useQuery<SonarrSeries[]>({
     queryKey: ['series'],
     queryFn: () => fetchApi<SonarrSeries[]>('/api/series'),
     staleTime: STALE_TIME.LIBRARY,
@@ -162,7 +162,9 @@ export default function TvPage() {
 
       {isError && (
         <div className="rounded-lg border border-danger/50 bg-danger/10 px-4 py-3 text-sm text-danger">
-          Sonarr is not configured or unavailable. Check your .env settings and ensure Sonarr is running.
+          {error instanceof ApiError && error.reason === 'no_api_key'
+            ? 'Sonarr API key not configured. Add it in Settings → Services to connect to Sonarr.'
+            : 'Sonarr is unavailable. Check that the Sonarr container is running.'}
         </div>
       )}
 
