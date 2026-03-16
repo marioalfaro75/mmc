@@ -14,6 +14,7 @@ import {
   Settings,
   ScrollText,
   BookOpen,
+  ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -31,8 +32,17 @@ const navItems = [
   { href: '/guide', label: 'Guide', icon: BookOpen },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  plexUrl?: string;
+}
+
+export function Sidebar({ plexUrl }: SidebarProps) {
   const pathname = usePathname();
+
+  // Convert internal Docker URL to localhost for browser access
+  const plexWebUrl = plexUrl && plexUrl !== 'http://localhost:32400'
+    ? `${plexUrl}/web`
+    : plexUrl ? `${plexUrl}/web` : null;
 
   return (
     <aside className="hidden md:flex w-64 flex-col border-r border-border bg-surface">
@@ -59,6 +69,17 @@ export function Sidebar() {
             </Link>
           );
         })}
+        {plexWebUrl && (
+          <a
+            href={plexWebUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Plex
+          </a>
+        )}
       </nav>
     </aside>
   );
