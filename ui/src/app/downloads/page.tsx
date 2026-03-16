@@ -17,7 +17,7 @@ export default function DownloadsPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabKey>('active');
 
-  const { data: downloads = [], isLoading } = useQuery<DownloadItem[]>({
+  const { data: downloads = [], isLoading, isError: downloadsError } = useQuery<DownloadItem[]>({
     queryKey: ['downloads'],
     queryFn: () => fetchApi<DownloadItem[]>('/api/downloads'),
     refetchInterval: POLLING.DOWNLOADS,
@@ -83,6 +83,13 @@ export default function DownloadsPage() {
           <p className="text-sm">
             VPN Connected — {vpn.ip} ({vpn.country})
           </p>
+        </div>
+      )}
+
+      {downloadsError && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+          <Download className="h-4 w-4 shrink-0" />
+          Download clients are unreachable. qBittorrent or SABnzbd may be offline.
         </div>
       )}
 

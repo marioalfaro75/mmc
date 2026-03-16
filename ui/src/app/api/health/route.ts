@@ -6,6 +6,8 @@ import { getVersion as getQbtVersion } from '@/lib/api/qbittorrent';
 import { getVersion as getSabnzbdVersion } from '@/lib/api/sabnzbd';
 import { getIdentity as getPlexIdentity } from '@/lib/api/plex';
 import { getVpnStatus } from '@/lib/api/gluetun';
+import { getStatus as getSeerrStatus } from '@/lib/api/seerr';
+import { getServerInfo as getTautulliInfo } from '@/lib/api/tautulli';
 import type { ServiceHealth } from '@/lib/types/common';
 
 async function checkService(
@@ -48,6 +50,14 @@ export async function GET() {
     checkService('Gluetun', '/gluetun', async () => {
       const s = await getVpnStatus();
       return s.status;
+    }),
+    checkService('Seerr', '/seerr', async () => {
+      const s = await getSeerrStatus();
+      return s.version;
+    }),
+    checkService('Tautulli', '/tautulli', async () => {
+      const s = await getTautulliInfo();
+      return s.pms_version;
     }),
   ]);
 

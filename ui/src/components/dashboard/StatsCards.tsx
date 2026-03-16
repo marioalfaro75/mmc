@@ -30,9 +30,9 @@ export function StatsCards() {
   }
 
   const stats = [
-    { label: 'Movies', value: data?.movies ?? 0, icon: Film },
-    { label: 'TV Series', value: data?.series ?? 0, icon: Tv },
-    { label: 'Episodes', value: data?.episodes ?? 0, icon: PlayCircle },
+    { label: 'Movies', value: data?.movies != null ? data.movies : '—', icon: Film },
+    { label: 'TV Series', value: data?.series != null ? data.series : '—', icon: Tv },
+    { label: 'Episodes', value: data?.episodes != null ? data.episodes : '—', icon: PlayCircle },
     { label: 'Disk Used', value: data?.diskUsed ?? 'N/A', icon: HardDrive },
   ];
 

@@ -35,9 +35,9 @@ export interface CalendarItem {
 }
 
 export interface DashboardStats {
-  movies: number;
-  series: number;
-  episodes: number;
+  movies: number | null;
+  series: number | null;
+  episodes: number | null;
   diskUsed: string;
   diskFree: string;
 }

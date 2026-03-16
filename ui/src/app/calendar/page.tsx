@@ -46,7 +46,7 @@ export default function CalendarPage() {
   const start = new Date(year, month - 1, 1).toISOString().split('T')[0];
   const end = new Date(year, month + 2, 0).toISOString().split('T')[0];
 
-  const { data: items = [], isLoading } = useQuery<CalendarItem[]>({
+  const { data: items = [], isLoading, isError } = useQuery<CalendarItem[]>({
     queryKey: ['calendar', { start, end }],
     queryFn: () => fetchApi<CalendarItem[]>(`/api/calendar?start=${start}&end=${end}`),
     refetchInterval: POLLING.CALENDAR,
@@ -95,6 +95,13 @@ export default function CalendarPage() {
           ))}
         </div>
       </div>
+
+      {isError && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+          <CalendarDays className="h-4 w-4 shrink-0" />
+          Could not load calendar data. Sonarr or Radarr may be unavailable.
+        </div>
+      )}
 
       <div className="flex items-center justify-between">
         <button onClick={() => navigate(-1)} className="rounded-md p-2 hover:bg-muted transition-colors">

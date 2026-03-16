@@ -10,23 +10,19 @@ export async function GET() {
       getMovies(),
     ]);
 
-    const seriesData = series.status === 'fulfilled' ? series.value : [];
-    const moviesData = movies.status === 'fulfilled' ? movies.value : [];
+    const seriesData = series.status === 'fulfilled' ? series.value : null;
+    const moviesData = movies.status === 'fulfilled' ? movies.value : null;
 
-    const totalEpisodes = seriesData.reduce(
-      (acc, s) => acc + (s.statistics?.episodeFileCount || 0),
-      0
-    );
+    const totalEpisodes = seriesData
+      ? seriesData.reduce((acc, s) => acc + (s.statistics?.episodeFileCount || 0), 0)
+      : null;
 
-    const moviesDiskUsed = moviesData.reduce((acc, m) => acc + (m.sizeOnDisk || 0), 0);
-    const seriesDiskUsed = seriesData.reduce(
-      (acc, s) => acc + (s.statistics?.sizeOnDisk || 0),
-      0
-    );
+    const moviesDiskUsed = moviesData ? moviesData.reduce((acc, m) => acc + (m.sizeOnDisk || 0), 0) : 0;
+    const seriesDiskUsed = seriesData ? seriesData.reduce((acc, s) => acc + (s.statistics?.sizeOnDisk || 0), 0) : 0;
 
     const stats: DashboardStats = {
-      movies: moviesData.length,
-      series: seriesData.length,
+      movies: moviesData ? moviesData.length : null,
+      series: seriesData ? seriesData.length : null,
       episodes: totalEpisodes,
       diskUsed: formatBytes(moviesDiskUsed + seriesDiskUsed),
       diskFree: 'N/A',
