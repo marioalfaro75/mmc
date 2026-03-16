@@ -392,7 +392,7 @@ migrate_env() {
         esac
         # Check if key exists in .env
         if ! grep -q "^${_key}=" "$ENV_FILE"; then
-            echo "$line  # Added by migrate_env" >> "$ENV_FILE"
+            echo "$line" >> "$ENV_FILE"
             pass "Added $_key"
             _added=$((_added + 1))
         fi
