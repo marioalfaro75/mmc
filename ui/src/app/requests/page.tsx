@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/common/Skeleton';
 import { SearchBar } from '@/components/media/SearchBar';
 import { POLLING } from '@/lib/utils/polling';
 import { fetchApi, ApiError } from '@/lib/utils/fetchApi';
-import { formatDate } from '@/lib/utils/formatters';
+import { formatDateTime } from '@/lib/utils/formatters';
 import { toast } from 'sonner';
 import type { SeerrSearchResult } from '@/lib/api/seerr';
 
@@ -259,7 +259,7 @@ export default function RequestsPage() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">{req.media.title || req.media.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        Requested by {req.requestedBy.displayName} &middot; {formatDate(req.createdAt)}
+                        {req.requestedBy?.displayName && <>Requested by {req.requestedBy.displayName} &middot; </>}{formatDateTime(req.createdAt)}
                       </p>
                     </div>
                     <Badge variant={status.variant}>{status.label}</Badge>

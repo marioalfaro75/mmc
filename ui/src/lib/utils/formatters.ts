@@ -36,6 +36,17 @@ export function formatDate(dateStr: string): string {
   });
 }
 
+export function formatDateTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 export function formatRelativeDate(dateStr: string): string {
   const date = new Date(dateStr);
   const now = new Date();
