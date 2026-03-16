@@ -9,6 +9,8 @@ import { Toaster } from 'sonner';
 
 const inter = Inter({ subsets: ['latin'] });
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Mars Media Centre',
   description: 'Unified Mars Media Centre dashboard',
