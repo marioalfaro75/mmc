@@ -114,3 +114,23 @@ export async function addRadarrServer(config: {
     body: JSON.stringify({ ...config, useSsl: false, baseUrl: '', is4k: false, minimumAvailability: 'released' }),
   });
 }
+
+export interface SeerrSearchResult {
+  id: number;
+  mediaType: 'movie' | 'tv';
+  title?: string;
+  name?: string;
+  overview: string;
+  posterPath: string | null;
+  releaseDate?: string;
+  firstAirDate?: string;
+  voteAverage: number;
+  mediaInfo?: {
+    status: number;
+    status4k: number;
+  };
+}
+
+export async function searchMedia(query: string): Promise<{ results: SeerrSearchResult[] }> {
+  return seerrFetch(`/search?query=${encodeURIComponent(query)}&page=1&language=en`);
+}
