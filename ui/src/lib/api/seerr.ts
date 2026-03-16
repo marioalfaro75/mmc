@@ -106,7 +106,8 @@ export async function addSonarrServer(config: {
   port: number;
   apiKey: string;
   activeProfileId: number;
-  rootFolder: string;
+  activeProfileName: string;
+  activeDirectory: string;
   activeLanguageProfileId?: number;
   isDefault: boolean;
 }): Promise<void> {
@@ -122,7 +123,8 @@ export async function addRadarrServer(config: {
   port: number;
   apiKey: string;
   activeProfileId: number;
-  rootFolder: string;
+  activeProfileName: string;
+  activeDirectory: string;
   isDefault: boolean;
 }): Promise<void> {
   await seerrFetch('/settings/radarr', {

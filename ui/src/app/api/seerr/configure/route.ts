@@ -51,7 +51,8 @@ export async function POST() {
             port,
             apiKey: radarrKey,
             activeProfileId: test.profiles[0].id,
-            rootFolder: test.rootFolders[0].path,
+            activeProfileName: test.profiles[0].name,
+            activeDirectory: test.rootFolders[0].path,
             isDefault: true,
           });
           logger.info('seerr-configure', `Radarr configured in Seerr (profile: ${test.profiles[0].name}, root: ${test.rootFolders[0].path})`);
@@ -88,7 +89,8 @@ export async function POST() {
             port,
             apiKey: sonarrKey,
             activeProfileId: test.profiles[0].id,
-            rootFolder: test.rootFolders[0].path,
+            activeProfileName: test.profiles[0].name,
+            activeDirectory: test.rootFolders[0].path,
             activeLanguageProfileId: 1,
             isDefault: true,
           });
