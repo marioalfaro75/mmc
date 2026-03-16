@@ -12,6 +12,13 @@ export async function GET() {
     const data = await getRequests();
     return NextResponse.json(data);
   } catch (error) {
+    const msg = String(error);
+    if (msg.includes('403')) {
+      return NextResponse.json(
+        { error: 'Seerr setup incomplete', reason: 'setup_required', service: 'seerr' },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       { error: 'Failed to fetch requests', reason: 'unavailable', service: 'seerr' },
       { status: 500 }

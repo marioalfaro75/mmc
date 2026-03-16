@@ -73,6 +73,8 @@ export default function RequestsPage() {
           <p className="text-muted-foreground">
             {error instanceof ApiError && error.reason === 'no_api_key'
               ? 'Seerr API key not configured. Add it in Settings → Services to enable media requests.'
+              : error instanceof ApiError && error.reason === 'setup_required'
+              ? 'Seerr setup not complete. Open Seerr at localhost:5055 and sign in to finish setup.'
               : 'Seerr is unavailable. Check that the Seerr container is running.'}
           </p>
         </Card>
