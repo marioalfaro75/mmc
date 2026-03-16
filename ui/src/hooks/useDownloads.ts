@@ -5,12 +5,17 @@ import { POLLING, STALE_TIME } from '@/lib/utils/polling';
 import { fetchApi } from '@/lib/utils/fetchApi';
 import type { DownloadItem } from '@/lib/types/common';
 
+interface DownloadsResponse {
+  items: DownloadItem[];
+  clients: { torrent: boolean; usenet: boolean };
+}
+
 export function useDownloads() {
   const queryClient = useQueryClient();
 
-  const query = useQuery<DownloadItem[]>({
+  const query = useQuery<DownloadsResponse>({
     queryKey: ['downloads'],
-    queryFn: () => fetchApi<DownloadItem[]>('/api/downloads'),
+    queryFn: () => fetchApi<DownloadsResponse>('/api/downloads'),
     refetchInterval: POLLING.DOWNLOADS,
     staleTime: STALE_TIME.DOWNLOADS,
   });
@@ -21,21 +26,24 @@ export function useDownloads() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['downloads'] }),
   });
 
-  const active = query.data?.filter(d =>
+  const items = query.data?.items ?? [];
+
+  const active = items.filter(d =>
     ['downloading', 'paused', 'queued', 'extracting'].includes(d.status)
-  ) ?? [];
+  );
 
-  const completed = query.data?.filter(d =>
+  const completed = items.filter(d =>
     ['completed', 'seeding'].includes(d.status)
-  ) ?? [];
+  );
 
-  const failed = query.data?.filter(d => d.status === 'failed') ?? [];
+  const failed = items.filter(d => d.status === 'failed');
 
   return {
-    downloads: query.data ?? [],
+    downloads: items,
     active,
     completed,
     failed,
+    clients: query.data?.clients,
     isLoading: query.isLoading,
     isError: query.isError,
     deleteDownload: deleteMutation.mutate,

@@ -11,15 +11,20 @@ import { fetchApi } from '@/lib/utils/fetchApi';
 import { formatBytes, formatSpeed, formatDuration } from '@/lib/utils/formatters';
 import type { DownloadItem } from '@/lib/types/common';
 
+interface DownloadsResponse {
+  items: DownloadItem[];
+  clients: { torrent: boolean; usenet: boolean };
+}
+
 export function ActiveDownloads() {
-  const { data, isLoading } = useQuery<DownloadItem[]>({
+  const { data, isLoading } = useQuery<DownloadsResponse>({
     queryKey: ['downloads'],
-    queryFn: () => fetchApi<DownloadItem[]>('/api/downloads'),
+    queryFn: () => fetchApi<DownloadsResponse>('/api/downloads'),
     refetchInterval: POLLING.DOWNLOADS,
     staleTime: STALE_TIME.DOWNLOADS,
   });
 
-  const active = data?.filter(d => d.status === 'downloading' || d.status === 'queued') ?? [];
+  const active = data?.items?.filter(d => d.status === 'downloading' || d.status === 'queued') ?? [];
 
   return (
     <Card>
