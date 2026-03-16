@@ -52,9 +52,13 @@ export async function declineRequest(requestId: number): Promise<void> {
 }
 
 export async function createRequest(body: { mediaType: string; mediaId: number }): Promise<SeerrRequest> {
+  // TV requests require seasons — request all by default
+  const payload = body.mediaType === 'tv'
+    ? { ...body, seasons: 'all' }
+    : body;
   return seerrFetch('/request', {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
 }
 
