@@ -66,6 +66,7 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'QBITTORRENT_PASSWORD', label: 'qBittorrent Password', type: 'secret', group: 'services', description: 'qBittorrent web UI password', sensitive: true, affectsServices: ['media-ui'], servicePort: 8080 },
   { key: 'SABNZBD_API_KEY', label: 'SABnzbd API Key', type: 'secret', group: 'services', description: 'API key from SABnzbd → Config → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 8081 },
   { key: 'SEERR_API_KEY', label: 'Seerr API Key', type: 'secret', group: 'services', description: 'API key from Seerr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 5055 },
+  { key: 'BAZARR_API_KEY', label: 'Bazarr API Key', type: 'secret', group: 'services', description: 'API key from Bazarr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 6767 },
   { key: 'PLEX_URL', label: 'Plex URL', type: 'string', group: 'services', description: 'Plex server URL (e.g. http://192.168.1.x:32400)', default: 'http://localhost:32400', affectsServices: ['media-ui'] },
   { key: 'UN_SONARR_0_API_KEY', label: 'Unpackerr Sonarr Key', type: 'secret', group: 'services', description: 'Sonarr API key for Unpackerr (auto-populated by Detect API Keys)', sensitive: true, affectsServices: ['unpackerr'] },
   { key: 'UN_RADARR_0_API_KEY', label: 'Unpackerr Radarr Key', type: 'secret', group: 'services', description: 'Radarr API key for Unpackerr (auto-populated by Detect API Keys)', sensitive: true, affectsServices: ['unpackerr'] },

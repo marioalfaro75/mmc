@@ -50,7 +50,7 @@ export async function listServices(): Promise<DockerServiceStatus[]> {
 
   // docker compose ps --format json outputs one JSON object per line
   const lines = stdout.trim().split('\n');
-  return lines.map((line) => {
+  const all = lines.map((line) => {
     const raw = JSON.parse(line);
     return {
       name: raw.Name || raw.name || '',
@@ -61,6 +61,17 @@ export async function listServices(): Promise<DockerServiceStatus[]> {
       image: raw.Image || raw.image || '',
     };
   });
+
+  // Deduplicate by service name — after a recreate, both the old (exited)
+  // and new (running) container can appear.  Prefer the running one.
+  const byService = new Map<string, DockerServiceStatus>();
+  for (const svc of all) {
+    const existing = byService.get(svc.service);
+    if (!existing || (existing.state !== 'running' && svc.state === 'running')) {
+      byService.set(svc.service, svc);
+    }
+  }
+  return Array.from(byService.values());
 }
 
 async function getServiceState(service: string): Promise<DockerServiceStatus | undefined> {

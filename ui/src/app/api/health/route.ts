@@ -6,6 +6,7 @@ import { getVersion as getQbtVersion } from '@/lib/api/qbittorrent';
 import { getVersion as getSabnzbdVersion } from '@/lib/api/sabnzbd';
 import { getVpnStatus } from '@/lib/api/gluetun';
 import { getStatus as getSeerrStatus } from '@/lib/api/seerr';
+import { getSystemStatus as getBazarrStatus } from '@/lib/api/bazarr';
 import type { ServiceHealth } from '@/lib/types/common';
 
 async function checkService(
@@ -48,6 +49,10 @@ export async function GET() {
     checkService('Seerr', '/seerr', async () => {
       const s = await getSeerrStatus();
       return s.version;
+    }),
+    checkService('Bazarr', '/bazarr', async () => {
+      const s = await getBazarrStatus();
+      return s.data.bazarr_version;
     }),
   ]);
 

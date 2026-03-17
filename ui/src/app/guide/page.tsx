@@ -279,7 +279,7 @@ function DetectApiKeys() {
     <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
       <p className="text-sm font-medium">Auto-detect API Keys</p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Reads API keys directly from Sonarr, Radarr, Prowlarr, and Seerr config files and saves them to Settings.
+        Reads API keys directly from Sonarr, Radarr, Prowlarr, Seerr, and Bazarr config files and saves them to Settings.
         Also populates Unpackerr keys automatically. Automatically restarts services to apply.
       </p>
       <button
@@ -610,6 +610,12 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
             port="localhost:6767"
             description="Subtitle management — automatically downloads subtitles for your media"
           >
+            <QuickSetupButton
+              label="Bazarr"
+              endpoint="/api/bazarr/configure"
+              description="Auto-configure steps 1-2: connect Bazarr to Sonarr and Radarr using detected API keys."
+              successMessage="Bazarr configured — Sonarr and Radarr connections applied"
+            />
             <Step n={1}>
               <p>Connect to Sonarr: Settings → Sonarr → Enable, Address <Code>sonarr</Code>, Port <Code>8989</Code>, API Key</p>
             </Step>

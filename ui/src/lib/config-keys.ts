@@ -12,6 +12,19 @@ function extractApiKey(xmlContent: string): string | null {
   return match ? match[1] : null;
 }
 
+function extractBazarrApiKey(configRoot: string): string | null {
+  try {
+    const configPath = join(configRoot, 'bazarr', 'config', 'config.yaml');
+    const content = readFileSync(configPath, 'utf-8');
+    // Match "apikey: <value>" under the auth section
+    const match = content.match(/^auth:\s*\n\s+apikey:\s*['"]?([a-f0-9]+)['"]?/m);
+    if (match && match[1].length > 0) {
+      return match[1];
+    }
+  } catch { /* not available */ }
+  return null;
+}
+
 function extractSeerrApiKey(configRoot: string): string | null {
   try {
     const settingsPath = join(configRoot, 'seerr', 'settings.json');
@@ -54,6 +67,14 @@ export function readApiKeysFromConfig(configRoot: string): {
     detected.SEERR_API_KEY = seerrKey;
   } else {
     missing.push('seerr');
+  }
+
+  // Bazarr stores its key in config.yaml
+  const bazarrKey = extractBazarrApiKey(configRoot);
+  if (bazarrKey) {
+    detected.BAZARR_API_KEY = bazarrKey;
+  } else {
+    missing.push('bazarr');
   }
 
   return { detected, missing };

@@ -135,7 +135,7 @@ Complete these steps in order after first deploy. The web UI also has a full int
 
 ### Auto-Detect API Keys
 
-After first deploy, go to the Guide page and click **Detect API Keys**. This reads API keys from Sonarr, Radarr, Prowlarr, and Seerr config files and saves them to Settings automatically. Also populates Unpackerr keys.
+After first deploy, go to the Guide page and click **Detect API Keys**. This reads API keys from Sonarr, Radarr, Prowlarr, Seerr, and Bazarr config files and saves them to Settings automatically. Also populates Unpackerr keys.
 
 ### Phase 1: VPN & Download Clients
 
@@ -183,8 +183,7 @@ After first deploy, go to the Guide page and click **Detect API Keys**. This rea
 ### Phase 3: Subtitles & Requests
 
 8. **Bazarr** (`localhost:6767`):
-   - Connect to Sonarr: Settings → Sonarr → Enabled, Address `sonarr`, Port `8989`, API Key
-   - Connect to Radarr: Settings → Radarr → Enabled, Address `radarr`, Port `7878`, API Key
+   - Use Quick Setup in the Guide page to auto-connect Sonarr and Radarr, or configure manually
    - Add subtitle providers: Settings → Providers → Add (OpenSubtitles, Addic7ed, etc.)
    - Set languages: Settings → Languages → add your preferred subtitle language(s)
 

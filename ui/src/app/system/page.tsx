@@ -148,30 +148,7 @@ export default function SystemPage() {
     }
   };
 
-  const restartAll = async () => {
-    try {
-      const res = await fetch('/api/settings/restart', { method: 'POST' });
-      if (res.ok) {
-        toast.info('Restarting all services...');
-        const poll = setInterval(async () => {
-          try {
-            const healthRes = await fetch('/api/health', { signal: AbortSignal.timeout(3000) });
-            if (healthRes.ok) {
-              clearInterval(poll);
-              toast.success('All services restarted');
-              loadDocker();
-            }
-          } catch {
-            // expected during restart
-          }
-        }, 3000);
-        setTimeout(() => clearInterval(poll), 120000);
-      }
-    } catch {
-      toast.error('Failed to restart stack');
-    }
-  };
-
+  const [startAllLoading, setStartAllLoading] = useState(false);
   const [stopAllLoading, setStopAllLoading] = useState(false);
   const [stopSelfLoading, setStopSelfLoading] = useState(false);
 
@@ -194,6 +171,28 @@ export default function SystemPage() {
       toast.error('Failed to stop services — connection lost');
     } finally {
       setStopAllLoading(false);
+    }
+  };
+
+  const startAll = async () => {
+    setStartAllLoading(true);
+    try {
+      const res = await fetch('/api/services/start-all', { method: 'POST' });
+      if (res.ok || res.status === 207) {
+        const data = await res.json();
+        if (data.status === 'partial') {
+          toast.warning(`Some services failed to start: ${data.error}`);
+        } else {
+          toast.success('All services started');
+        }
+        loadDocker();
+      } else {
+        toast.error('Failed to start services');
+      }
+    } catch {
+      toast.error('Failed to start services — connection lost');
+    } finally {
+      setStartAllLoading(false);
     }
   };
 
@@ -376,11 +375,12 @@ export default function SystemPage() {
               Refresh
             </button>
             <button
-              onClick={restartAll}
-              className="flex items-center gap-1.5 rounded-md bg-danger px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-danger/90"
+              onClick={startAll}
+              disabled={startAllLoading}
+              className="flex items-center gap-1.5 rounded-md border border-success px-3 py-1.5 text-xs font-medium text-success transition-colors hover:bg-success hover:text-white disabled:opacity-50"
             >
-              <RotateCcw className="h-3.5 w-3.5" />
-              Restart All
+              {startAllLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+              Start Services
             </button>
             <button
               onClick={stopAll}
@@ -388,7 +388,7 @@ export default function SystemPage() {
               className="flex items-center gap-1.5 rounded-md border border-danger px-3 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger hover:text-white disabled:opacity-50"
             >
               {stopAllLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5" />}
-              Stop All
+              Stop Services
             </button>
             <button
               onClick={stopSelf}
