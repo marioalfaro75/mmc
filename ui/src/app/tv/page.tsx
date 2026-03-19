@@ -69,6 +69,17 @@ export default function TvPage() {
     onError: () => toast.error('Failed to add series'),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: ({ id, deleteFiles }: { id: number; deleteFiles: boolean }) =>
+      fetchApi(`/api/series?id=${id}&deleteFiles=${deleteFiles}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['series'] });
+      setSelectedSeries(null);
+      toast.success('Series removed');
+    },
+    onError: () => toast.error('Failed to remove series'),
+  });
+
   const searchMissingMutation = useMutation({
     mutationFn: () =>
       fetchApi('/api/series/command', {
@@ -220,6 +231,8 @@ export default function TvPage() {
               percent: current.statistics?.percentOfEpisodes || 0,
             }}
             seasons={current.seasons}
+            onDelete={(deleteFiles) => deleteMutation.mutate({ id: current.id, deleteFiles })}
+            isDeleting={deleteMutation.isPending}
           >
             <SeriesEpisodes seriesId={current.id} />
           </MediaDetail>

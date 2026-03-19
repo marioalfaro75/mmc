@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getMovies, addMovie } from '@/lib/api/radarr';
+import { getMovies, addMovie, deleteMovie } from '@/lib/api/radarr';
 
 export async function GET() {
   if (!process.env.RADARR_API_KEY) {
@@ -27,6 +27,26 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: 'Failed to add movie', service: 'radarr', statusCode: 500 },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    const deleteFiles = searchParams.get('deleteFiles') === 'true';
+
+    if (!id) {
+      return NextResponse.json({ error: 'Movie ID is required' }, { status: 400 });
+    }
+
+    await deleteMovie(parseInt(id, 10), deleteFiles);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Failed to delete movie', service: 'radarr' },
       { status: 500 }
     );
   }

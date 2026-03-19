@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { Trash2, Loader2, AlertTriangle } from 'lucide-react';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
 import { formatBytes, formatDate, formatRelativeDate } from '@/lib/utils/formatters';
@@ -25,6 +27,8 @@ interface MediaDetailProps {
   episodeStats?: { fileCount: number; totalCount: number; percent: number };
   seasons?: { seasonNumber: number; monitored: boolean; statistics: { episodeFileCount: number; episodeCount: number; percentOfEpisodes: number } }[];
   children?: React.ReactNode;
+  onDelete?: (deleteFiles: boolean) => void;
+  isDeleting?: boolean;
 }
 
 export function MediaDetail({
@@ -48,7 +52,12 @@ export function MediaDetail({
   episodeStats,
   seasons,
   children,
+  onDelete,
+  isDeleting,
 }: MediaDetailProps) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteFiles, setDeleteFiles] = useState(false);
+
   return (
     <Modal open={open} onClose={onClose} title={title} className="max-w-3xl">
       <div className="max-h-[70vh] overflow-y-auto">
@@ -148,6 +157,60 @@ export function MediaDetail({
         </div>
       </div>
       {children}
+      {onDelete && (
+        <div className="mt-4 border-t border-border pt-4">
+          {!showDeleteConfirm ? (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center gap-2 rounded-md border border-red-500/50 px-3 py-2 text-sm font-medium text-red-500 hover:bg-red-500/10 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" />
+              Remove
+            </button>
+          ) : (
+            <div className="rounded-md border border-red-500/20 bg-red-500/5 p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium">Remove &quot;{title}&quot;?</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    This will remove it from Sonarr/Radarr. It will no longer be monitored or searched for.
+                  </p>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={deleteFiles}
+                  onChange={(e) => setDeleteFiles(e.target.checked)}
+                  className="rounded border-border"
+                />
+                Also delete downloaded files from disk
+              </label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => onDelete(deleteFiles)}
+                  disabled={isDeleting}
+                  className="flex items-center gap-2 rounded-md bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50 transition-colors"
+                >
+                  {isDeleting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  {isDeleting ? 'Removing...' : 'Confirm Remove'}
+                </button>
+                <button
+                  onClick={() => { setShowDeleteConfirm(false); setDeleteFiles(false); }}
+                  className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       </div>
     </Modal>
   );

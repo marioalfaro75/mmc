@@ -2,7 +2,7 @@
 # ============================================================
 # deploy.sh — Bootstrap, install, and staged deployment
 # ============================================================
-# Usage: ./scripts/deploy.sh [--install] [--dry-run] [--skip-ui] [--ui-only] [--ui-docker] [--update] [--help]
+# Usage: ./scripts/deploy.sh [--install] [--dry-run] [--skip-ui] [--ui-only] [--ui-docker] [--update] [--nas] [--help]
 #
 # One-liner install (WSL/Linux):
 #   curl -fsSL https://raw.githubusercontent.com/marioalfaro75/mmc/main/scripts/deploy.sh | bash -s -- --install
@@ -15,6 +15,7 @@
 #   --update     Pull latest code, migrate .env, rebuild all containers.
 #   --ui-only    Run the web UI locally via Next.js dev server (no Docker).
 #   --ui-docker  Build and deploy only the web UI Docker container.
+#   --nas        Set up a NAS mount for media storage.
 #   (default)    Full staged deploy with post-deploy checks.
 #
 # Options:
@@ -40,6 +41,7 @@ UPDATE_MODE=0
 UI_ONLY=0
 UI_DOCKER=0
 INSTALL_MODE=0
+NAS_MODE=0
 PASS_COUNT=0
 WARN_COUNT=0
 FAIL_COUNT=0
@@ -171,6 +173,7 @@ show_help() {
     echo "  --update     Pull latest code, migrate .env, rebuild all containers"
     echo "  --ui-only    Run the web UI locally via Next.js dev server (no Docker)"
     echo "  --ui-docker  Build and deploy only the web UI Docker container"
+    echo "  --nas        Set up a NAS mount for media storage"
     echo "  (default)    Full staged deploy with post-deploy checks"
     echo ""
     echo "Options:"
@@ -204,6 +207,7 @@ while [ $# -gt 0 ]; do
         --ui-only)  UI_ONLY=1 ;;
         --ui-docker) UI_DOCKER=1 ;;
         --install)  INSTALL_MODE=1 ;;
+        --nas)      NAS_MODE=1 ;;
         --help|-h)  show_help ;;
         *)
             echo "ERROR: Unknown option: $1" >&2
@@ -303,6 +307,289 @@ detect_local_subnet() {
     # Fallback if detection fails
     echo "192.168.1.0/24"
     return 1
+}
+
+# ============================================================
+# NAS MOUNT FUNCTIONS
+# ============================================================
+
+check_nas_mount() {
+    # Called on every deploy — verifies NAS mount is active if DATA_ROOT is a mount point
+    ENV_FILE="$PROJECT_DIR/.env"
+    if [ ! -f "$ENV_FILE" ]; then
+        return
+    fi
+
+    set -a
+    . "$ENV_FILE"
+    set +a
+
+    _data_root="${DATA_ROOT:-$HOME/.mmc/data}"
+    # Expand ~ to $HOME
+    case "$_data_root" in "~"*) _data_root="$HOME${_data_root#"~"}" ;; esac
+
+    # Check if DATA_ROOT or its parent is listed in fstab as a network mount
+    _fstab_entry=""
+    if [ -f /etc/fstab ]; then
+        _fstab_entry=$(grep -E "^[^#].*[[:space:]]${_data_root}[[:space:]]" /etc/fstab 2>/dev/null || true)
+    fi
+
+    # Not a NAS-backed path — nothing to check
+    if [ -z "$_fstab_entry" ] && ! mountpoint -q "$_data_root" 2>/dev/null; then
+        return
+    fi
+
+    section "NAS Mount"
+
+    if mountpoint -q "$_data_root" 2>/dev/null; then
+        pass "DATA_ROOT ($_data_root) is mounted"
+        # Verify writable
+        if touch "$_data_root/.mmc-mount-test" 2>/dev/null; then
+            rm -f "$_data_root/.mmc-mount-test"
+            pass "Mount is writable"
+        else
+            warn "Mount is read-only — services may fail to write media"
+        fi
+        # Show free space
+        _free=$(df -h "$_data_root" 2>/dev/null | awk 'NR==2 {print $4}')
+        if [ -n "$_free" ]; then
+            info "Free space: $_free"
+        fi
+    elif [ -n "$_fstab_entry" ]; then
+        warn "DATA_ROOT ($_data_root) has an fstab entry but is not mounted"
+        info "Attempting to mount..."
+        if sudo mount "$_data_root" 2>/dev/null; then
+            pass "Mount recovered successfully"
+        else
+            fail "Could not mount $_data_root — check NAS connectivity"
+            info "fstab entry: $_fstab_entry"
+            info "Services will start but media may be unavailable"
+        fi
+    fi
+}
+
+setup_nas() {
+    section "NAS Setup"
+
+    # Check if already configured
+    ENV_FILE="$PROJECT_DIR/.env"
+    if [ -f "$ENV_FILE" ]; then
+        set -a
+        . "$ENV_FILE"
+        set +a
+    fi
+
+    _data_root="${DATA_ROOT:-$HOME/.mmc/data}"
+    case "$_data_root" in "~"*) _data_root="$HOME${_data_root#"~"}" ;; esac
+
+    if mountpoint -q "$_data_root" 2>/dev/null; then
+        pass "DATA_ROOT ($_data_root) is already a NAS mount"
+        if confirm_user "Reconfigure NAS mount?" "n"; then
+            info "Proceeding with reconfiguration..."
+        else
+            info "Keeping existing NAS configuration"
+            return
+        fi
+    fi
+
+    echo ""
+    info "${BOLD}Configure your NAS connection${RESET}"
+    echo ""
+
+    # Protocol
+    _proto=$(prompt_user "Protocol (nfs/smb)" "nfs")
+    case "$_proto" in
+        [Nn][Ff][Ss]) _proto="nfs" ;;
+        [Ss][Mm][Bb]|[Cc][Ii][Ff][Ss]) _proto="smb" ;;
+        *)
+            fail "Unknown protocol: $_proto (use nfs or smb)"
+            return 1
+            ;;
+    esac
+    pass "Protocol: $_proto"
+
+    # NAS address
+    _nas_host=$(prompt_user "NAS IP or hostname" "")
+    if [ -z "$_nas_host" ]; then
+        fail "NAS address is required"
+        return 1
+    fi
+
+    # Test connectivity
+    info "Testing connection to $_nas_host..."
+    if ping -c 1 -W 3 "$_nas_host" >/dev/null 2>&1; then
+        pass "$_nas_host is reachable"
+    else
+        warn "$_nas_host is not responding to ping (may still work if ICMP is blocked)"
+        if ! confirm_user "Continue anyway?" "n"; then
+            return 1
+        fi
+    fi
+
+    # Share path
+    _share=$(prompt_user "Share path on NAS (e.g. /volume1/media)" "")
+    if [ -z "$_share" ]; then
+        fail "Share path is required"
+        return 1
+    fi
+
+    # Local mount point
+    _mount_point=$(prompt_user "Local mount point" "/mnt/nas/media")
+    case "$_mount_point" in "~"*) _mount_point="$HOME${_mount_point#"~"}" ;; esac
+
+    # SMB credentials
+    _smb_user=""
+    _smb_pass=""
+    _smb_cred_file=""
+    if [ "$_proto" = "smb" ]; then
+        _smb_user=$(prompt_user "SMB username" "")
+        _smb_pass=$(prompt_user "SMB password" "")
+        if [ -n "$_smb_user" ]; then
+            _smb_cred_file="$HOME/.mmc/.nas-credentials"
+        fi
+    fi
+
+    echo ""
+    info "${BOLD}Summary${RESET}"
+    info "  Protocol:    $_proto"
+    info "  NAS:         $_nas_host"
+    info "  Share:       $_share"
+    info "  Mount point: $_mount_point"
+    if [ "$_proto" = "smb" ] && [ -n "$_smb_user" ]; then
+        info "  SMB user:    $_smb_user"
+    fi
+    echo ""
+
+    if ! confirm_user "Proceed with NAS setup?"; then
+        info "NAS setup cancelled"
+        return
+    fi
+
+    # Install required packages
+    info "Installing required packages..."
+    if [ "$_proto" = "nfs" ]; then
+        if dpkg -l nfs-common 2>/dev/null | grep -q "^ii"; then
+            pass "nfs-common already installed"
+        else
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq nfs-common
+            pass "nfs-common installed"
+        fi
+    else
+        if dpkg -l cifs-utils 2>/dev/null | grep -q "^ii"; then
+            pass "cifs-utils already installed"
+        else
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq cifs-utils
+            pass "cifs-utils installed"
+        fi
+        if dpkg -l smbclient 2>/dev/null | grep -q "^ii"; then
+            pass "smbclient already installed"
+        else
+            sudo apt-get install -y -qq smbclient
+            pass "smbclient installed (for share discovery)"
+        fi
+    fi
+
+    # Create mount point
+    sudo mkdir -p "$_mount_point"
+    pass "Created mount point: $_mount_point"
+
+    # Build mount options and fstab entry
+    _puid="${PUID:-$(id -u)}"
+    _pgid="${PGID:-$(id -g)}"
+
+    if [ "$_proto" = "nfs" ]; then
+        _mount_src="${_nas_host}:${_share}"
+        _mount_opts="defaults,_netdev,nofail,soft,timeo=30"
+        _fstab_line="${_mount_src}  ${_mount_point}  nfs  ${_mount_opts}  0  0"
+        _mount_cmd="mount -t nfs -o ${_mount_opts} ${_mount_src} ${_mount_point}"
+    else
+        _mount_src="//${_nas_host}${_share}"
+        if [ -n "$_smb_cred_file" ]; then
+            # Store credentials securely
+            mkdir -p "$(dirname "$_smb_cred_file")"
+            printf "username=%s\npassword=%s\n" "$_smb_user" "$_smb_pass" > "$_smb_cred_file"
+            chmod 600 "$_smb_cred_file"
+            pass "Credentials stored at $_smb_cred_file (mode 600)"
+            _mount_opts="credentials=${_smb_cred_file},uid=${_puid},gid=${_pgid},_netdev,nofail,iocharset=utf8"
+        else
+            _mount_opts="uid=${_puid},gid=${_pgid},_netdev,nofail,iocharset=utf8"
+        fi
+        _fstab_line="${_mount_src}  ${_mount_point}  cifs  ${_mount_opts}  0  0"
+        _mount_cmd="mount -t cifs -o ${_mount_opts} ${_mount_src} ${_mount_point}"
+    fi
+
+    # Mount the share
+    info "Mounting ${_mount_src} → ${_mount_point}..."
+    if sudo $_mount_cmd 2>&1; then
+        pass "Mount successful"
+    else
+        fail "Mount failed — check NAS address, share path, and credentials"
+        info "Command attempted: sudo $_mount_cmd"
+        return 1
+    fi
+
+    # Verify writable
+    if touch "$_mount_point/.mmc-mount-test" 2>/dev/null; then
+        rm -f "$_mount_point/.mmc-mount-test"
+        pass "Mount is writable"
+    else
+        warn "Mount appears read-only — check NAS share permissions"
+    fi
+
+    # Add fstab entry for persistence
+    if grep -qF "$_mount_point" /etc/fstab 2>/dev/null; then
+        warn "fstab already has an entry for $_mount_point — replacing it"
+        sudo sed -i "\|${_mount_point}|d" /etc/fstab
+    fi
+    echo "$_fstab_line" | sudo tee -a /etc/fstab >/dev/null
+    pass "Added fstab entry for persistence"
+
+    # Handle WSL auto-mount
+    if detect_wsl; then
+        info "WSL detected — configuring auto-mount on startup"
+        _wsl_conf="/etc/wsl.conf"
+        if [ -f "$_wsl_conf" ] && grep -q "^\[boot\]" "$_wsl_conf"; then
+            if grep -q "^command" "$_wsl_conf"; then
+                # Append mount to existing boot command
+                _existing=$(grep "^command" "$_wsl_conf" | head -1 | sed 's/^command\s*=\s*//')
+                if ! echo "$_existing" | grep -qF "mount -a"; then
+                    sudo sed -i "s|^command\s*=.*|command=${_existing} \&\& mount -a|" "$_wsl_conf"
+                    pass "Added mount -a to existing WSL boot command"
+                else
+                    pass "WSL boot command already includes mount -a"
+                fi
+            else
+                echo "command=mount -a" | sudo tee -a "$_wsl_conf" >/dev/null
+                pass "Added mount -a to WSL boot command"
+            fi
+        else
+            printf "[boot]\ncommand=mount -a\n" | sudo tee -a "$_wsl_conf" >/dev/null
+            pass "Created WSL boot config with mount -a"
+        fi
+    fi
+
+    # Update DATA_ROOT in .env
+    if [ -f "$ENV_FILE" ]; then
+        info "Updating DATA_ROOT in .env to $_mount_point"
+        sed -i "s|^DATA_ROOT=.*|DATA_ROOT=$_mount_point|" "$ENV_FILE"
+        pass "DATA_ROOT=$_mount_point"
+    fi
+
+    # Show free space
+    _free=$(df -h "$_mount_point" 2>/dev/null | awk 'NR==2 {print $4}')
+    if [ -n "$_free" ]; then
+        info "NAS free space: $_free"
+    fi
+
+    pass "NAS setup complete"
+
+    # Redact SMB credentials from log file
+    if [ -n "$_MMC_LOGGED" ] && [ -f "$_MMC_LOGGED" ]; then
+        sed -i 's/SMB password.*/SMB password: [REDACTED]/' "$_MMC_LOGGED"
+        sed -i "s|password=$_smb_pass|password=[REDACTED]|g" "$_MMC_LOGGED" 2>/dev/null || true
+    fi
 }
 
 check_env_file() {
@@ -470,6 +757,13 @@ run_setup_wizard() {
     _puid=$(prompt_user "(optional) PUID" "$_puid")
     _pgid=$(prompt_user "(optional) PGID" "$_pgid")
 
+    # NAS setup prompt
+    echo ""
+    _setup_nas=0
+    if confirm_user "Store media on a NAS or network share?" "n"; then
+        _setup_nas=1
+    fi
+
     echo ""
 
     # Use | as sed delimiter (WireGuard keys contain / and +)
@@ -495,6 +789,11 @@ run_setup_wizard() {
     pass "LOCAL_SUBNET=$_local_subnet (auto-detected from default network interface)"
 
     pass ".env written with your values"
+
+    # Run NAS setup if requested during wizard
+    if [ "$_setup_nas" = "1" ]; then
+        setup_nas
+    fi
 
     # Redact secrets from log file
     if [ -n "$_MMC_LOGGED" ] && [ -f "$_MMC_LOGGED" ]; then
@@ -1250,6 +1549,15 @@ if [ "$INSTALL_MODE" = "1" ]; then
     run_install
     # run_install execs into the cloned deploy.sh — should not reach here
     exit 0
+elif [ "$NAS_MODE" = "1" ]; then
+    section "Mars Media Centre — NAS Setup"
+    check_env_file
+    setup_nas
+    validate_env
+    echo ""
+    info "NAS mount is ready. To apply, restart services:"
+    info "  ./scripts/deploy.sh"
+    print_summary
 elif [ "$UI_ONLY" = "1" ]; then
     section "Mars Media Centre — UI Only"
 
@@ -1319,6 +1627,7 @@ elif [ "$UPDATE_MODE" = "1" ]; then
     . "$PROJECT_DIR/.env"
     set +a
     validate_env
+    check_nas_mount
     validate_compose_syntax
     check_shell_scripts
 
@@ -1341,6 +1650,7 @@ elif [ "$DRY_RUN" = "1" ]; then
 
     check_prerequisites
     check_env_file
+    check_nas_mount
     validate_compose_syntax
     check_shell_scripts
     build_ui
@@ -1353,6 +1663,7 @@ else
     check_prerequisites
     check_env_file
     validate_env
+    check_nas_mount
     validate_compose_syntax
     check_shell_scripts
     run_init

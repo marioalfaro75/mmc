@@ -29,6 +29,19 @@ export async function getSeriesById(id: number): Promise<SonarrSeries> {
   return sonarrFetch<SonarrSeries>(`/series/${id}`);
 }
 
+export async function deleteSeries(id: number, deleteFiles = false): Promise<void> {
+  const url = `${BASE_URL}/api/v3/series/${id}?deleteFiles=${deleteFiles}&addImportListExclusion=false`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: { 'X-Api-Key': API_KEY },
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Sonarr API error: ${res.status} ${res.statusText} — ${body}`);
+  }
+}
+
 export async function addSeries(series: Partial<SonarrSeries>): Promise<SonarrSeries> {
   return sonarrFetch<SonarrSeries>('/series', {
     method: 'POST',
@@ -66,10 +79,21 @@ export async function getRootFolders(): Promise<{ id: number; path: string }[]> 
   return sonarrFetch('/rootfolder');
 }
 
-export async function addRootFolder(path: string): Promise<void> {
-  await sonarrFetch('/rootfolder', {
+export async function addRootFolder(path: string): Promise<{ id: number; path: string }> {
+  return sonarrFetch('/rootfolder', {
     method: 'POST',
     body: JSON.stringify({ path }),
+  });
+}
+
+export async function deleteRootFolder(id: number): Promise<void> {
+  await sonarrFetch(`/rootfolder/${id}`, { method: 'DELETE' });
+}
+
+export async function massUpdateSeries(seriesIds: number[], rootFolderPath: string): Promise<void> {
+  await sonarrFetch('/series/editor', {
+    method: 'PUT',
+    body: JSON.stringify({ seriesIds, rootFolderPath }),
   });
 }
 

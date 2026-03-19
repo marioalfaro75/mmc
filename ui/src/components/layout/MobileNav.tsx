@@ -8,6 +8,7 @@ import {
   Tv,
   Download,
   Settings,
+  HardDrive,
   ScrollText,
   BookOpen,
 } from 'lucide-react';
@@ -19,6 +20,7 @@ const mobileItems = [
   { href: '/tv', label: 'TV', icon: Tv },
   { href: '/downloads', label: 'Downloads', icon: Download },
   { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/migration', label: 'NAS', icon: HardDrive },
   { href: '/logs', label: 'Logs', icon: ScrollText },
   { href: '/guide', label: 'Guide', icon: BookOpen },
 ];

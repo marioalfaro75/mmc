@@ -8,7 +8,7 @@ RUN npm run build
 
 # Stage 2: Production
 FROM node:20-alpine AS runner
-RUN apk add --no-cache docker-cli docker-cli-compose
+RUN apk add --no-cache docker-cli docker-cli-compose nfs-utils samba-client
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./

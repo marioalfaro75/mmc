@@ -68,6 +68,17 @@ export default function MoviesPage() {
     onError: () => toast.error('Failed to add movie'),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: ({ id, deleteFiles }: { id: number; deleteFiles: boolean }) =>
+      fetchApi(`/api/movies?id=${id}&deleteFiles=${deleteFiles}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['movies'] });
+      setSelectedMovie(null);
+      toast.success('Movie removed');
+    },
+    onError: () => toast.error('Failed to remove movie'),
+  });
+
   const searchMissingMutation = useMutation({
     mutationFn: () =>
       fetchApi('/api/movies/command', {
@@ -202,6 +213,8 @@ export default function MoviesPage() {
             genres={current.genres}
             runtime={current.runtime}
             certification={current.certification}
+            onDelete={(deleteFiles) => deleteMutation.mutate({ id: current.id, deleteFiles })}
+            isDeleting={deleteMutation.isPending}
           />
         );
       })()}

@@ -29,6 +29,19 @@ export async function getMovieById(id: number): Promise<RadarrMovie> {
   return radarrFetch<RadarrMovie>(`/movie/${id}`);
 }
 
+export async function deleteMovie(id: number, deleteFiles = false): Promise<void> {
+  const url = `${BASE_URL}/api/v3/movie/${id}?deleteFiles=${deleteFiles}&addImportListExclusion=false`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: { 'X-Api-Key': API_KEY },
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Radarr API error: ${res.status} ${res.statusText} — ${body}`);
+  }
+}
+
 export async function addMovie(movie: Partial<RadarrMovie>): Promise<RadarrMovie> {
   return radarrFetch<RadarrMovie>('/movie', {
     method: 'POST',
@@ -66,10 +79,21 @@ export async function getRootFolders(): Promise<{ id: number; path: string }[]> 
   return radarrFetch('/rootfolder');
 }
 
-export async function addRootFolder(path: string): Promise<void> {
-  await radarrFetch('/rootfolder', {
+export async function addRootFolder(path: string): Promise<{ id: number; path: string }> {
+  return radarrFetch('/rootfolder', {
     method: 'POST',
     body: JSON.stringify({ path }),
+  });
+}
+
+export async function deleteRootFolder(id: number): Promise<void> {
+  await radarrFetch(`/rootfolder/${id}`, { method: 'DELETE' });
+}
+
+export async function massUpdateMovies(movieIds: number[], rootFolderPath: string): Promise<void> {
+  await radarrFetch('/movie/editor', {
+    method: 'PUT',
+    body: JSON.stringify({ movieIds, rootFolderPath }),
   });
 }
 

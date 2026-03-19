@@ -282,6 +282,7 @@ services:
       - ${CONFIG_ROOT}:${CONFIG_ROOT}
       - ${BACKUP_DIR}:${BACKUP_DIR}
       - ${HOME}/.mmc/logs:/app/logs
+      - ${HOME}/.mmc/scripts:/app/scripts
     depends_on:
       - sonarr
       - radarr

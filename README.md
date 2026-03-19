@@ -76,6 +76,17 @@ By default, data is stored outside the repo under `~/.mmc/`:
 
 The wizard prompts for these during first run. You can also change them later via the web UI Settings page or by editing `.env` directly.
 
+#### NAS Storage
+
+To store media on a NAS or network share, use either:
+
+- **During install:** The setup wizard asks "Store media on a NAS?" and walks through NFS/SMB configuration
+- **After install:** Run `./scripts/deploy.sh --nas` or use the **Migration** page in the web UI
+
+The NAS setup handles package installation, mounting, fstab persistence, and WSL auto-mount. On every subsequent deploy, the script automatically verifies the NAS mount is active.
+
+See the [Migration page](#nas-migration) section below for details on moving an existing library to a NAS.
+
 ## Deploy Script
 
 ```bash
@@ -83,6 +94,7 @@ The wizard prompts for these during first run. You can also change them later vi
 ./scripts/deploy.sh --install    # Full bootstrap: install prerequisites, clone, deploy
 ./scripts/deploy.sh --update     # Pull latest code, migrate .env, rebuild all
 ./scripts/deploy.sh --dry-run    # Pre-flight validation only (no containers)
+./scripts/deploy.sh --nas        # Set up a NAS mount for media storage
 ./scripts/deploy.sh --skip-ui    # Skip npm install/build steps
 ./scripts/deploy.sh --help       # Show all options
 ```
@@ -290,10 +302,12 @@ docker exec qbittorrent wget -qO- https://ipinfo.io
 The Mars Media Centre dashboard at `http://localhost:3000` provides:
 
 - Combined download queue (torrents + usenet) with pause, resume, and force start controls
+- Dashboard with download stats (today/week/failed counts + recently completed history)
 - Merged calendar (TV episodes + movies)
-- Library browsing with search, add, and automatic missing content detection
-- TV show episode details: progress bars, per-season breakdowns, next-to-download, missing episodes
+- Library browsing with search, add, delete, and automatic missing content detection
+- TV show episode details: all-episodes view with on-disk status, per-season breakdowns, summary view with next-to-download and missing episodes
 - Media request management with search, request, approve/decline, and delete
+- NAS migration wizard: mount NAS shares via UI, discover available shares, migrate existing media with rsync progress tracking
 - Network page with live VPN topology, tunnel bandwidth monitoring, and per-service traffic stats
 - System page with unified service monitoring (Docker state, API health), VPN status, per-service start/stop/restart, and log viewer
 - Settings with API key management, auto-detection, configuration, and backups
@@ -317,6 +331,44 @@ The Logs page (`http://localhost:3000/logs`) provides two tabs:
 
 - **Services** — View application log files for each service (Sonarr, Radarr, Prowlarr, Bazarr, Seerr, Recyclarr, media-ui). Toggle between app logs and Docker container output.
 - **Deploy** — Browse and view deploy script log files
+
+## NAS Migration
+
+The Migration page (`http://localhost:3000/migration`) lets you move your media library to a NAS or network share without leaving the web UI.
+
+### How It Works
+
+The media stack uses a specific folder structure under `DATA_ROOT`:
+
+```
+DATA_ROOT/
+  media/
+    movies/    ← Radarr puts completed movies here
+    tv/        ← Sonarr puts completed TV shows here
+  torrents/
+    movies/    ← qBittorrent downloads movies here
+    tv/        ← qBittorrent downloads TV here
+  usenet/
+    movies/    ← SABnzbd downloads movies here
+    tv/        ← SABnzbd downloads TV here
+```
+
+When you migrate to a NAS, the NAS mount replaces `DATA_ROOT`. Sonarr and Radarr automatically route completed downloads to the correct folder (`media/movies` or `media/tv`).
+
+### Migration Steps
+
+1. **Mount Setup** — Enter NAS details (protocol, IP, share path). The UI discovers available shares, generates a mount script, and guides you through running it.
+2. **Verify Mount** — Click to confirm the NAS is mounted and writable.
+3. **Pre-flight Checks** — Validates Sonarr/Radarr connectivity, active downloads, and available disk space.
+4. **Migrate** — Copies existing media via rsync with progress tracking, updates Sonarr/Radarr root folders, and optionally updates `DATA_ROOT` in `.env`.
+
+### CLI Alternative
+
+```bash
+./scripts/deploy.sh --nas    # Interactive NAS setup (mount, fstab, WSL auto-mount)
+```
+
+The deploy script automatically verifies NAS mounts on every subsequent run.
 
 ## Backup & Restore
 
