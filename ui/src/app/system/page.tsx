@@ -343,18 +343,24 @@ export default function SystemPage() {
             {vpnData?.connected ? 'Connected' : 'Disconnected'}
           </Badge>
         </CardHeader>
-        {vpnData?.connected && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-md bg-muted/50 p-3">
-              <p className="text-xs text-muted-foreground">Public IP</p>
-              <p className="font-mono text-sm">{vpnData.ip || 'N/A'}</p>
-            </div>
-            <div className="rounded-md bg-muted/50 p-3">
-              <p className="text-xs text-muted-foreground">Country</p>
-              <p className="text-sm">{vpnData.country || 'N/A'}</p>
-            </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-md bg-muted/50 p-3">
+            <p className="text-xs text-muted-foreground">Public IP</p>
+            {!vpnData ? (
+              <Skeleton className="mt-1 h-4 w-28" />
+            ) : (
+              <p className="font-mono text-sm">{vpnData.ip || (vpnData.connected ? 'Unavailable' : '—')}</p>
+            )}
           </div>
-        )}
+          <div className="rounded-md bg-muted/50 p-3">
+            <p className="text-xs text-muted-foreground">Country</p>
+            {!vpnData ? (
+              <Skeleton className="mt-1 h-4 w-24" />
+            ) : (
+              <p className="text-sm">{vpnData.country || (vpnData.connected ? 'Unavailable' : '—')}</p>
+            )}
+          </div>
+        </div>
       </Card>
 
       {/* Unified Services Card */}

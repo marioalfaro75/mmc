@@ -29,7 +29,35 @@ export async function getVpnStatus(): Promise<GluetunStatus> {
 }
 
 export async function getPublicIP(): Promise<GluetunPublicIP> {
-  return gluetunFetch<GluetunPublicIP>('/v1/publicip/ip');
+  const data = await gluetunFetch<GluetunPublicIP>('/v1/publicip/ip');
+  if (data.public_ip) return data;
+
+  // Gluetun's IP updater may return empty — fetch directly via its network
+  return getPublicIPViaExec();
+}
+
+async function getPublicIPViaExec(): Promise<GluetunPublicIP> {
+  const { execSync } = await import('child_process');
+  const raw = execSync(
+    'docker exec gluetun wget -q -O - https://ipinfo.io/json',
+    { timeout: 5000 }
+  ).toString().trim();
+  const data = JSON.parse(raw);
+  return {
+    public_ip: data.ip || '',
+    region: data.region || '',
+    country: countryName(data.country || ''),
+  };
+}
+
+/** Convert ISO 3166-1 alpha-2 code to display name. */
+function countryName(code: string): string {
+  if (!code) return '';
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) || code;
+  } catch {
+    return code;
+  }
 }
 
 export interface GluetunPortForward {

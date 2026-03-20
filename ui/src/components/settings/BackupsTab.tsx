@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Archive, Download, RotateCcw, Trash2, Loader2,
-  RefreshCw, AlertTriangle, HardDrive, Info,
+  RefreshCw, AlertTriangle, HardDrive, Info, Clock, Save,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
@@ -26,6 +26,17 @@ function formatDate(dateStr: string): string {
   return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
 }
 
+interface BackupSchedule {
+  enabled: boolean;
+  frequency: 'daily' | 'weekly';
+  time: string;
+  dayOfWeek: number;
+  maxBackups: number;
+  lastRun: string | null;
+}
+
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 export function BackupsTab() {
   const [backups, setBackups] = useState<BackupInfo[]>([]);
   const [backupDir, setBackupDir] = useState('');
@@ -34,6 +45,10 @@ export function BackupsTab() {
   const [restoring, setRestoring] = useState<string | null>(null);
   const [confirmRestore, setConfirmRestore] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  const [schedule, setSchedule] = useState<BackupSchedule | null>(null);
+  const [scheduleOriginal, setScheduleOriginal] = useState<BackupSchedule | null>(null);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
 
   const loadBackups = useCallback(async () => {
     try {
@@ -50,9 +65,49 @@ export function BackupsTab() {
     }
   }, []);
 
+  const loadSchedule = useCallback(async () => {
+    try {
+      const res = await fetch('/api/backups/schedule');
+      if (res.ok) {
+        const data = await res.json();
+        setSchedule(data);
+        setScheduleOriginal(data);
+      }
+    } catch {
+      // silently fail
+    }
+  }, []);
+
   useEffect(() => {
     loadBackups();
-  }, [loadBackups]);
+    loadSchedule();
+  }, [loadBackups, loadSchedule]);
+
+  const saveSchedule = async () => {
+    if (!schedule) return;
+    setScheduleSaving(true);
+    try {
+      const res = await fetch('/api/backups/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(schedule),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSchedule(data);
+        setScheduleOriginal(data);
+        toast.success(data.enabled ? 'Backup schedule saved' : 'Scheduled backups disabled');
+      } else {
+        toast.error('Failed to save schedule');
+      }
+    } catch {
+      toast.error('Failed to save schedule');
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const scheduleDirty = schedule && scheduleOriginal && JSON.stringify(schedule) !== JSON.stringify(scheduleOriginal);
 
   const createBackup = async () => {
     setCreating(true);
@@ -150,6 +205,104 @@ export function BackupsTab() {
           )}
         </button>
       </Card>
+
+      {/* Scheduled Backups */}
+      {schedule && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              Scheduled Backups
+            </CardTitle>
+          </CardHeader>
+          <div className="space-y-4">
+            <label className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={schedule.enabled}
+                onChange={(e) => setSchedule({ ...schedule, enabled: e.target.checked })}
+                className="rounded border-border"
+              />
+              <div>
+                <p className="text-sm font-medium">Enable automatic backups</p>
+                <p className="text-xs text-muted-foreground">Runs inside the Media UI container — no host cron job needed</p>
+              </div>
+            </label>
+
+            {schedule.enabled && (
+              <div className="space-y-3 rounded-md border border-border bg-muted/30 p-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="text-sm font-medium">Frequency</label>
+                    <select
+                      value={schedule.frequency}
+                      onChange={(e) => setSchedule({ ...schedule, frequency: e.target.value as 'daily' | 'weekly' })}
+                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                    >
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Time</label>
+                    <input
+                      type="time"
+                      value={schedule.time}
+                      onChange={(e) => setSchedule({ ...schedule, time: e.target.value })}
+                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                    />
+                  </div>
+                </div>
+
+                {schedule.frequency === 'weekly' && (
+                  <div>
+                    <label className="text-sm font-medium">Day of Week</label>
+                    <select
+                      value={schedule.dayOfWeek}
+                      onChange={(e) => setSchedule({ ...schedule, dayOfWeek: Number(e.target.value) })}
+                      className="mt-1 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                    >
+                      {DAYS.map((day, i) => (
+                        <option key={i} value={i}>{day}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-sm font-medium">Max Backups to Keep</label>
+                  <p className="text-xs text-muted-foreground">Oldest backups are automatically deleted when this limit is reached</p>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={schedule.maxBackups}
+                    onChange={(e) => setSchedule({ ...schedule, maxBackups: Math.max(1, Math.min(50, Number(e.target.value))) })}
+                    className="mt-1 w-32 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+                  />
+                </div>
+
+                {schedule.lastRun && (
+                  <p className="text-xs text-muted-foreground">
+                    Last scheduled backup: {new Date(schedule.lastRun).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {scheduleDirty && (
+              <button
+                onClick={saveSchedule}
+                disabled={scheduleSaving}
+                className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {scheduleSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save Schedule
+              </button>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* Existing Backups */}
       <Card>
@@ -255,17 +408,13 @@ export function BackupsTab() {
             Docker images, or the repository source code.
           </p>
           <p>
-            <strong className="text-foreground">Rotation:</strong> When creating backups via the CLI
-            script (<code className="rounded bg-muted px-1 font-mono">./scripts/backup.sh</code>),
-            only the 7 most recent backups are kept. Older backups are automatically deleted.
+            <strong className="text-foreground">Rotation:</strong> Only the configured number of most recent
+            backups are kept (default 7). Older backups are automatically deleted.
           </p>
           <p>
-            <strong className="text-foreground">Automated backups:</strong> Add a cron job to run backups
-            on a schedule:
+            <strong className="text-foreground">Automated backups:</strong> Use the Scheduled Backups
+            section above to enable automatic daily or weekly backups.
           </p>
-          <pre className="rounded-md bg-muted p-3 text-xs">
-            0 3 * * * /path/to/mmc/scripts/backup.sh
-          </pre>
         </div>
       </Card>
 

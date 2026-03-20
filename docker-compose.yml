@@ -276,6 +276,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MMC_API_KEY=${MMC_API_KEY:-}
       - GLUETUN_CONTROL_PASSWORD=${GLUETUN_CONTROL_PASSWORD:-changeme}
+      - TZ=${TZ}
     volumes:
       - ./:${HOST_PROJECT_DIR}
       - /var/run/docker.sock:/var/run/docker.sock

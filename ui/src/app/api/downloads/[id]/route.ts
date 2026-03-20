@@ -45,15 +45,16 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     const id = params.id;
+    const deleteFiles = request.nextUrl.searchParams.get('deleteFiles') === 'true';
 
     if (id.startsWith('torrent-')) {
       const hash = id.replace('torrent-', '');
-      await deleteTorrent(hash, false);
+      await deleteTorrent(hash, deleteFiles);
     } else if (id.startsWith('usenet-')) {
       const nzoId = id.replace('usenet-', '');
       await deleteUsenet(nzoId);

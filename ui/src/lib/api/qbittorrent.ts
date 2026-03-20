@@ -125,6 +125,20 @@ export async function deleteTorrent(hash: string, deleteFiles = false): Promise<
   });
 }
 
+export interface QbtPreferences {
+  max_active_downloads: number;
+  max_active_uploads: number;
+  max_active_torrents: number;
+  dl_limit: number;      // bytes/s, 0 = unlimited
+  up_limit: number;      // bytes/s, 0 = unlimited
+  max_ratio: number;     // -1 = unlimited
+  max_seeding_time: number; // minutes, -1 = unlimited
+}
+
+export async function getPreferences(): Promise<QbtPreferences> {
+  return qbtFetch<QbtPreferences>('/api/v2/app/preferences');
+}
+
 export async function setPreferences(prefs: Record<string, unknown>): Promise<void> {
   await qbtFetch<void>('/api/v2/app/setPreferences', {
     method: 'POST',

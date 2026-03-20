@@ -8,7 +8,7 @@ import { logger } from '@/lib/logger';
 import { sanitizeError } from '@/lib/security';
 
 const execFileAsync = promisify(execFile);
-const MAX_BACKUPS = 7;
+let MAX_BACKUPS = 7;
 
 function resolvePath(p: string): string {
   if (p.startsWith('~')) return `${process.env.HOME}${p.slice(1)}`;
@@ -90,33 +90,32 @@ export async function GET() {
   }
 }
 
+async function createBackup(maxBackups?: number): Promise<{ filename: string }> {
+  const { configRoot, backupDir } = getBackupPaths();
+  mkdirSync(backupDir, { recursive: true });
+
+  const now = new Date();
+  const pad = (n: number, len = 2) => String(n).padStart(len, '0');
+  const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const filename = `mars-media-centre-backup-${timestamp}.tar.gz`;
+  const backupFile = join(backupDir, filename);
+
+  await execFileAsync('tar', [
+    '-czf', backupFile,
+    '-C', dirname(configRoot),
+    basename(configRoot),
+  ], { timeout: 120000 });
+
+  if (maxBackups) MAX_BACKUPS = maxBackups;
+  rotateBackups(backupDir);
+  logger.info('backup', `Backup created: ${filename}`);
+  return { filename };
+}
+
 export async function POST() {
   try {
-    const { configRoot, backupDir } = getBackupPaths();
-
-    // Ensure backup directory exists
-    mkdirSync(backupDir, { recursive: true });
-
-    // Create timestamped backup
-    const now = new Date();
-    const pad = (n: number, len = 2) => String(n).padStart(len, '0');
-    const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    const filename = `mars-media-centre-backup-${timestamp}.tar.gz`;
-    const backupFile = join(backupDir, filename);
-
-    // tar -czf <backup> -C <parent> <dirname>
-    await execFileAsync('tar', [
-      '-czf', backupFile,
-      '-C', dirname(configRoot),
-      basename(configRoot),
-    ], { timeout: 120000 });
-
-    // Rotate old backups
-    rotateBackups(backupDir);
-
-    logger.info('backup', `Backup created: ${filename}`);
-
-    // Return updated list
+    const { filename } = await createBackup();
+    const { backupDir } = getBackupPaths();
     const backups = listBackups(backupDir);
     return NextResponse.json({ status: 'complete', filename, backups });
   } catch (err) {

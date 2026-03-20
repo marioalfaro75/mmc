@@ -640,7 +640,91 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
 
       {/* Phase 4 */}
       <div>
-        <h2 className="mb-3 text-lg font-semibold">Phase 4: Requests & Operations</h2>
+        <h2 className="mb-3 text-lg font-semibold">Phase 4: Media Migration</h2>
+        <div className="space-y-3">
+          <AccordionSection
+            title="Media Migration"
+            description="Move your media library to a NAS, network share, or another local directory"
+          >
+            <p>
+              The <a href="/migration" className="text-primary underline">Migration page</a> guides you through
+              moving your existing media files to a new location. This is optional — only needed if you want to
+              move media to a different drive, directory, or network-attached storage.
+            </p>
+
+            <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Step 1: Choose Destination</h4>
+            <p className="mt-1">Select the type of destination for your media:</p>
+            <ul className="ml-4 mt-1 list-disc text-xs text-muted-foreground">
+              <li><strong className="text-foreground">NAS / Network Share</strong> — an SMB or NFS share on your network (e.g. Synology, TrueNAS)</li>
+              <li><strong className="text-foreground">Local Directory</strong> — another drive or path on this machine (e.g. <Code>/mnt/d</Code>, a second SSD, or an external USB drive). Use the <strong>Browse</strong> button to navigate your filesystem and select a folder.</li>
+            </ul>
+
+            <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Step 2a: NAS Setup</h4>
+            <p className="mt-1 text-xs text-muted-foreground">Only if you chose NAS / Network Share:</p>
+            <Step n={1}>
+              <p>Enter your NAS IP address and select a protocol (<strong>SMB</strong> for Windows/Synology shares or <strong>NFS</strong> for Linux/TrueNAS shares).</p>
+            </Step>
+            <Step n={2}>
+              <p>Click <strong>Test Connection</strong> to verify the NAS is reachable. For SMB, enter your username and password when prompted.</p>
+            </Step>
+            <Step n={3}>
+              <p>Select a share from the discovered list, or type a custom share name. Choose a local mount point (default: <Code>/mnt/nas</Code>).</p>
+            </Step>
+            <Step n={4}>
+              <p>Click <strong>Generate Mount Script</strong>. This creates a mount script at <Code>~/.mmc/scripts/mount-nas.sh</Code> that you can run to mount the NAS.</p>
+              <Pre>{`# Run the generated script
+sudo bash ~/.mmc/scripts/mount-nas.sh`}</Pre>
+            </Step>
+            <Step n={5}>
+              <p>Click <strong>Verify Mount</strong> to confirm the NAS is mounted and writable.</p>
+            </Step>
+
+            <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Step 2b: Local Directory Setup</h4>
+            <p className="mt-1 text-xs text-muted-foreground">Only if you chose Local Directory:</p>
+            <Step n={1}>
+              <p>Type a path or click <strong>Browse</strong> to navigate your filesystem. The browser shows all mounted drives including Windows drives (<Code>/mnt/c</Code>, <Code>/mnt/d</Code>), USB drives, and other mount points.</p>
+            </Step>
+            <Step n={2}>
+              <p>Click <strong>Verify Directory</strong> to confirm the path exists, is writable, and check available disk space.</p>
+            </Step>
+
+            <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Step 3: Migrate Media</h4>
+            <Step n={1}>
+              <p>Once the destination is verified, the migration panel appears. Click <strong>Run Preflight</strong> to check disk space and preview what will be copied.</p>
+            </Step>
+            <Step n={2}>
+              <p>Click <strong>Start Migration</strong> to begin copying files. The tool uses <Code>rsync</Code> to efficiently transfer your media with a live progress bar.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Large libraries may take hours depending on transfer speed. You can safely close the page — the migration continues in the background.</p>
+            </Step>
+            <Step n={3}>
+              <p>When the copy completes, the tool automatically updates Sonarr and Radarr root folders to point to the new path so all future downloads go directly to the new location.</p>
+            </Step>
+
+            <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Folder Structure</h4>
+            <p className="mt-1">The destination should end up with this layout (created automatically during migration):</p>
+            <Pre>{`/your/destination/     # NAS mount or local directory
+  media/
+    movies/            # Radarr moves completed movies here
+    tv/                # Sonarr moves completed TV shows here
+  torrents/
+    movies/            # qBittorrent downloads movies here
+    tv/                # qBittorrent downloads TV here
+  usenet/
+    movies/            # SABnzbd downloads movies here
+    tv/                # SABnzbd downloads TV here`}</Pre>
+
+            <Tip>
+              If you set up NAS during initial install with <Code>./scripts/deploy.sh --nas</Code>, the mount
+              is already configured and you can skip the NAS setup steps. The migration page is for moving media
+              on an existing install.
+            </Tip>
+          </AccordionSection>
+        </div>
+      </div>
+
+      {/* Phase 5 */}
+      <div>
+        <h2 className="mb-3 text-lg font-semibold">Phase 5: Requests & Operations</h2>
         <div className="space-y-3">
           <AccordionSection
             title="Seerr"
@@ -670,8 +754,14 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
             title="Recyclarr"
             description="Syncs TRaSH-Guides custom formats and quality profiles to Sonarr/Radarr"
           >
+            <QuickSetupButton
+              label="Recyclarr"
+              endpoint="/api/recyclarr/configure"
+              description="Auto-configure Recyclarr with TRaSH Guide 1080p profiles for Sonarr (WEB-1080p) and Radarr (Remux + WEB 1080p), then run an initial sync. Requires API keys to be detected first."
+              successMessage="Recyclarr configured — TRaSH Guide profiles synced to Sonarr and Radarr"
+            />
             <Step n={1}>
-              <p>Edit <Code>config/recyclarr/recyclarr.yml</Code> with your Sonarr and Radarr API keys and base URLs.</p>
+              <p>If you prefer to configure manually, edit config files in <Code>config/recyclarr/configs/</Code> with your Sonarr and Radarr API keys and base URLs.</p>
             </Step>
             <Step n={2}>
               <p>Reference{' '}
@@ -687,8 +777,12 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
               <Pre>docker exec recyclarr recyclarr sync</Pre>
             </Step>
             <Step n={4}>
-              <p>Verify with: <Code>docker logs recyclarr</Code> — Recyclarr runs automatically on its configured schedule.</p>
+              <p>Verify with: <Code>docker logs recyclarr</Code> — Recyclarr runs automatically on its daily schedule.</p>
             </Step>
+            <Tip>
+              Quick Setup uses the WEB-1080p profile for TV and Remux + WEB 1080p for movies. For 4K/2160p profiles,
+              edit the config files manually or run <Code>docker exec recyclarr recyclarr config create -t web-2160p</Code>.
+            </Tip>
           </AccordionSection>
 
           <AccordionSection

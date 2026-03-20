@@ -54,7 +54,7 @@ export async function lookupSeries(term: string): Promise<SonarrLookupResult[]> 
 }
 
 export async function getCalendar(start: string, end: string): Promise<SonarrCalendarItem[]> {
-  return sonarrFetch<SonarrCalendarItem[]>(`/calendar?start=${start}&end=${end}`);
+  return sonarrFetch<SonarrCalendarItem[]>(`/calendar?start=${start}&end=${end}&includeSeries=true`);
 }
 
 export async function getQueue() {

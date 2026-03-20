@@ -207,9 +207,9 @@ After first deploy, go to the Guide page and click **Detect API Keys**. This rea
 ### Phase 4: Operations
 
 10. **Recyclarr**:
-    - Edit `config/recyclarr/recyclarr.yml` with your Sonarr/Radarr API keys and base URLs
+    - Use Quick Setup in the Guide page to auto-configure with TRaSH Guide 1080p profiles, or configure manually
     - Reference [TRaSH-Guides](https://trash-guides.info/) for recommended custom formats and quality profiles
-    - Run a sync: `docker exec recyclarr recyclarr sync`
+    - Run a manual sync: `docker exec recyclarr recyclarr sync`
 
 11. **Watchtower**: Verify running — `docker logs watchtower`. Auto-updates enabled containers daily at 4 AM.
 
@@ -301,16 +301,16 @@ docker exec qbittorrent wget -qO- https://ipinfo.io
 
 The Mars Media Centre dashboard at `http://localhost:3000` provides:
 
-- Combined download queue (torrents + usenet) with pause, resume, and force start controls
+- Combined download queue (torrents + usenet) with pause, resume, force start, and delete with optional file removal
 - Dashboard with download stats (today/week/failed counts + recently completed history)
-- Merged calendar (TV episodes + movies)
+- Merged calendar (TV episodes + movies) with correct series name resolution
 - Library browsing with search, add, delete, and automatic missing content detection
 - TV show episode details: all-episodes view with on-disk status, per-season breakdowns, summary view with next-to-download and missing episodes
 - Media request management with search, request, approve/decline, and delete
-- NAS migration wizard: mount NAS shares via UI, discover available shares, migrate existing media with rsync progress tracking
+- Media migration wizard: move media to a NAS/network share or local directory with filesystem browser and rsync progress tracking
 - Network page with live VPN topology, tunnel bandwidth monitoring, and per-service traffic stats
-- System page with unified service monitoring (Docker state, API health), VPN status, per-service start/stop/restart, and log viewer
-- Settings with API key management, auto-detection, configuration, and backups
+- System page with unified service monitoring (Docker state, API health), VPN status with IP and country display, per-service start/stop/restart, and log viewer
+- Settings with API key management, auto-detection, configuration, qBittorrent download preferences, scheduled backups, and backup management
 - Global service status bar showing offline services with recovery notifications
 - Plex sidebar link for quick access to your media server
 - Automatic missing content search every 6 hours (Sonarr + Radarr)
@@ -322,8 +322,9 @@ The Settings page (`http://localhost:3000/settings`) provides tabbed configurati
 - **General** — Timezone, user/group IDs, storage paths, log level, API key (authentication)
 - **VPN** — Provider, credentials, server country, port forwarding
 - **Network** — Docker/local subnets, all service ports
+- **Downloads** — qBittorrent queue limits, speed limits, and seeding limits
 - **Services** — API keys for all services (with auto-detect and direct links to each service's UI), Plex URL, Watchtower schedule, Docker image tags
-- **Backups** — Create, download, restore, and delete configuration backups
+- **Backups** — Create, download, restore, and delete configuration backups. Scheduled automatic backups (daily/weekly) with configurable retention.
 
 ### Logs Page
 
@@ -332,9 +333,14 @@ The Logs page (`http://localhost:3000/logs`) provides two tabs:
 - **Services** — View application log files for each service (Sonarr, Radarr, Prowlarr, Bazarr, Seerr, Recyclarr, media-ui). Toggle between app logs and Docker container output.
 - **Deploy** — Browse and view deploy script log files
 
-## NAS Migration
+## Media Migration
 
-The Migration page (`http://localhost:3000/migration`) lets you move your media library to a NAS or network share without leaving the web UI.
+The Migration page (`http://localhost:3000/migration`) lets you move your media library to a NAS, network share, or local directory without leaving the web UI.
+
+### Destination Options
+
+- **NAS / Network Share** — SMB or NFS share on your network (e.g. Synology, TrueNAS)
+- **Local Directory** — Another drive or path on this machine (e.g. `/mnt/d`, a second SSD, external USB). Includes a filesystem browser.
 
 ### How It Works
 
@@ -353,12 +359,12 @@ DATA_ROOT/
     tv/        ← SABnzbd downloads TV here
 ```
 
-When you migrate to a NAS, the NAS mount replaces `DATA_ROOT`. Sonarr and Radarr automatically route completed downloads to the correct folder (`media/movies` or `media/tv`).
+When you migrate, the new location replaces `DATA_ROOT`. Sonarr and Radarr automatically route completed downloads to the correct folder (`media/movies` or `media/tv`).
 
 ### Migration Steps
 
-1. **Mount Setup** — Enter NAS details (protocol, IP, share path). The UI discovers available shares, generates a mount script, and guides you through running it.
-2. **Verify Mount** — Click to confirm the NAS is mounted and writable.
+1. **Choose Destination** — Select NAS or local directory.
+2. **Setup** — For NAS: enter connection details, generate mount script, verify mount. For local: browse or type the path, verify it's writable.
 3. **Pre-flight Checks** — Validates Sonarr/Radarr connectivity, active downloads, and available disk space.
 4. **Migrate** — Copies existing media via rsync with progress tracking, updates Sonarr/Radarr root folders, and optionally updates `DATA_ROOT` in `.env`.
 
@@ -391,10 +397,13 @@ The easiest way to manage backups is via the Settings page:
 # Automatically keeps last 7 backups
 ```
 
-### Automated Backup (cron)
+### Scheduled Backups
+
+Enable automatic backups from the web UI: **Settings → Backups → Scheduled Backups**. Configure frequency (daily/weekly), time, and how many backups to keep. The scheduler runs inside the media-ui container — no host cron job needed.
+
+Alternatively, use a cron job on the host:
 
 ```bash
-# Add to crontab (daily at 3 AM)
 crontab -e
 0 3 * * * /path/to/mmc/scripts/backup.sh >> /var/log/mars-media-centre-backup.log 2>&1
 ```

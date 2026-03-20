@@ -54,11 +54,11 @@ export default function DownloadsPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) =>
-      fetchApi(`/api/downloads/${id}`, { method: 'DELETE' }),
-    onSuccess: () => {
+    mutationFn: ({ id, deleteFiles }: { id: string; deleteFiles: boolean }) =>
+      fetchApi(`/api/downloads/${id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' }),
+    onSuccess: (_data, { deleteFiles }) => {
       queryClient.invalidateQueries({ queryKey: ['downloads'] });
-      toast.success('Download removed');
+      toast.success(deleteFiles ? 'Download and files removed' : 'Download removed');
     },
     onError: () => toast.error('Failed to remove download'),
   });
@@ -126,7 +126,7 @@ export default function DownloadsPage() {
         onPause={(id) => actionMutation.mutate({ id, action: 'pause' })}
         onResume={(id) => actionMutation.mutate({ id, action: 'resume' })}
         onForceStart={(id) => actionMutation.mutate({ id, action: 'forceStart' })}
-        onDelete={(id) => deleteMutation.mutate(id)}
+        onDelete={(id, deleteFiles) => deleteMutation.mutate({ id, deleteFiles })}
       />
     </div>
   );

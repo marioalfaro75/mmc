@@ -1,5 +1,6 @@
 const SIX_HOURS = 6 * 60 * 60 * 1000;
 const STARTUP_DELAY = 60 * 1000;
+const SCHEDULER_INTERVAL = 60 * 1000; // check every minute
 
 async function searchMissing() {
   const sonarrUrl = process.env.SONARR_URL || 'http://sonarr:8989';
@@ -41,6 +42,90 @@ async function searchMissing() {
   }
 }
 
+async function checkBackupSchedule() {
+  try {
+    // Dynamic requires to avoid webpack bundling Node.js modules for edge/client
+    const fs = require('fs');
+    const path = require('path');
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+
+    const configPath = `${process.env.HOME}/.mmc/backup-schedule.json`;
+    let schedule;
+    try {
+      schedule = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    } catch {
+      return; // no schedule file = not configured
+    }
+
+    if (!schedule.enabled) return;
+
+    const now = new Date();
+    const [targetH, targetM] = schedule.time.split(':').map(Number);
+
+    if (now.getHours() !== targetH || now.getMinutes() !== targetM) return;
+    if (schedule.frequency === 'weekly' && now.getDay() !== schedule.dayOfWeek) return;
+
+    // Prevent duplicate runs — check if we already ran today
+    if (schedule.lastRun) {
+      const last = new Date(schedule.lastRun);
+      if (
+        last.getFullYear() === now.getFullYear() &&
+        last.getMonth() === now.getMonth() &&
+        last.getDate() === now.getDate()
+      ) return;
+    }
+
+    // Read env to find paths
+    let envVars: Record<string, string> = {};
+    try {
+      const envPath = process.env.ENV_FILE_PATH || `${process.env.HOME}/.mmc/.env`;
+      const envContent = fs.readFileSync(envPath, 'utf-8');
+      for (const line of envContent.split('\n')) {
+        const match = line.match(/^([A-Z_]+)=(.*)$/);
+        if (match) envVars[match[1]] = match[2].replace(/^["']|["']$/g, '');
+      }
+    } catch { /* use defaults */ }
+
+    const resolvePath = (p: string) => p.startsWith('~') ? `${process.env.HOME}${p.slice(1)}` : p;
+    const configRoot = resolvePath(envVars.CONFIG_ROOT || `${process.env.HOME}/.mmc/config`);
+    const backupDir = resolvePath(envVars.BACKUP_DIR || `${process.env.HOME}/.mmc/backups`);
+
+    fs.mkdirSync(backupDir, { recursive: true });
+
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const filename = `mars-media-centre-backup-${timestamp}.tar.gz`;
+    const backupFile = path.join(backupDir, filename);
+
+    console.log('[backup-scheduler] Starting scheduled backup...');
+    await execFileAsync('tar', [
+      '-czf', backupFile,
+      '-C', path.dirname(configRoot),
+      path.basename(configRoot),
+    ], { timeout: 120000 });
+
+    // Rotate old backups
+    const maxBackups = schedule.maxBackups || 7;
+    const files = fs.readdirSync(backupDir)
+      .filter((f: string) => f.startsWith('mars-media-centre-backup-') && f.endsWith('.tar.gz'))
+      .sort()
+      .reverse();
+    for (const old of files.slice(maxBackups)) {
+      fs.unlinkSync(path.join(backupDir, old));
+    }
+
+    // Update lastRun
+    schedule.lastRun = now.toISOString();
+    fs.writeFileSync(configPath, JSON.stringify(schedule, null, 2));
+
+    console.log(`[backup-scheduler] Scheduled backup complete: ${filename}`);
+  } catch (err) {
+    console.error(`[backup-scheduler] Backup failed: ${err}`);
+  }
+}
+
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
 
@@ -55,4 +140,11 @@ export async function register() {
   }, SIX_HOURS);
 
   console.log('[auto-search] Scheduled missing content search every 6 hours');
+
+  // Backup scheduler — check every minute
+  setInterval(() => {
+    checkBackupSchedule();
+  }, SCHEDULER_INTERVAL);
+
+  console.log('[backup-scheduler] Backup scheduler started');
 }

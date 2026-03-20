@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getVpnStatus, getPublicIP } from '@/lib/api/gluetun';
+import { lookupCountry } from '@/lib/api/geolocation';
 import type { VpnStatus } from '@/lib/types/common';
 
 export async function GET() {
@@ -12,11 +13,17 @@ export async function GET() {
     const connected = statusResult.status === 'fulfilled' &&
       statusResult.value.status === 'running';
 
-    const vpn: VpnStatus = {
-      connected,
-      ip: ipResult.status === 'fulfilled' ? ipResult.value.public_ip : null,
-      country: ipResult.status === 'fulfilled' ? ipResult.value.country : null,
-    };
+    const ip = ipResult.status === 'fulfilled' && ipResult.value.public_ip
+      ? ipResult.value.public_ip : null;
+    let country = ipResult.status === 'fulfilled' && ipResult.value.country
+      ? ipResult.value.country : null;
+
+    // Gluetun may omit country — fall back to IP geolocation
+    if (ip && !country) {
+      country = await lookupCountry(ip);
+    }
+
+    const vpn: VpnStatus = { connected, ip, country };
 
     return NextResponse.json(vpn);
   } catch (error) {

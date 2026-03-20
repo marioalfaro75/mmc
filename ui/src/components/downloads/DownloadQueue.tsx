@@ -13,7 +13,7 @@ interface DownloadQueueProps {
   onPause?: (id: string) => void;
   onResume?: (id: string) => void;
   onForceStart?: (id: string) => void;
-  onDelete?: (id: string) => void;
+  onDelete?: (id: string, deleteFiles: boolean) => void;
 }
 
 export function DownloadQueue({ items, isLoading, activeTab, onPause, onResume, onForceStart, onDelete }: DownloadQueueProps) {

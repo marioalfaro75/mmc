@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Pause, Play, Trash2, HardDrive, Wifi, Zap } from 'lucide-react';
 import { ProgressBar } from '@/components/common/ProgressBar';
 import { Badge } from '@/components/common/Badge';
@@ -11,7 +12,7 @@ interface DownloadItemProps {
   onPause?: (id: string) => void;
   onResume?: (id: string) => void;
   onForceStart?: (id: string) => void;
-  onDelete?: (id: string) => void;
+  onDelete?: (id: string, deleteFiles: boolean) => void;
 }
 
 const statusVariant: Record<string, 'default' | 'success' | 'warning' | 'danger'> = {
@@ -25,6 +26,8 @@ const statusVariant: Record<string, 'default' | 'success' | 'warning' | 'danger'
 };
 
 export function DownloadItemRow({ item, onPause, onResume, onForceStart, onDelete }: DownloadItemProps) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteFiles, setDeleteFiles] = useState(false);
   const canPause = item.status === 'downloading';
   const canResume = item.status === 'paused';
   const canForceStart = item.status === 'queued' || item.status === 'paused';
@@ -82,7 +85,7 @@ export function DownloadItemRow({ item, onPause, onResume, onForceStart, onDelet
           )}
           {onDelete && (
             <button
-              onClick={() => onDelete(item.id)}
+              onClick={() => setShowDeleteConfirm(true)}
               className="rounded p-1.5 text-muted-foreground hover:bg-danger/20 hover:text-danger transition-colors"
               title="Delete"
             >
@@ -97,6 +100,36 @@ export function DownloadItemRow({ item, onPause, onResume, onForceStart, onDelet
         variant={item.status === 'completed' || item.status === 'seeding' ? 'success' : item.status === 'failed' ? 'danger' : 'default'}
         showLabel
       />
+      {showDeleteConfirm && (
+        <div className="mt-2 flex items-center justify-between rounded-md border border-danger/30 bg-danger/5 p-3">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Remove this download?</p>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={deleteFiles}
+                onChange={(e) => setDeleteFiles(e.target.checked)}
+                className="rounded border-border"
+              />
+              Also delete files from disk
+            </label>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setShowDeleteConfirm(false); setDeleteFiles(false); }}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => { onDelete?.(item.id, deleteFiles); setShowDeleteConfirm(false); setDeleteFiles(false); }}
+              className="rounded-md bg-danger px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-danger/80"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -32,12 +32,14 @@ export async function GET() {
 
     if (torrentsResult.status === 'fulfilled') {
       for (const t of torrentsResult.value) {
+        const mapped = mapTorrentStatus(t.state);
+        const status = t.progress >= 1 && mapped !== 'failed' ? (mapped === 'seeding' ? 'seeding' : 'completed') : mapped;
         items.push({
           id: `torrent-${t.hash}`,
           source: 'torrent',
           name: t.name,
           category: mapCategory(t.category),
-          status: mapTorrentStatus(t.state),
+          status,
           progress: t.progress,
           sizeBytes: t.size,
           downloadedBytes: Math.round(t.size * t.progress),

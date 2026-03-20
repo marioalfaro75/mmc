@@ -45,12 +45,11 @@ export function VpnTab({ env }: VpnTabProps) {
             <p className="text-sm font-medium">
               VPN {vpnStatus?.connected ? 'Connected' : vpnStatus === null ? 'Unknown' : 'Disconnected'}
             </p>
-            {vpnStatus?.ip && (
-              <p className="text-xs text-muted-foreground">
-                IP: {vpnStatus.ip}
-                {vpnStatus.country && ` — ${vpnStatus.country}`}
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground">
+              {vpnStatus?.ip
+                ? <>IP: {vpnStatus.ip}{vpnStatus.country && ` — ${vpnStatus.country}`}</>
+                : vpnStatus?.connected ? 'IP: Unavailable' : null}
+            </p>
           </div>
           <Badge variant={vpnStatus?.connected ? 'success' : vpnStatus === null ? 'outline' : 'danger'}>
             {vpnStatus?.connected ? 'Online' : vpnStatus === null ? 'Unknown' : 'Offline'}
