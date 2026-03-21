@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Loader2 } from 'lucide-react';
+import { Plus, Search, Loader2, Info } from 'lucide-react';
 import { MediaCard } from '@/components/media/MediaCard';
 import { MediaGrid } from '@/components/media/MediaGrid';
 import { MediaDetail } from '@/components/media/MediaDetail';
@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 
 type FilterKey = 'all' | 'monitored' | 'unmonitored' | 'missing';
 type SortKey = 'title' | 'year' | 'added' | 'size';
+type SearchMode = 'title' | 'actor' | 'year';
 
 async function pollForDownload(movieId: number, title: string) {
   for (let i = 0; i < 6; i++) {
@@ -39,6 +40,7 @@ export default function MoviesPage() {
   const [selectedMovie, setSelectedMovie] = useState<RadarrMovie | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [lookupTerm, setLookupTerm] = useState('');
+  const [searchMode, setSearchMode] = useState<SearchMode>('title');
   const addedTitle = useRef('');
 
   const { data: movies, isLoading, isError, error } = useQuery<RadarrMovie[]>({
@@ -48,10 +50,20 @@ export default function MoviesPage() {
     refetchInterval: POLLING.LIBRARY,
   });
 
-  const { data: lookupResults } = useQuery<RadarrLookupResult[]>({
-    queryKey: ['movies', 'lookup', lookupTerm],
-    queryFn: () => fetchApi<RadarrLookupResult[]>(`/api/movies/lookup?term=${encodeURIComponent(lookupTerm)}`),
-    enabled: lookupTerm.length > 2,
+  const { data: tmdbStatus } = useQuery<{ configured: boolean }>({
+    queryKey: ['tmdb-status'],
+    queryFn: () => fetchApi<{ configured: boolean }>('/api/tmdb/status'),
+    staleTime: 5 * 60_000,
+  });
+
+  const lookupUrl = searchMode === 'actor'
+    ? `/api/movies/lookup-actor?actor=${encodeURIComponent(lookupTerm)}`
+    : `/api/movies/lookup?term=${encodeURIComponent(lookupTerm)}`;
+
+  const { data: lookupResults, isFetching: lookupFetching } = useQuery<RadarrLookupResult[]>({
+    queryKey: ['movies', 'lookup', searchMode, lookupTerm],
+    queryFn: () => fetchApi<RadarrLookupResult[]>(lookupUrl),
+    enabled: lookupTerm.length > 2 && (searchMode !== 'actor' || !!tmdbStatus?.configured),
   });
 
   const addMutation = useMutation({
@@ -110,6 +122,12 @@ export default function MoviesPage() {
         default: return a.sortTitle.localeCompare(b.sortTitle);
       }
     });
+
+  const searchPlaceholder = searchMode === 'actor'
+    ? 'Search by actor name...'
+    : searchMode === 'year'
+      ? 'Enter year (e.g. 2024)...'
+      : 'Search TMDB...';
 
   return (
     <div className="space-y-4">
@@ -219,13 +237,45 @@ export default function MoviesPage() {
         );
       })()}
 
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add Movie">
+      <Modal open={showAdd} onClose={() => { setShowAdd(false); setSearchMode('title'); setLookupTerm(''); }} title="Add Movie">
         <div className="space-y-4">
-          <SearchBar
-            placeholder="Search TMDB..."
-            onSearch={(q) => setLookupTerm(q)}
-          />
-          <div className="max-h-80 space-y-2 overflow-y-auto">
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <SearchBar
+                placeholder={searchPlaceholder}
+                onSearch={(q) => setLookupTerm(q)}
+              />
+            </div>
+            <select
+              value={searchMode}
+              onChange={(e) => { setSearchMode(e.target.value as SearchMode); setLookupTerm(''); }}
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+            >
+              <option value="title">Title</option>
+              <option value="year">Year</option>
+              {tmdbStatus?.configured && <option value="actor">Actor</option>}
+            </select>
+          </div>
+
+          {!tmdbStatus?.configured && (
+            <div className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 p-3">
+              <Info className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+              <p className="text-xs text-muted-foreground">
+                Add a free <strong className="text-foreground">TMDB API key</strong> in{' '}
+                <a href="/settings" className="text-primary underline">Settings → Services</a>{' '}
+                or via the{' '}
+                <a href="/guide" className="text-primary underline">Setup Guide</a>{' '}
+                to enable searching by actor name.
+              </p>
+            </div>
+          )}
+
+          <div className="max-h-80 space-y-2 overflow-y-auto pr-2">
+            {lookupFetching && lookupTerm.length > 2 && (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            )}
             {lookupResults?.map((result) => (
               <div
                 key={result.tmdbId}
@@ -241,9 +291,19 @@ export default function MoviesPage() {
                   addOptions: { searchForMovie: true },
                 } as unknown as Partial<RadarrMovie>)}
               >
+                {result.remotePoster && (
+                  <img
+                    src={result.remotePoster}
+                    alt={result.title}
+                    className="h-16 w-11 rounded object-cover shrink-0"
+                  />
+                )}
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium">{result.title}</p>
-                  <p className="text-xs text-muted-foreground">{result.year}</p>
+                  <p className="text-xs text-muted-foreground">{result.year || 'TBA'}</p>
+                  {searchMode === 'actor' && result.overview && (
+                    <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{result.overview}</p>
+                  )}
                 </div>
                 <Badge variant="outline">TMDB</Badge>
               </div>

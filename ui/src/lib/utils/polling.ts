@@ -32,6 +32,8 @@ export const STALE_TIME = {
   STATS: 2 * 60_000,
   SERVICES: 15_000,
   NETWORK: 3_000,
+  /** VPN status — reuse recent data on page navigation */
+  VPN: 5_000,
 } as const;
 
 /** Debounce delay for search inputs */

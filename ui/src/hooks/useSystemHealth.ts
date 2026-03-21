@@ -17,6 +17,7 @@ export function useSystemHealth() {
     queryKey: ['vpn'],
     queryFn: () => fetchApi<VpnStatus>('/api/vpn'),
     refetchInterval: POLLING.VPN,
+    staleTime: STALE_TIME.VPN,
   });
 
   const services = healthQuery.data?.services ?? [];

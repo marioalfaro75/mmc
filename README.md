@@ -192,6 +192,12 @@ After first deploy, go to the Guide page and click **Detect API Keys**. This rea
 7. **Unpackerr**:
    - If you ran Detect API Keys, Unpackerr keys are already set. Otherwise, set `UN_SONARR_0_API_KEY` and `UN_RADARR_0_API_KEY` in Settings.
 
+8. **TMDB (optional)** — enables searching for movies and TV shows by actor name:
+   - Create a free account at [themoviedb.org/signup](https://www.themoviedb.org/signup)
+   - Go to [Settings → API](https://www.themoviedb.org/settings/api) and create a Developer API key
+   - Add the API key via the Guide page Quick Setup, or in Settings → Services → `TMDB API Key`
+   - The "Actor" search option will then appear in the Add Movie/Series dialogs
+
 ### Phase 3: Subtitles & Requests
 
 8. **Bazarr** (`localhost:6767`):
@@ -262,6 +268,18 @@ SERVER_COUNTRIES=Netherlands
 
 Generate WireGuard credentials at [account.protonvpn.com](https://account.protonvpn.com) → WireGuard configuration.
 
+#### ProtonVPN Secure Core
+
+Secure Core routes traffic through a privacy-friendly entry country (Iceland, Switzerland, or Sweden) before exiting in the target country. Configure in the web UI under Settings → VPN (appears when ProtonVPN is selected), or set in `.env`:
+
+```env
+SECURE_CORE_ONLY=on
+SERVER_HOSTNAMES=is-au-01.protonvpn.com
+SERVER_COUNTRIES=
+```
+
+The hostname format is `{entry}-{exit}-XX.protonvpn.com` (e.g. `is-au-01.protonvpn.com` for Iceland → Australia, `ch-us-01a.protonvpn.com` for Switzerland → US). Requires a paid ProtonVPN plan (Plus or Visionary). `SERVER_COUNTRIES` must be cleared when using Secure Core.
+
 ### Mullvad
 
 ```env
@@ -285,6 +303,17 @@ SERVER_COUNTRIES=Netherlands
 
 AirVPN, Surfshark, PIA, Windscribe, and 50+ more are supported. See the [Gluetun wiki](https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers) for provider-specific configuration.
 
+## VPN Kill-Switch Protection
+
+qBittorrent and SABnzbd are configured with `network_mode: service:gluetun` in Docker Compose. This means they share Gluetun's network stack entirely — they have no independent network interface and all traffic must traverse the VPN tunnel.
+
+- **No independent networking** — download clients have no direct access to your host network
+- **Startup dependency** — download clients will not start until Gluetun's healthcheck confirms the VPN is connected
+- **Automatic kill-switch** — if the VPN drops, download clients lose all connectivity immediately with no fallback path
+- **No exposed ports** — download client containers have no ports of their own; their web UIs are published on the Gluetun container
+
+This is the most secure configuration possible with Docker — there is no bypass route even if the VPN tunnel interface goes down.
+
 ## Verifying VPN Works
 
 ```bash
@@ -304,7 +333,7 @@ The Mars Media Centre dashboard at `http://localhost:3000` provides:
 - Combined download queue (torrents + usenet) with pause, resume, force start, and delete with optional file removal
 - Dashboard with download stats (today/week/failed counts + recently completed history)
 - Merged calendar (TV episodes + movies) with correct series name resolution
-- Library browsing with search, add, delete, and automatic missing content detection
+- Library browsing with search by title, year, or actor name (TMDB), add, delete, and automatic missing content detection
 - TV show episode details: all-episodes view with on-disk status, per-season breakdowns, summary view with next-to-download and missing episodes
 - Media request management with search, request, approve/decline, and delete
 - Media migration wizard: move media to a NAS/network share or local directory with filesystem browser and rsync progress tracking
@@ -320,10 +349,10 @@ The Mars Media Centre dashboard at `http://localhost:3000` provides:
 The Settings page (`http://localhost:3000/settings`) provides tabbed configuration:
 
 - **General** — Timezone, user/group IDs, storage paths, log level, API key (authentication)
-- **VPN** — Provider, credentials, server country, port forwarding
+- **VPN** — Provider, credentials, server country, port forwarding, ProtonVPN Secure Core
 - **Network** — Docker/local subnets, all service ports
 - **Downloads** — qBittorrent queue limits, speed limits, and seeding limits
-- **Services** — API keys for all services (with auto-detect and direct links to each service's UI), Plex URL, Watchtower schedule, Docker image tags
+- **Services** — API keys for all services (with auto-detect and direct links to each service's UI), TMDB API key (actor search), Plex URL, Watchtower schedule, Docker image tags
 - **Backups** — Create, download, restore, and delete configuration backups. Scheduled automatic backups (daily/weekly) with configurable retention.
 
 ### Logs Page

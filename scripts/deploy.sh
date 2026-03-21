@@ -757,6 +757,8 @@ run_setup_wizard() {
     _puid=$(prompt_user "(optional) PUID" "$_puid")
     _pgid=$(prompt_user "(optional) PGID" "$_pgid")
 
+    _tmdb_key=$(prompt_user "(optional) TMDB API key (enables actor search — get one free at themoviedb.org/settings/api)" "")
+
     # NAS setup prompt
     echo ""
     _setup_nas=0
@@ -777,6 +779,7 @@ run_setup_wizard() {
     sed -i "s|^HOST_PROJECT_DIR=.*|HOST_PROJECT_DIR=$PROJECT_DIR|" "$ENV_FILE"
     sed -i "s|^PUID=.*|PUID=$_puid|" "$ENV_FILE"
     sed -i "s|^PGID=.*|PGID=$_pgid|" "$ENV_FILE"
+    [ -n "$_tmdb_key" ] && sed -i "s|^TMDB_API_KEY=.*|TMDB_API_KEY=$_tmdb_key|" "$ENV_FILE"
 
     # Auto-detect a free Docker subnet
     _subnet=$(find_free_subnet)
@@ -799,6 +802,7 @@ run_setup_wizard() {
     if [ -n "$_MMC_LOGGED" ] && [ -f "$_MMC_LOGGED" ]; then
         sed -i 's/WIREGUARD_PRIVATE_KEY=.*/WIREGUARD_PRIVATE_KEY=[REDACTED]/' "$_MMC_LOGGED"
         sed -i 's/WIREGUARD_PRESHARED_KEY=.*/WIREGUARD_PRESHARED_KEY=[REDACTED]/' "$_MMC_LOGGED"
+        sed -i 's/TMDB_API_KEY=.*/TMDB_API_KEY=[REDACTED]/' "$_MMC_LOGGED"
     fi
 
     info "You can edit $ENV_FILE to fine-tune other settings."

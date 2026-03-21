@@ -75,6 +75,7 @@ export default function SystemPage() {
     queryKey: ['vpn'],
     queryFn: () => fetchApi<VpnStatus>('/api/vpn'),
     refetchInterval: POLLING.VPN,
+    staleTime: STALE_TIME.VPN,
   });
 
   const { data: healthData } = useQuery<{ services: ServiceHealth[] }>({

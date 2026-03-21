@@ -270,6 +270,7 @@ services:
       - SEERR_API_KEY=${SEERR_API_KEY:-}
       - BAZARR_URL=http://bazarr:6767
       - BAZARR_API_KEY=${BAZARR_API_KEY:-}
+      - TMDB_API_KEY=${TMDB_API_KEY:-}
       - GLUETUN_URL=http://gluetun:8000
       - HOST_PROJECT_DIR=${HOST_PROJECT_DIR}
       - ENV_FILE_PATH=${HOST_PROJECT_DIR}/.env

@@ -60,7 +60,7 @@ export function MediaDetail({
 
   return (
     <Modal open={open} onClose={onClose} title={title} className="max-w-3xl">
-      <div className="max-h-[70vh] overflow-y-auto">
+      <div className="max-h-[70vh] overflow-y-auto pr-4">
       <div className="flex gap-4">
         {posterUrl && (
           <div className="w-32 shrink-0">

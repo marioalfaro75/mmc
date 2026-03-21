@@ -43,6 +43,8 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'WIREGUARD_ADDRESSES', label: 'WireGuard Address', type: 'string', group: 'vpn', description: 'Your WireGuard address (e.g. 10.2.0.2/32)', required: true, affectsServices: VPN_SERVICES },
   { key: 'WIREGUARD_PRESHARED_KEY', label: 'WireGuard Preshared Key', type: 'secret', group: 'vpn', description: 'Optional preshared key', sensitive: true, affectsServices: VPN_SERVICES },
   { key: 'SERVER_COUNTRIES', label: 'Server Country', type: 'string', group: 'vpn', description: 'VPN server country (e.g. Netherlands)', affectsServices: VPN_SERVICES },
+  { key: 'SECURE_CORE_ONLY', label: 'Secure Core', type: 'select', group: 'vpn', description: 'Route through privacy-friendly entry countries before exiting (ProtonVPN only)', options: ['on', 'off'], default: 'off', affectsServices: VPN_SERVICES },
+  { key: 'SERVER_HOSTNAMES', label: 'Server Hostname', type: 'string', group: 'vpn', description: 'Entry-exit hostname, e.g. is-au-01.protonvpn.com (Iceland → Australia), ch-us-01a.protonvpn.com (Switzerland → US)', affectsServices: VPN_SERVICES },
   { key: 'VPN_PORT_FORWARDING', label: 'Port Forwarding', type: 'select', group: 'vpn', description: 'Enable VPN port forwarding', options: ['on', 'off'], default: 'on', affectsServices: VPN_SERVICES },
   { key: 'FIREWALL_VPN_INPUT_PORTS', label: 'Forwarded Port', type: 'string', group: 'vpn', description: 'Forwarded port number (if known)', affectsServices: VPN_SERVICES },
 
@@ -67,6 +69,7 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'SABNZBD_API_KEY', label: 'SABnzbd API Key', type: 'secret', group: 'services', description: 'API key from SABnzbd → Config → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 8081 },
   { key: 'SEERR_API_KEY', label: 'Seerr API Key', type: 'secret', group: 'services', description: 'API key from Seerr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 5055 },
   { key: 'BAZARR_API_KEY', label: 'Bazarr API Key', type: 'secret', group: 'services', description: 'API key from Bazarr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 6767 },
+  { key: 'TMDB_API_KEY', label: 'TMDB API Key', type: 'secret', group: 'services', description: 'Free API key from themoviedb.org — enables searching for movies and TV shows by actor name', sensitive: true, affectsServices: ['media-ui'] },
   { key: 'PLEX_URL', label: 'Plex URL', type: 'string', group: 'services', description: 'Plex server URL (e.g. http://192.168.1.x:32400)', default: 'http://localhost:32400', affectsServices: ['media-ui'] },
   { key: 'UN_SONARR_0_API_KEY', label: 'Unpackerr Sonarr Key', type: 'secret', group: 'services', description: 'Sonarr API key for Unpackerr (auto-populated by Detect API Keys)', sensitive: true, affectsServices: ['unpackerr'] },
   { key: 'UN_RADARR_0_API_KEY', label: 'Unpackerr Radarr Key', type: 'secret', group: 'services', description: 'Radarr API key for Unpackerr (auto-populated by Detect API Keys)', sensitive: true, affectsServices: ['unpackerr'] },
@@ -142,6 +145,12 @@ export function validateEnvVars(vars: Record<string, string>): Record<string, st
     const error = validateEnvVar(key, value);
     if (error) errors[key] = error;
   }
+
+  // Cross-field: Secure Core requires a server hostname
+  if (vars['SECURE_CORE_ONLY'] === 'on' && !vars['SERVER_HOSTNAMES']) {
+    errors['SERVER_HOSTNAMES'] = 'Server Hostname is required when Secure Core is enabled';
+  }
+
   return errors;
 }
 

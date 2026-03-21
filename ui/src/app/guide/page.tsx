@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { BookOpen, ChevronDown, Terminal, ExternalLink, Loader2, Zap } from 'lucide-react';
+import { BookOpen, ChevronDown, Terminal, ExternalLink, Loader2, Zap, ShieldCheck, Key } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
 import { toast } from 'sonner';
 
@@ -294,6 +294,108 @@ function DetectApiKeys() {
         )}
         {status === 'restarting' ? 'Restarting...' : status === 'done' ? 'Keys Applied' : 'Detect API Keys'}
       </button>
+    </div>
+  );
+}
+
+function QuickSetupTmdb() {
+  const [key, setKey] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'restarting' | 'done'>('idle');
+
+  const waitForRestart = async () => {
+    await new Promise((r) => setTimeout(r, 3000));
+    for (let i = 0; i < 30; i++) {
+      try {
+        const res = await fetch('/api/tmdb/status', { signal: AbortSignal.timeout(2000) });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.configured) return true;
+        }
+      } catch { /* still restarting */ }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    return false;
+  };
+
+  const run = async () => {
+    if (!key.trim()) {
+      toast.error('Please enter your TMDB API key');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/settings/env', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vars: { TMDB_API_KEY: key.trim() } }),
+      });
+      if (res.ok) {
+        toast.info('TMDB API key saved — restarting services...');
+        setStatus('restarting');
+        // Restart media-ui so it picks up the new env var
+        try {
+          await fetch('/api/settings/restart', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ services: ['media-ui'] }),
+          });
+        } catch { /* restart may kill the connection */ }
+        const cameBack = await waitForRestart();
+        if (cameBack) {
+          toast.success('TMDB API key applied — actor search is now enabled in Add Movie/Series');
+          setStatus('done');
+        } else {
+          toast.warning('Key saved but restart is taking a while. Refresh the page in a moment.');
+          setStatus('done');
+        }
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to save TMDB key');
+      }
+    } catch {
+      toast.info('Saving key and restarting...');
+      setStatus('restarting');
+      const cameBack = await waitForRestart();
+      if (cameBack) {
+        toast.success('TMDB API key applied — actor search is now enabled');
+        setStatus('done');
+      } else {
+        toast.warning('Key saved. Refresh the page in a moment.');
+        setStatus('done');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 rounded-md border border-border bg-muted/30 p-3">
+      <p className="text-xs text-muted-foreground">
+        Paste your TMDB API key below to enable searching for movies and TV shows by actor name.
+      </p>
+      <div className="mt-2 flex gap-2">
+        <input
+          type="text"
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          placeholder="Paste TMDB API key..."
+          disabled={status !== 'idle'}
+          className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+        />
+        <button
+          onClick={run}
+          disabled={loading || status !== 'idle'}
+          className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+        >
+          {loading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Key className="h-3.5 w-3.5" />
+          )}
+          {status === 'restarting' ? 'Restarting...' : status === 'done' ? 'Saved' : 'Save Key'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -598,6 +700,58 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
               <p>Verify it connected: <Code>docker logs unpackerr</Code> — look for &quot;Sonarr&quot; and &quot;Radarr&quot; connected messages.</p>
             </Step>
           </AccordionSection>
+
+          <AccordionSection
+            title="TMDB (The Movie Database)"
+            description="Optional — enables searching for movies and TV shows by actor name"
+          >
+            <p>
+              By default, the Add Movie and Add Series dialogs search by title.
+              Adding a free TMDB API key unlocks <strong>actor search</strong> —
+              type an actor&apos;s name to discover their filmography and add titles directly.
+            </p>
+
+            <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Getting a TMDB API Key</h4>
+            <Step n={1}>
+              <p>
+                Go to{' '}
+                <a href="https://www.themoviedb.org/signup" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                  themoviedb.org/signup
+                  <ExternalLink className="ml-0.5 inline h-3 w-3" />
+                </a>{' '}
+                and create a free account.
+              </p>
+            </Step>
+            <Step n={2}>
+              <p>
+                Go to{' '}
+                <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                  Settings → API
+                  <ExternalLink className="ml-0.5 inline h-3 w-3" />
+                </a>{' '}
+                and click <strong>Create</strong> → choose <strong>Developer</strong>.
+              </p>
+            </Step>
+            <Step n={3}>
+              <p>
+                Fill in the application form (application name and URL can be anything, e.g. &quot;media centre&quot; and &quot;http://localhost&quot;).
+                Accept the terms and submit.
+              </p>
+            </Step>
+            <Step n={4}>
+              <p>
+                Copy the <strong>API Key (v3 auth)</strong> value. Use the Quick Setup below to save it, or paste it into
+                Settings → Services → <Code>TMDB API Key</Code>.
+              </p>
+            </Step>
+
+            <QuickSetupTmdb />
+
+            <Tip>
+              TMDB&apos;s free API allows 50+ requests per second — more than enough for personal use. No payment
+              or credit card is required.
+            </Tip>
+          </AccordionSection>
         </div>
       </div>
 
@@ -892,6 +1046,48 @@ crontab -e
             </Tip>
           </AccordionSection>
         </div>
+      </div>
+
+      {/* VPN Kill-Switch */}
+      <div>
+        <h2 className="mb-3 text-lg font-semibold flex items-center gap-2">
+          <ShieldCheck className="h-5 w-5 text-success" />
+          VPN Kill-Switch Protection
+        </h2>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Download clients cannot bypass the VPN</CardTitle>
+          </CardHeader>
+          <p className="text-sm text-muted-foreground">
+            qBittorrent and SABnzbd are configured with <Code>network_mode: service:gluetun</Code> in Docker Compose.
+            This means they share Gluetun&apos;s network stack entirely — they have no independent network interface
+            and all traffic must traverse the VPN tunnel.
+          </p>
+          <ul className="ml-4 mt-3 list-disc space-y-2 text-sm text-muted-foreground">
+            <li>
+              <strong className="text-foreground">No independent networking</strong> — the download clients have
+              no direct access to your host network. Every packet in or out goes through Gluetun.
+            </li>
+            <li>
+              <strong className="text-foreground">Startup dependency</strong> — qBittorrent and SABnzbd will not
+              start until Gluetun&apos;s healthcheck confirms the VPN is connected.
+            </li>
+            <li>
+              <strong className="text-foreground">Automatic kill-switch</strong> — if the VPN connection drops,
+              the download clients lose all network connectivity immediately. There is no fallback path to
+              the internet.
+            </li>
+            <li>
+              <strong className="text-foreground">No exposed ports</strong> — the download client containers
+              have no <Code>ports:</Code> section of their own. Their web UIs and torrent ports are published
+              on the Gluetun container, which is the only way to expose ports when sharing a network stack.
+            </li>
+          </ul>
+          <p className="mt-3 text-sm text-muted-foreground">
+            This is the most secure configuration possible with Docker — there is no bypass route even if the
+            VPN tunnel interface goes down.
+          </p>
+        </Card>
       </div>
     </div>
   );

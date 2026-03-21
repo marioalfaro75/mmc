@@ -1,33 +1,58 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Shield, ShieldCheck, ShieldX } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { EnvField } from './EnvField';
 import type { useEnvSettings } from '@/hooks/useEnvSettings';
 import { getSchemaByGroup } from '@/lib/env-schema';
+import { POLLING, STALE_TIME } from '@/lib/utils/polling';
+import { fetchApi } from '@/lib/utils/fetchApi';
+import type { VpnStatus } from '@/lib/types/common';
 
 interface VpnTabProps {
   env: ReturnType<typeof useEnvSettings>;
 }
 
-interface VpnStatus {
-  connected: boolean;
-  ip: string | null;
-  country: string | null;
-}
+/** Keys that are conditionally hidden based on provider / Secure Core state */
+const SECURE_CORE_KEYS = new Set(['SECURE_CORE_ONLY', 'SERVER_HOSTNAMES']);
 
 export function VpnTab({ env }: VpnTabProps) {
-  const fields = getSchemaByGroup('vpn');
-  const [vpnStatus, setVpnStatus] = useState<VpnStatus | null>(null);
+  const allFields = getSchemaByGroup('vpn');
 
-  useEffect(() => {
-    fetch('/api/vpn')
-      .then((r) => r.json())
-      .then(setVpnStatus)
-      .catch(() => setVpnStatus(null));
-  }, []);
+  const { data: vpnStatus } = useQuery<VpnStatus>({
+    queryKey: ['vpn'],
+    queryFn: () => fetchApi<VpnStatus>('/api/vpn'),
+    refetchInterval: POLLING.VPN,
+    staleTime: STALE_TIME.VPN,
+  });
+
+  const provider = env.getVar('VPN_SERVICE_PROVIDER');
+  const isProton = provider === 'protonvpn';
+  const secureCoreOn = isProton && env.getVar('SECURE_CORE_ONLY') === 'on';
+
+  // Filter fields based on provider and Secure Core state
+  const fields = allFields.filter((def) => {
+    // Only show Secure Core fields for ProtonVPN
+    if (SECURE_CORE_KEYS.has(def.key) && !isProton) return false;
+    // Hide SERVER_HOSTNAMES unless Secure Core is on
+    if (def.key === 'SERVER_HOSTNAMES' && !secureCoreOn) return false;
+    // Hide SERVER_COUNTRIES when Secure Core is on (can't use both)
+    if (def.key === 'SERVER_COUNTRIES' && secureCoreOn) return false;
+    return true;
+  });
+
+  // When toggling Secure Core on, clear SERVER_COUNTRIES to avoid conflicts
+  // When toggling off, clear SERVER_HOSTNAMES
+  const handleChange = (key: string, value: string) => {
+    env.setVar(key, value);
+    if (key === 'SECURE_CORE_ONLY' && value === 'on') {
+      env.setVar('SERVER_COUNTRIES', '');
+    } else if (key === 'SECURE_CORE_ONLY' && value === 'off') {
+      env.setVar('SERVER_HOSTNAMES', '');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -36,14 +61,14 @@ export function VpnTab({ env }: VpnTabProps) {
         <div className="flex items-center gap-3">
           {vpnStatus?.connected ? (
             <ShieldCheck className="h-5 w-5 text-success" />
-          ) : vpnStatus === null ? (
+          ) : !vpnStatus ? (
             <Shield className="h-5 w-5 text-muted-foreground" />
           ) : (
             <ShieldX className="h-5 w-5 text-danger" />
           )}
           <div className="flex-1">
             <p className="text-sm font-medium">
-              VPN {vpnStatus?.connected ? 'Connected' : vpnStatus === null ? 'Unknown' : 'Disconnected'}
+              VPN {vpnStatus?.connected ? 'Connected' : !vpnStatus ? 'Unknown' : 'Disconnected'}
             </p>
             <p className="text-xs text-muted-foreground">
               {vpnStatus?.ip
@@ -51,8 +76,8 @@ export function VpnTab({ env }: VpnTabProps) {
                 : vpnStatus?.connected ? 'IP: Unavailable' : null}
             </p>
           </div>
-          <Badge variant={vpnStatus?.connected ? 'success' : vpnStatus === null ? 'outline' : 'danger'}>
-            {vpnStatus?.connected ? 'Online' : vpnStatus === null ? 'Unknown' : 'Offline'}
+          <Badge variant={vpnStatus?.connected ? 'success' : !vpnStatus ? 'outline' : 'danger'}>
+            {vpnStatus?.connected ? 'Online' : !vpnStatus ? 'Unknown' : 'Offline'}
           </Badge>
         </div>
       </Card>
@@ -71,12 +96,20 @@ export function VpnTab({ env }: VpnTabProps) {
               key={def.key}
               def={def}
               value={env.getVar(def.key)}
-              onChange={env.setVar}
+              onChange={handleChange}
               error={env.validationErrors[def.key]}
               dirty={def.key in env.dirtyVars}
             />
           ))}
         </div>
+
+        {secureCoreOn && (
+          <div className="mt-4 rounded-md border border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+            <strong className="text-foreground">Secure Core:</strong> Traffic is routed through a
+            privacy-friendly entry country (Iceland, Switzerland, or Sweden) before exiting in
+            the target country. Port forwarding may not be available on all Secure Core servers.
+          </div>
+        )}
       </Card>
     </div>
   );

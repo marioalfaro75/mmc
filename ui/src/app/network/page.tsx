@@ -2,7 +2,7 @@
 
 import { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, ShieldCheck, ShieldX, Globe, ArrowDownUp } from 'lucide-react';
+import { Loader2, ShieldCheck, ShieldX, Globe, ArrowDownUp, Lock } from 'lucide-react';
 import { NetworkTopology } from '@/components/network/NetworkTopology';
 import { Badge } from '@/components/common/Badge';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
@@ -166,6 +166,42 @@ export default function NetworkPage() {
 
       {/* Network topology */}
       <NetworkTopology data={data} tunnelRate={rateRef.current} />
+
+      {/* VPN Kill-Switch explainer */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <Lock className="h-5 w-5 text-success" />
+          <h2 className="text-base font-semibold">VPN Kill-Switch Protection</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          qBittorrent and SABnzbd are configured with{' '}
+          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">network_mode: service:gluetun</code>{' '}
+          in Docker Compose. They share Gluetun&apos;s network stack entirely and have no independent network
+          interface — all traffic must traverse the VPN tunnel.
+        </p>
+        <ul className="ml-4 mt-3 list-disc space-y-2 text-sm text-muted-foreground">
+          <li>
+            <strong className="text-foreground">No independent networking</strong> — download clients have
+            no direct access to your host network. Every packet goes through Gluetun.
+          </li>
+          <li>
+            <strong className="text-foreground">Startup dependency</strong> — download clients will not start
+            until Gluetun&apos;s healthcheck confirms the VPN is connected.
+          </li>
+          <li>
+            <strong className="text-foreground">Automatic kill-switch</strong> — if the VPN drops, download
+            clients lose all connectivity immediately. There is no fallback path to the internet.
+          </li>
+          <li>
+            <strong className="text-foreground">No exposed ports</strong> — download client containers have
+            no ports of their own. Their web UIs are published on the Gluetun container instead.
+          </li>
+        </ul>
+        <p className="mt-3 text-sm text-muted-foreground">
+          This is the most secure configuration possible with Docker — there is no bypass route even if
+          the VPN tunnel interface goes down.
+        </p>
+      </div>
     </div>
   );
 }
