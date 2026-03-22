@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runCommand } from '@/lib/api/sonarr';
 
-const ALLOWED_COMMANDS = ['MissingEpisodeSearch', 'SeriesSearch'];
+const ALLOWED_COMMANDS = ['MissingEpisodeSearch', 'SeriesSearch', 'EpisodeSearch'];
 
 export async function POST(request: NextRequest) {
   try {

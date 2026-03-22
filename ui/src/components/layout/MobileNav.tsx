@@ -11,26 +11,40 @@ import {
   HardDrive,
   ScrollText,
   BookOpen,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
 
-const mobileItems = [
+interface MobileNavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  requiresAdmin?: boolean;
+}
+
+const mobileItems: MobileNavItem[] = [
   { href: '/', label: 'Home', icon: LayoutDashboard },
-  { href: '/movies', label: 'Movies', icon: Film },
-  { href: '/tv', label: 'TV', icon: Tv },
+  { href: '/movies', label: 'Movies', icon: Film, requiresAdmin: true },
+  { href: '/tv', label: 'TV', icon: Tv, requiresAdmin: true },
   { href: '/downloads', label: 'Downloads', icon: Download },
-  { href: '/settings', label: 'Settings', icon: Settings },
-  { href: '/migration', label: 'NAS', icon: HardDrive },
-  { href: '/logs', label: 'Logs', icon: ScrollText },
-  { href: '/guide', label: 'Guide', icon: BookOpen },
+  { href: '/settings', label: 'Settings', icon: Settings, requiresAdmin: true },
+  { href: '/migration', label: 'NAS', icon: HardDrive, requiresAdmin: true },
+  { href: '/logs', label: 'Logs', icon: ScrollText, requiresAdmin: true },
+  { href: '/guide', label: 'Guide', icon: BookOpen, requiresAdmin: true },
 ];
 
 export function MobileNav() {
   const pathname = usePathname();
+  const { isAdmin, hasAdmins } = useAuth();
+
+  const visibleItems = hasAdmins
+    ? mobileItems.filter(item => !item.requiresAdmin || isAdmin)
+    : mobileItems;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 flex border-t border-border bg-surface md:hidden">
-      {mobileItems.map((item) => {
+      {visibleItems.map((item) => {
         const isActive = pathname === item.href;
         return (
           <Link

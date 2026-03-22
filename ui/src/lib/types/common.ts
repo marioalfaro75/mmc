@@ -3,7 +3,7 @@ export interface DownloadItem {
   source: 'torrent' | 'usenet';
   name: string;
   category: 'movies' | 'tv' | 'other';
-  status: 'downloading' | 'paused' | 'queued' | 'completed' | 'failed' | 'seeding' | 'extracting';
+  status: 'downloading' | 'paused' | 'queued' | 'completed' | 'failed' | 'seeding' | 'extracting' | 'warning';
   progress: number;
   sizeBytes: number;
   downloadedBytes: number;
@@ -16,6 +16,11 @@ export interface DownloadItem {
   ratio: number | null;
   repairProgress: number | null;
   unpackProgress: number | null;
+  warnings?: string[];
+  arrQueueId?: number;
+  arrService?: 'sonarr' | 'radarr';
+  arrMediaId?: number;
+  arrEpisodeId?: number;
 }
 
 export interface CalendarItem {

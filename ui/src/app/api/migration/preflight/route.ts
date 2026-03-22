@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
         checks.push({
           check: 'active-downloads',
           status: 'warn',
-          message: `${activeCount} active download(s) — consider pausing before migration`,
+          message: `${activeCount} active download(s) — pause downloads before migrating to avoid incomplete files`,
         });
       } else {
         checks.push({ check: 'active-downloads', status: 'ok', message: 'No active downloads' });

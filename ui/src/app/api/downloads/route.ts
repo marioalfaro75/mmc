@@ -1,7 +1,25 @@
 import { NextResponse } from 'next/server';
 import { getTorrents } from '@/lib/api/qbittorrent';
 import { getQueue as getSabnzbdQueue } from '@/lib/api/sabnzbd';
+import { getQueue as getSonarrQueue } from '@/lib/api/sonarr';
+import { getQueue as getRadarrQueue } from '@/lib/api/radarr';
 import type { DownloadItem } from '@/lib/types/common';
+
+interface ArrQueueRecord {
+  id: number;
+  title: string;
+  status: string;
+  trackedDownloadStatus?: string;
+  trackedDownloadState?: string;
+  size: number;
+  sizeleft: number;
+  protocol: string;
+  seriesId?: number;
+  episodeId?: number;
+  movieId?: number;
+  statusMessages?: { title: string; messages: string[] }[];
+  errorMessage?: string;
+}
 
 function mapTorrentStatus(state: string): DownloadItem['status'] {
   switch (state) {
@@ -23,9 +41,11 @@ function mapCategory(cat: string): DownloadItem['category'] {
 
 export async function GET() {
   try {
-    const [torrentsResult, sabnzbdResult] = await Promise.allSettled([
+    const [torrentsResult, sabnzbdResult, sonarrQueueResult, radarrQueueResult] = await Promise.allSettled([
       getTorrents(),
       getSabnzbdQueue(),
+      getSonarrQueue(),
+      getRadarrQueue(),
     ]);
 
     const items: DownloadItem[] = [];
@@ -81,6 +101,50 @@ export async function GET() {
         });
       }
     }
+
+    // Merge Sonarr/Radarr queue items that have import warnings
+    const mapArrQueueItems = (
+      result: PromiseSettledResult<{ records: unknown[] }>,
+      service: 'sonarr' | 'radarr'
+    ) => {
+      if (result.status !== 'fulfilled') return;
+      for (const raw of result.value.records) {
+        const r = raw as ArrQueueRecord;
+        const isWarning = r.status === 'warning' || r.trackedDownloadStatus === 'warning' || r.trackedDownloadState === 'importBlocked';
+        if (!isWarning) continue;
+        const warnings = [
+          ...(r.statusMessages || []).flatMap(sm => sm.messages),
+          ...(r.errorMessage ? [r.errorMessage] : []),
+        ];
+        items.push({
+          id: `${service}-queue-${r.id}`,
+          source: r.protocol === 'usenet' ? 'usenet' : 'torrent',
+          name: r.title,
+          category: service === 'sonarr' ? 'tv' : 'movies',
+          status: 'warning',
+          progress: r.size > 0 ? (r.size - r.sizeleft) / r.size : 1,
+          sizeBytes: r.size,
+          downloadedBytes: r.size - r.sizeleft,
+          speedBytesPerSecond: 0,
+          etaSeconds: null,
+          addedAt: new Date().toISOString(),
+          completedAt: null,
+          seeds: null,
+          peers: null,
+          ratio: null,
+          repairProgress: null,
+          unpackProgress: null,
+          warnings,
+          arrQueueId: r.id,
+          arrService: service,
+          arrMediaId: service === 'sonarr' ? r.seriesId : r.movieId,
+          arrEpisodeId: r.episodeId,
+        });
+      }
+    }
+
+    mapArrQueueItems(sonarrQueueResult, 'sonarr');
+    mapArrQueueItems(radarrQueueResult, 'radarr');
 
     return NextResponse.json({
       items,

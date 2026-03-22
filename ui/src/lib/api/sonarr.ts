@@ -42,6 +42,13 @@ export async function deleteSeries(id: number, deleteFiles = false): Promise<voi
   }
 }
 
+export async function updateSeries(series: SonarrSeries): Promise<SonarrSeries> {
+  return sonarrFetch<SonarrSeries>(`/series/${series.id}`, {
+    method: 'PUT',
+    body: JSON.stringify(series),
+  });
+}
+
 export async function addSeries(series: Partial<SonarrSeries>): Promise<SonarrSeries> {
   return sonarrFetch<SonarrSeries>('/series', {
     method: 'POST',
@@ -75,6 +82,17 @@ export async function getLogs(page = 1, pageSize = 50) {
 
 // --- Configuration APIs ---
 
+export async function getQualityProfiles(): Promise<{ id: number; name: string; upgradeAllowed: boolean; cutoff: number; items: unknown[] }[]> {
+  return sonarrFetch('/qualityprofile');
+}
+
+export async function updateQualityProfile(profile: Record<string, unknown>): Promise<void> {
+  await sonarrFetch(`/qualityprofile/${profile.id}`, {
+    method: 'PUT',
+    body: JSON.stringify(profile),
+  });
+}
+
 export async function getRootFolders(): Promise<{ id: number; path: string }[]> {
   return sonarrFetch('/rootfolder');
 }
@@ -90,10 +108,13 @@ export async function deleteRootFolder(id: number): Promise<void> {
   await sonarrFetch(`/rootfolder/${id}`, { method: 'DELETE' });
 }
 
-export async function massUpdateSeries(seriesIds: number[], rootFolderPath: string): Promise<void> {
+export async function massUpdateSeries(seriesIds: number[], rootFolderPath: string, qualityProfileId?: number): Promise<void> {
+  const body: Record<string, unknown> = { seriesIds };
+  if (rootFolderPath) body.rootFolderPath = rootFolderPath;
+  if (qualityProfileId !== undefined) body.qualityProfileId = qualityProfileId;
   await sonarrFetch('/series/editor', {
     method: 'PUT',
-    body: JSON.stringify({ seriesIds, rootFolderPath }),
+    body: JSON.stringify(body),
   });
 }
 
@@ -124,6 +145,19 @@ export async function runCommand(body: Record<string, unknown>): Promise<{ id: n
     method: 'POST',
     body: JSON.stringify(body),
   });
+}
+
+export async function deleteQueueItem(id: number, blocklist = true, removeFromClient = true): Promise<void> {
+  const url = `${BASE_URL}/api/v3/queue/${id}?blocklist=${blocklist}&removeFromClient=${removeFromClient}`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: { 'X-Api-Key': API_KEY },
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Sonarr API error: ${res.status} ${res.statusText} — ${body}`);
+  }
 }
 
 export async function getEpisodes(seriesId: number): Promise<SonarrEpisode[]> {

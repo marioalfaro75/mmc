@@ -167,7 +167,7 @@ export function MediaMigration({ mountPoint }: MediaMigrationProps) {
                 onChange={(e) => setUpdateDataRoot(e.target.checked)}
                 className="rounded border-border"
               />
-              Also update DATA_ROOT in .env (new downloads will go to NAS too)
+              Also update DATA_ROOT in .env (future downloads and completed media will go to the new location)
             </label>
 
             {!preflightPassed && (
@@ -189,8 +189,9 @@ export function MediaMigration({ mountPoint }: MediaMigrationProps) {
               <div className="rounded-md border border-border p-4 space-y-3">
                 <p className="text-sm font-medium">Are you sure?</p>
                 <p className="text-sm text-muted-foreground">
-                  This will copy all media from the current location to the NAS and update Sonarr/Radarr paths.
-                  The process may take a while depending on library size and network speed.
+                  This will copy completed media from DATA_ROOT/media to the destination and update Sonarr/Radarr
+                  root folders. Download directories (torrents/usenet) are not moved. The process may take a while
+                  depending on library size and network speed.
                 </p>
                 <div className="flex gap-2">
                   <button

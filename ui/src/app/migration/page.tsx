@@ -55,8 +55,9 @@ export default function MigrationPage() {
         {showHowItWorks && (
           <div className="px-6 pb-6 space-y-4 text-sm">
             <p>
-              When you migrate, the new location replaces your local <code className="rounded bg-muted px-1.5 py-0.5">DATA_ROOT</code> directory.
-              Your media stack uses a specific folder structure to keep movies and TV shows separate:
+              Migration copies only the <code className="rounded bg-muted px-1.5 py-0.5">media/</code> folder (completed movies and TV shows) to the new location.
+              Download directories (<code className="rounded bg-muted px-1.5 py-0.5">torrents/</code> and <code className="rounded bg-muted px-1.5 py-0.5">usenet/</code>) are not moved — download clients continue using the original paths.
+              Your media stack uses this folder structure:
             </p>
 
             <div className="rounded-md bg-muted p-4 font-mono text-xs space-y-1">
@@ -65,13 +66,13 @@ export default function MigrationPage() {
                 <span>New location (DATA_ROOT)</span>
               </div>
               <div className="ml-6 space-y-0.5">
-                <p>media/</p>
+                <p className="text-primary">media/ <span className="text-muted-foreground">← copied to new location</span></p>
                 <p className="ml-4 text-primary">movies/ <span className="text-muted-foreground">-- Radarr puts completed movies here</span></p>
                 <p className="ml-4 text-primary">tv/ <span className="text-muted-foreground">-- Sonarr puts completed TV shows here</span></p>
-                <p>torrents/</p>
+                <p>torrents/ <span className="text-muted-foreground">← stays in place</span></p>
                 <p className="ml-4 text-muted-foreground">movies/ -- qBittorrent downloads movies here</p>
                 <p className="ml-4 text-muted-foreground">tv/ -- qBittorrent downloads TV here</p>
-                <p>usenet/</p>
+                <p>usenet/ <span className="text-muted-foreground">← stays in place</span></p>
                 <p className="ml-4 text-muted-foreground">movies/ -- SABnzbd downloads movies here</p>
                 <p className="ml-4 text-muted-foreground">tv/ -- SABnzbd downloads TV here</p>
               </div>
@@ -96,16 +97,20 @@ export default function MigrationPage() {
             <div className="rounded-md bg-primary/5 border border-primary/10 p-3 space-y-1.5">
               <p className="font-medium text-foreground">What the migration does:</p>
               <ul className="list-disc ml-5 space-y-1 text-muted-foreground">
-                <li>Copies your existing media files from local storage to the new location</li>
+                <li>Copies completed media (<code className="rounded bg-muted px-1 py-0.5">media/movies</code> and <code className="rounded bg-muted px-1 py-0.5">media/tv</code>) to the new location</li>
                 <li>Updates Sonarr and Radarr root folders to point to the new path</li>
                 <li>Optionally updates <code className="rounded bg-muted px-1 py-0.5">DATA_ROOT</code> so new downloads also go to the new location</li>
-                <li>All future downloads are automatically routed to the correct folder</li>
+                <li>Does not move <code className="rounded bg-muted px-1 py-0.5">torrents/</code> or <code className="rounded bg-muted px-1 py-0.5">usenet/</code> — active downloads and seeds are unaffected</li>
               </ul>
             </div>
 
             <p className="text-muted-foreground">
               The destination should be empty or already have this folder structure. The migration tool will create the folders if they don&apos;t exist.
               If the destination uses different folder names, rename them to <code className="rounded bg-muted px-1 py-0.5">movies</code> and <code className="rounded bg-muted px-1 py-0.5">tv</code> before migrating.
+            </p>
+
+            <p className="text-muted-foreground">
+              Only media tracked by Sonarr and Radarr is displayed after migration. If the destination already contains media files not managed by Sonarr/Radarr, they won&apos;t appear in the UI — add them manually through the Movies or TV pages.
             </p>
           </div>
         )}

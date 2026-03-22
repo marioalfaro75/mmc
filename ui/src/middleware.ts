@@ -238,10 +238,13 @@ export async function middleware(request: NextRequest) {
   // --- Authentication ---
   const apiKey = process.env.MMC_API_KEY;
   if (apiKey) {
-    // Paths that skip auth
+    // Paths that skip API key auth
     const isPublic =
       pathname === '/api/health' ||
       pathname === '/login' ||
+      pathname === '/admin-login' ||
+      pathname === '/setup' ||
+      pathname.startsWith('/api/auth/') ||
       pathname.startsWith('/_next/') ||
       pathname === '/favicon.ico';
 
@@ -260,6 +263,52 @@ export async function middleware(request: NextRequest) {
         const loginUrl = request.nextUrl.clone();
         loginUrl.pathname = '/login';
         loginUrl.search = '';
+        const res = NextResponse.redirect(loginUrl);
+        applySecurityHeaders(res);
+        return res;
+      }
+    }
+  }
+
+  // --- Admin auth layer ---
+  // Only enforce admin auth if admins have been set up (indicated by cookie from setup/login)
+  const hasAdminsCookie = request.cookies.get('mmc-has-admins')?.value === '1';
+
+  if (hasAdminsCookie) {
+    const isPublicPage =
+      pathname === '/' ||
+      pathname === '/downloads' ||
+      pathname === '/calendar' ||
+      pathname === '/requests' ||
+      pathname === '/login' ||
+      pathname === '/admin-login' ||
+      pathname === '/setup' ||
+      pathname.startsWith('/_next/') ||
+      pathname === '/favicon.ico';
+
+    const isPublicApi =
+      pathname.startsWith('/api/health') ||
+      pathname.startsWith('/api/dashboard') ||
+      pathname.startsWith('/api/downloads') ||
+      pathname.startsWith('/api/calendar') ||
+      pathname.startsWith('/api/requests') ||
+      pathname.startsWith('/api/auth') ||
+      pathname.startsWith('/api/vpn');
+
+    const isPublicRoute = isPublicPage || isPublicApi;
+
+    if (!isPublicRoute) {
+      const sessionCookie = request.cookies.get('mmc-session')?.value;
+      if (!sessionCookie) {
+        if (pathname.startsWith('/api/')) {
+          const res = NextResponse.json({ error: 'Admin login required' }, { status: 401 });
+          applySecurityHeaders(res);
+          return res;
+        }
+        // Page request → redirect to admin login
+        const loginUrl = request.nextUrl.clone();
+        loginUrl.pathname = '/admin-login';
+        loginUrl.search = `?redirect=${encodeURIComponent(pathname)}`;
         const res = NextResponse.redirect(loginUrl);
         applySecurityHeaders(res);
         return res;

@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Shield, ShieldAlert, Download } from 'lucide-react';
+import { Shield, ShieldAlert, Download, ArrowDownAZ, ArrowUp, ArrowDown, Percent } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 import { DownloadQueue } from '@/components/downloads/DownloadQueue';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
 import { cn } from '@/lib/utils';
@@ -12,6 +13,7 @@ import type { VpnStatus } from '@/lib/types/common';
 import { toast } from 'sonner';
 
 type TabKey = 'active' | 'completed' | 'failed';
+type SortMode = 'default' | 'name' | 'progress-asc' | 'progress-desc';
 
 interface DownloadsResponse {
   items: DownloadItem[];
@@ -21,6 +23,8 @@ interface DownloadsResponse {
 export default function DownloadsPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabKey>('active');
+  const [sortMode, setSortMode] = useState<SortMode>('default');
+  const { isAdmin } = useAuth();
 
   const { data: downloadsData, isLoading } = useQuery<DownloadsResponse>({
     queryKey: ['downloads'],
@@ -64,10 +68,28 @@ export default function DownloadsPage() {
     onError: () => toast.error('Failed to remove download'),
   });
 
+  const blocklistMutation = useMutation({
+    mutationFn: ({ item, searchAfter }: { item: DownloadItem; searchAfter: boolean }) =>
+      fetchApi(`/api/downloads/queue/${item.arrQueueId}?searchAfter=${searchAfter}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          service: item.arrService,
+          mediaId: item.arrMediaId,
+          episodeId: item.arrEpisodeId,
+        }),
+      }),
+    onSuccess: (_data, { searchAfter }) => {
+      queryClient.invalidateQueries({ queryKey: ['downloads'] });
+      toast.success(searchAfter ? 'Blocklisted — searching for replacement' : 'Blocklisted and removed');
+    },
+    onError: () => toast.error('Failed to blocklist item'),
+  });
+
   const tabs: { key: TabKey; label: string; count: number }[] = [
     { key: 'active', label: 'Active', count: downloads.filter(d => ['downloading', 'paused', 'queued', 'extracting'].includes(d.status)).length },
     { key: 'completed', label: 'Completed', count: downloads.filter(d => ['completed', 'seeding'].includes(d.status)).length },
-    { key: 'failed', label: 'Failed', count: downloads.filter(d => d.status === 'failed').length },
+    { key: 'failed', label: 'Failed', count: downloads.filter(d => d.status === 'failed' || d.status === 'warning').length },
   ];
 
   return (
@@ -102,32 +124,66 @@ export default function DownloadsPage() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex gap-1 rounded-lg bg-muted p-1">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={cn(
-              'flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-              activeTab === tab.key
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            {tab.label} ({tab.count})
-          </button>
-        ))}
+      {/* Tabs and sort */}
+      <div className="flex items-center gap-2">
+        <div className="flex flex-1 gap-1 rounded-lg bg-muted p-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                'flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                activeTab === tab.key
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {tab.label} ({tab.count})
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setSortMode(prev => prev === 'name' ? 'default' : 'name')}
+          title="Sort by name"
+          className={cn(
+            'rounded-md border p-2 transition-colors',
+            sortMode === 'name'
+              ? 'border-primary bg-primary/10 text-primary'
+              : 'border-input text-muted-foreground hover:text-foreground hover:bg-muted'
+          )}
+        >
+          <ArrowDownAZ className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => setSortMode(prev => prev === 'progress-asc' ? 'progress-desc' : 'progress-asc')}
+          title={sortMode === 'progress-asc' ? 'Sort by progress (highest first)' : 'Sort by progress (lowest first)'}
+          className={cn(
+            'flex items-center gap-0.5 rounded-md border p-2 transition-colors',
+            sortMode === 'progress-asc' || sortMode === 'progress-desc'
+              ? 'border-primary bg-primary/10 text-primary'
+              : 'border-input text-muted-foreground hover:text-foreground hover:bg-muted'
+          )}
+        >
+          <Percent className="h-4 w-4" />
+          {sortMode === 'progress-desc' ? (
+            <ArrowDown className="h-3 w-3" />
+          ) : (
+            <ArrowUp className="h-3 w-3" />
+          )}
+        </button>
       </div>
 
       <DownloadQueue
         items={downloads}
         isLoading={isLoading}
         activeTab={activeTab}
+        sortMode={sortMode}
         onPause={(id) => actionMutation.mutate({ id, action: 'pause' })}
         onResume={(id) => actionMutation.mutate({ id, action: 'resume' })}
-        onForceStart={(id) => actionMutation.mutate({ id, action: 'forceStart' })}
-        onDelete={(id, deleteFiles) => deleteMutation.mutate({ id, deleteFiles })}
+        onForceStart={isAdmin ? (id) => actionMutation.mutate({ id, action: 'forceStart' }) : undefined}
+        onDelete={isAdmin ? (id, deleteFiles) => deleteMutation.mutate({ id, deleteFiles }) : undefined}
+        onBlocklist={isAdmin ? (item) => blocklistMutation.mutate({ item, searchAfter: false }) : undefined}
+        onBlocklistAndSearch={isAdmin ? (item) => blocklistMutation.mutate({ item, searchAfter: true }) : undefined}
       />
     </div>
   );

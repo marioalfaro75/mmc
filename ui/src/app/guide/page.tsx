@@ -448,7 +448,6 @@ docker compose pull && docker compose up -d       # Update images
             title="Gluetun (VPN)"
             port="localhost:8000"
             description="VPN gateway — all download traffic is routed through this container"
-            defaultOpen
           >
             <p>Gluetun supports 60+ VPN providers. Set your credentials in <Code>.env</Code> during deploy, or edit it manually.</p>
 
@@ -952,6 +951,73 @@ sudo bash ~/.mmc/scripts/mount-nas.sh`}</Pre>
             <Pre>docker logs watchtower</Pre>
             <Tip>
               To change the schedule, edit <Code>WATCHTOWER_SCHEDULE</Code> in <Code>.env</Code> (cron format).
+            </Tip>
+          </AccordionSection>
+
+          <AccordionSection
+            title="Quality Profiles"
+            description="Control download quality and prevent duplicate downloads"
+          >
+            <h4 className="text-xs font-semibold uppercase text-muted-foreground">What Are Quality Profiles?</h4>
+            <p className="mt-1">
+              Quality profiles tell Sonarr and Radarr which resolutions and formats to accept when downloading media.
+              Each movie or TV series is assigned a profile (e.g. &quot;HD-1080p&quot;, &quot;Any&quot;, &quot;Ultra-HD&quot;).
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              When a download is grabbed, it must match one of the qualities allowed in the assigned profile.
+              If no releases match, the item stays in the &quot;missing&quot; state until one does.
+            </p>
+
+            <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Why Do Duplicate Downloads Happen?</h4>
+            <p className="mt-1">
+              Each profile has an <strong>Allow Upgrades</strong> setting. When enabled, Sonarr/Radarr will
+              automatically replace an existing file with a higher-quality version — for example, replacing a
+              1080p WEBRip with a 1080p BluRay, or a 1080p file with a 4K version.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              This means the same movie or episode can be downloaded multiple times as better releases appear.
+              The old file is deleted after the upgrade completes, but both downloads consume bandwidth and disk
+              space while in progress.
+            </p>
+
+            <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">How to Prevent It</h4>
+            <p className="mt-1">
+              Go to <a href="/settings" className="text-primary underline">Settings → Quality</a> and turn off
+              the <strong>Allow upgrades</strong> toggle for any profile where you want to keep the first
+              matching download without replacement.
+            </p>
+            <ul className="ml-4 mt-1 list-disc text-xs text-muted-foreground">
+              <li>
+                <strong>Upgrades off</strong> — keeps the first version that matches your profile.
+                Recommended if you don&apos;t care about getting the absolute best quality.
+              </li>
+              <li>
+                <strong>Upgrades on</strong> — continues looking for better quality until the cutoff is reached.
+                Useful if you want BluRay quality but are happy to watch a WEB release while waiting.
+              </li>
+            </ul>
+
+            <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Common Profiles</h4>
+            <ul className="ml-4 mt-1 list-disc text-xs text-muted-foreground space-y-1">
+              <li><strong>Any</strong> — accepts all qualities. Will grab the first available release regardless of resolution.</li>
+              <li><strong>HD-1080p</strong> — only accepts 1080p content (HDTV, WEB, BluRay).</li>
+              <li><strong>Ultra-HD</strong> — only accepts 4K/2160p content.</li>
+              <li><strong>HD - 720p/1080p</strong> — accepts both 720p and 1080p, good for limited storage.</li>
+            </ul>
+
+            <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Bulk Assignment</h4>
+            <p className="mt-1">
+              If you want all your movies or TV shows on the same profile, use the
+              <strong> Bulk Profile Assignment</strong> section in{' '}
+              <a href="/settings" className="text-primary underline">Settings → Quality</a>.
+              Select the profile and click &quot;Apply to All&quot; — this updates every item at once
+              without having to change them individually in Sonarr or Radarr.
+            </p>
+
+            <Tip>
+              The &quot;Any&quot; profile is the most common cause of unexpected duplicate downloads.
+              If you&apos;re seeing movies downloaded twice, check whether they&apos;re using &quot;Any&quot; with
+              upgrades enabled.
             </Tip>
           </AccordionSection>
 

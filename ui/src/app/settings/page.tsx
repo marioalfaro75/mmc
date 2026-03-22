@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Settings, Sliders, Shield, Network, Server, Archive, Download, Loader2, Save } from 'lucide-react';
+import { Settings, Sliders, Shield, Network, Server, Archive, Download, Loader2, Save, SlidersHorizontal, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { SettingsTabs, type TabDef } from '@/components/settings/SettingsTabs';
 import { GeneralTab } from '@/components/settings/GeneralTab';
@@ -10,6 +10,8 @@ import { NetworkTab } from '@/components/settings/NetworkTab';
 import { ServicesTab } from '@/components/settings/ServicesTab';
 import { BackupsTab } from '@/components/settings/BackupsTab';
 import { DownloadsTab } from '@/components/settings/DownloadsTab';
+import { QualityTab } from '@/components/settings/QualityTab';
+import { AdminsTab } from '@/components/settings/AdminsTab';
 import { RestartConfirmModal } from '@/components/settings/RestartConfirmModal';
 import { useEnvSettings } from '@/hooks/useEnvSettings';
 
@@ -18,8 +20,10 @@ const TABS: TabDef[] = [
   { id: 'vpn', label: 'VPN', icon: Shield },
   { id: 'network', label: 'Network', icon: Network },
   { id: 'downloads', label: 'Downloads', icon: Download },
+  { id: 'quality', label: 'Quality', icon: SlidersHorizontal },
   { id: 'services', label: 'Services', icon: Server },
   { id: 'backups', label: 'Backups', icon: Archive },
+  { id: 'admins', label: 'Admins', icon: Users },
 ];
 
 export default function SettingsPage() {
@@ -131,8 +135,10 @@ export default function SettingsPage() {
             {activeTab === 'vpn' && <VpnTab env={env} />}
             {activeTab === 'network' && <NetworkTab env={env} />}
             {activeTab === 'downloads' && <DownloadsTab />}
+            {activeTab === 'quality' && <QualityTab />}
             {activeTab === 'services' && <ServicesTab env={env} />}
             {activeTab === 'backups' && <BackupsTab />}
+            {activeTab === 'admins' && <AdminsTab />}
           </>
         )}
       </div>

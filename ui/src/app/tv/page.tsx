@@ -252,7 +252,7 @@ export default function TvPage() {
             onDelete={(deleteFiles) => deleteMutation.mutate({ id: current.id, deleteFiles })}
             isDeleting={deleteMutation.isPending}
           >
-            <SeriesEpisodes seriesId={current.id} />
+            <SeriesEpisodes seriesId={current.id} seriesTitle={current.title} />
           </MediaDetail>
         );
       })()}

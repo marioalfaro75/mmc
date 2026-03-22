@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Pause, Play, Trash2, HardDrive, Wifi, Zap } from 'lucide-react';
+import { Pause, Play, Trash2, HardDrive, Wifi, Zap, AlertTriangle, Ban, Search } from 'lucide-react';
 import { ProgressBar } from '@/components/common/ProgressBar';
 import { Badge } from '@/components/common/Badge';
 import { formatBytes, formatSpeed, formatDuration } from '@/lib/utils/formatters';
@@ -13,6 +13,8 @@ interface DownloadItemProps {
   onResume?: (id: string) => void;
   onForceStart?: (id: string) => void;
   onDelete?: (id: string, deleteFiles: boolean) => void;
+  onBlocklist?: (item: DownloadItemType) => void;
+  onBlocklistAndSearch?: (item: DownloadItemType) => void;
 }
 
 const statusVariant: Record<string, 'default' | 'success' | 'warning' | 'danger'> = {
@@ -23,17 +25,19 @@ const statusVariant: Record<string, 'default' | 'success' | 'warning' | 'danger'
   queued: 'outline' as 'default',
   failed: 'danger',
   extracting: 'warning',
+  warning: 'warning',
 };
 
-export function DownloadItemRow({ item, onPause, onResume, onForceStart, onDelete }: DownloadItemProps) {
+export function DownloadItemRow({ item, onPause, onResume, onForceStart, onDelete, onBlocklist, onBlocklistAndSearch }: DownloadItemProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteFiles, setDeleteFiles] = useState(false);
   const canPause = item.status === 'downloading';
   const canResume = item.status === 'paused';
   const canForceStart = item.status === 'queued' || item.status === 'paused';
+  const isWarning = item.status === 'warning';
 
   return (
-    <div className="rounded-lg border border-border bg-card p-3">
+    <div className={`rounded-lg border bg-card p-3 ${isWarning ? 'border-warning/50' : 'border-border'}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -45,7 +49,9 @@ export function DownloadItemRow({ item, onPause, onResume, onForceStart, onDelet
             <p className="truncate text-sm font-medium">{item.name}</p>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant={statusVariant[item.status] || 'default'}>{item.status}</Badge>
+            <Badge variant={statusVariant[item.status] || 'default'}>
+              {isWarning ? 'import blocked' : item.status}
+            </Badge>
             <Badge variant="outline">{item.category}</Badge>
             <span>{formatBytes(item.downloadedBytes)} / {formatBytes(item.sizeBytes)}</span>
             {item.speedBytesPerSecond > 0 && <span>{formatSpeed(item.speedBytesPerSecond)}</span>}
@@ -56,48 +62,85 @@ export function DownloadItemRow({ item, onPause, onResume, onForceStart, onDelet
           </div>
         </div>
         <div className="flex shrink-0 gap-1">
-          {canPause && onPause && (
-            <button
-              onClick={() => onPause(item.id)}
-              className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              title="Pause"
-            >
-              <Pause className="h-4 w-4" />
-            </button>
-          )}
-          {canResume && onResume && (
-            <button
-              onClick={() => onResume(item.id)}
-              className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              title="Resume"
-            >
-              <Play className="h-4 w-4" />
-            </button>
-          )}
-          {canForceStart && onForceStart && (
-            <button
-              onClick={() => onForceStart(item.id)}
-              className="rounded p-1.5 text-muted-foreground hover:bg-warning/20 hover:text-warning transition-colors"
-              title="Force start — bypass queue limits"
-            >
-              <Zap className="h-4 w-4" />
-            </button>
-          )}
-          {onDelete && (
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="rounded p-1.5 text-muted-foreground hover:bg-danger/20 hover:text-danger transition-colors"
-              title="Delete"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+          {isWarning ? (
+            <>
+              {onBlocklist && (
+                <button
+                  onClick={() => onBlocklist(item)}
+                  className="rounded p-1.5 text-muted-foreground hover:bg-warning/20 hover:text-warning transition-colors"
+                  title="Blocklist — remove and prevent re-download"
+                >
+                  <Ban className="h-4 w-4" />
+                </button>
+              )}
+              {onBlocklistAndSearch && (
+                <button
+                  onClick={() => onBlocklistAndSearch(item)}
+                  className="flex items-center gap-0.5 rounded p-1.5 text-muted-foreground hover:bg-primary/20 hover:text-primary transition-colors"
+                  title="Blocklist and search for replacement"
+                >
+                  <Ban className="h-4 w-4" />
+                  <Search className="h-4 w-4" />
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              {canPause && onPause && (
+                <button
+                  onClick={() => onPause(item.id)}
+                  className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  title="Pause"
+                >
+                  <Pause className="h-4 w-4" />
+                </button>
+              )}
+              {canResume && onResume && (
+                <button
+                  onClick={() => onResume(item.id)}
+                  className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  title="Resume"
+                >
+                  <Play className="h-4 w-4" />
+                </button>
+              )}
+              {canForceStart && onForceStart && (
+                <button
+                  onClick={() => onForceStart(item.id)}
+                  className="rounded p-1.5 text-muted-foreground hover:bg-warning/20 hover:text-warning transition-colors"
+                  title="Force start — bypass queue limits"
+                >
+                  <Zap className="h-4 w-4" />
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="rounded p-1.5 text-muted-foreground hover:bg-danger/20 hover:text-danger transition-colors"
+                  title="Delete"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
+
+      {/* Warning messages */}
+      {item.warnings && item.warnings.length > 0 && (
+        <div className="mt-2 flex items-start gap-1.5 rounded border border-warning/30 bg-warning/5 px-2 py-1.5 text-xs text-warning">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            {item.warnings.map((w, i) => <p key={i}>{w}</p>)}
+          </div>
+        </div>
+      )}
+
       <ProgressBar
         value={item.progress}
         className="mt-2"
-        variant={item.status === 'completed' || item.status === 'seeding' ? 'success' : item.status === 'failed' ? 'danger' : 'default'}
+        variant={item.status === 'completed' || item.status === 'seeding' ? 'success' : item.status === 'failed' || isWarning ? 'danger' : 'default'}
         showLabel
       />
       {showDeleteConfirm && (

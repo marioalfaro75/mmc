@@ -244,7 +244,8 @@ After first deploy, go to the Guide page and click **Detect API Keys**. This rea
 The stack includes security hardening out of the box:
 
 - **All ports localhost-only** — services are not exposed to the network (except torrent port 6881)
-- **Optional authentication** — set `MMC_API_KEY` in `.env` to require login for the web UI
+- **Admin authentication** — create admin accounts via Settings → Admins or the first-time setup page. Admin-only pages (TV Shows, Movies, Settings, System, etc.) require login. Public pages (Dashboard, Downloads, Calendar, Requests) are accessible to anyone.
+- **Optional site-wide lock** — set `MMC_API_KEY` in `.env` to require an API key for all access (applied before admin auth)
 - **VPN control auth** — Gluetun control API uses basic auth (`GLUETUN_CONTROL_PASSWORD`)
 - **Security headers** — CSP, X-Frame-Options, rate limiting (120 req/min), CSRF protection
 - **Docker images pinned** — specific version tags, not `:latest`
@@ -330,11 +331,11 @@ docker exec qbittorrent wget -qO- https://ipinfo.io
 
 The Mars Media Centre dashboard at `http://localhost:3000` provides:
 
-- Combined download queue (torrents + usenet) with pause, resume, force start, and delete with optional file removal
+- Combined download queue (torrents + usenet) with pause, resume, force start, and delete with optional file removal. Sort by name or progress. Import-blocked downloads shown with warning messages and blocklist/search actions.
 - Dashboard with download stats (today/week/failed counts + recently completed history)
 - Merged calendar (TV episodes + movies) with correct series name resolution
 - Library browsing with search by title, year, or actor name (TMDB), add, delete, and automatic missing content detection
-- TV show episode details: all-episodes view with on-disk status, per-season breakdowns, summary view with next-to-download and missing episodes
+- TV show episode browser with per-series missing episode search, season-level monitor toggles, "Monitor All & Search" shortcut, and live download indicators
 - Media request management with search, request, approve/decline, and delete
 - Media migration wizard: move media to a NAS/network share or local directory with filesystem browser and rsync progress tracking
 - Network page with live VPN topology, tunnel bandwidth monitoring, and per-service traffic stats
@@ -352,8 +353,10 @@ The Settings page (`http://localhost:3000/settings`) provides tabbed configurati
 - **VPN** — Provider, credentials, server country, port forwarding, ProtonVPN Secure Core
 - **Network** — Docker/local subnets, all service ports
 - **Downloads** — qBittorrent queue limits, speed limits, and seeding limits
+- **Quality** — Toggle upgrade downloads per Sonarr/Radarr quality profile, bulk assign profiles to all movies or series
 - **Services** — API keys for all services (with auto-detect and direct links to each service's UI), TMDB API key (actor search), Plex URL, Watchtower schedule, Docker image tags
 - **Backups** — Create, download, restore, and delete configuration backups. Scheduled automatic backups (daily/weekly) with configurable retention.
+- **Admins** — Create, edit, and delete admin user accounts for the web UI
 
 ### Logs Page
 
@@ -388,7 +391,9 @@ DATA_ROOT/
     tv/        ← SABnzbd downloads TV here
 ```
 
-When you migrate, the new location replaces `DATA_ROOT`. Sonarr and Radarr automatically route completed downloads to the correct folder (`media/movies` or `media/tv`).
+Migration copies only the `media/` folder (completed movies and TV shows) to the new location. The `torrents/` and `usenet/` directories are not moved — download clients continue using the original paths. Sonarr and Radarr automatically route future completed downloads to the correct folder (`media/movies` or `media/tv`).
+
+> **Note:** Only media tracked by Sonarr and Radarr is displayed after migration. If the destination already contains media not managed by Sonarr/Radarr, add it manually through the Movies or TV pages.
 
 ### Migration Steps
 

@@ -16,22 +16,31 @@ import {
   BookOpen,
   ExternalLink,
   HardDrive,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
 
-const navItems = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  requiresAdmin?: boolean;
+}
+
+const navItems: NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/movies', label: 'Movies', icon: Film },
-  { href: '/tv', label: 'TV Shows', icon: Tv },
+  { href: '/movies', label: 'Movies', icon: Film, requiresAdmin: true },
+  { href: '/tv', label: 'TV Shows', icon: Tv, requiresAdmin: true },
   { href: '/downloads', label: 'Downloads', icon: Download },
   { href: '/calendar', label: 'Calendar', icon: CalendarDays },
   { href: '/requests', label: 'Requests', icon: MessageSquare },
-  { href: '/system', label: 'System', icon: Activity },
-  { href: '/network', label: 'Network', icon: Network },
-  { href: '/settings', label: 'Settings', icon: Settings },
-  { href: '/migration', label: 'Migration', icon: HardDrive },
-  { href: '/logs', label: 'Logs', icon: ScrollText },
-  { href: '/guide', label: 'Guide', icon: BookOpen },
+  { href: '/system', label: 'System', icon: Activity, requiresAdmin: true },
+  { href: '/network', label: 'Network', icon: Network, requiresAdmin: true },
+  { href: '/settings', label: 'Settings', icon: Settings, requiresAdmin: true },
+  { href: '/migration', label: 'Migration', icon: HardDrive, requiresAdmin: true },
+  { href: '/logs', label: 'Logs', icon: ScrollText, requiresAdmin: true },
+  { href: '/guide', label: 'Guide', icon: BookOpen, requiresAdmin: true },
 ];
 
 interface SidebarProps {
@@ -40,11 +49,17 @@ interface SidebarProps {
 
 export function Sidebar({ plexUrl }: SidebarProps) {
   const pathname = usePathname();
+  const { isAdmin, hasAdmins } = useAuth();
 
   // Convert internal Docker URL to localhost for browser access
   const plexWebUrl = plexUrl && plexUrl !== 'http://localhost:32400'
     ? `${plexUrl}/web`
     : plexUrl ? `${plexUrl}/web` : null;
+
+  // Show all items if no admins configured yet (backwards compatible)
+  const visibleItems = hasAdmins
+    ? navItems.filter(item => !item.requiresAdmin || isAdmin)
+    : navItems;
 
   return (
     <aside className="hidden md:flex w-64 flex-col border-r border-border bg-surface">
@@ -53,7 +68,7 @@ export function Sidebar({ plexUrl }: SidebarProps) {
         <span className="text-lg font-semibold">Mars Media Centre</span>
       </div>
       <nav className="flex-1 space-y-1 p-3">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link

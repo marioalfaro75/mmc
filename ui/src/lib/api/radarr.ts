@@ -86,14 +86,28 @@ export async function addRootFolder(path: string): Promise<{ id: number; path: s
   });
 }
 
+export async function getQualityProfiles(): Promise<{ id: number; name: string; upgradeAllowed: boolean; cutoff: number; items: unknown[] }[]> {
+  return radarrFetch('/qualityprofile');
+}
+
+export async function updateQualityProfile(profile: Record<string, unknown>): Promise<void> {
+  await radarrFetch(`/qualityprofile/${profile.id}`, {
+    method: 'PUT',
+    body: JSON.stringify(profile),
+  });
+}
+
 export async function deleteRootFolder(id: number): Promise<void> {
   await radarrFetch(`/rootfolder/${id}`, { method: 'DELETE' });
 }
 
-export async function massUpdateMovies(movieIds: number[], rootFolderPath: string): Promise<void> {
+export async function massUpdateMovies(movieIds: number[], rootFolderPath: string, qualityProfileId?: number): Promise<void> {
+  const body: Record<string, unknown> = { movieIds };
+  if (rootFolderPath) body.rootFolderPath = rootFolderPath;
+  if (qualityProfileId !== undefined) body.qualityProfileId = qualityProfileId;
   await radarrFetch('/movie/editor', {
     method: 'PUT',
-    body: JSON.stringify({ movieIds, rootFolderPath }),
+    body: JSON.stringify(body),
   });
 }
 
@@ -117,6 +131,19 @@ export async function updateNaming(naming: Record<string, unknown>): Promise<voi
     method: 'PUT',
     body: JSON.stringify(naming),
   });
+}
+
+export async function deleteQueueItem(id: number, blocklist = true, removeFromClient = true): Promise<void> {
+  const url = `${BASE_URL}/api/v3/queue/${id}?blocklist=${blocklist}&removeFromClient=${removeFromClient}`;
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: { 'X-Api-Key': API_KEY },
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Radarr API error: ${res.status} ${res.statusText} — ${body}`);
+  }
 }
 
 export async function runCommand(body: Record<string, unknown>): Promise<{ id: number }> {
