@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Shield, ShieldAlert } from 'lucide-react';
+import { Activity, Shield, ShieldAlert, ShieldCheck, Loader2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Skeleton } from '@/components/common/Skeleton';
@@ -39,18 +39,23 @@ export function SystemHealth() {
       {vpnData && (
         <div
           className={`mb-3 flex items-center gap-2 rounded-md px-3 py-2 text-sm ${
-            vpnData.connected
-              ? 'bg-success/10 text-success'
+            vpnData.status === 'connected' ? 'bg-success/10 text-success'
+              : vpnData.status === 'connecting' ? 'bg-warning/10 text-warning'
+              : vpnData.status === 'error' ? 'bg-danger/10 text-danger'
               : 'bg-danger/10 text-danger'
           }`}
         >
-          {vpnData.connected ? (
-            <Shield className="h-4 w-4" />
+          {vpnData.status === 'connected' ? (
+            <ShieldCheck className="h-4 w-4" />
+          ) : vpnData.status === 'connecting' ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <ShieldAlert className="h-4 w-4" />
           )}
           <span>
-            VPN: {vpnData.connected ? `Connected (${vpnData.ip}, ${vpnData.country})` : 'Disconnected'}
+            {vpnData.status === 'connected'
+              ? `VPN: Connected (${vpnData.ip}${vpnData.country ? `, ${vpnData.country}` : ''})`
+              : `VPN: ${vpnData.statusMessage}`}
           </span>
         </div>
       )}

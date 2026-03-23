@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 import { VALID_SERVICES, stopService } from '@/lib/docker';
 import { logger } from '@/lib/logger';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
 export async function POST(_request: Request, { params }: { params: Promise<{ name: string }> }) {
+  const denied = requireAdmin(_request);
+  if (denied) return denied;
   const { name } = await params;
 
   if (!VALID_SERVICES.has(name)) {

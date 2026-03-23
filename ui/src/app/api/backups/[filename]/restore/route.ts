@@ -6,6 +6,7 @@ import { promisify } from 'util';
 import { readEnv } from '@/lib/env';
 import { logger } from '@/lib/logger';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
 const execFileAsync = promisify(execFile);
 
@@ -32,6 +33,9 @@ function composeArgs(): string[] {
 }
 
 export async function POST(_request: Request, { params }: { params: Promise<{ filename: string }> }) {
+  const denied = requireAdmin(_request);
+  if (denied) return denied;
+
   const { filename } = await params;
 
   if (!validateFilename(filename)) {

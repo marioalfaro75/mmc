@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 import { VALID_SERVICES, listServices, startService } from '@/lib/docker';
 import { logger } from '@/lib/logger';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
-export async function POST() {
+export async function POST(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   // Only start services that are not already running
   const current = await listServices();
   const runningSet = new Set(current.filter((s) => s.state === 'running').map((s) => s.service));

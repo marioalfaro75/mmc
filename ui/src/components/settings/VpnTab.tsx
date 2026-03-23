@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Shield, ShieldCheck, ShieldX } from 'lucide-react';
+import { Shield, ShieldCheck, ShieldX, ShieldAlert, Loader2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { EnvField } from './EnvField';
@@ -57,10 +57,20 @@ export function VpnTab({ env }: VpnTabProps) {
   return (
     <div className="space-y-6">
       {/* VPN status banner */}
-      <Card className={vpnStatus?.connected ? 'border-success/50' : 'border-danger/50'}>
+      <Card className={
+        vpnStatus?.status === 'connected' ? 'border-success/50'
+          : vpnStatus?.status === 'connecting' ? 'border-warning/50'
+          : vpnStatus?.status === 'error' ? 'border-danger/50'
+          : !vpnStatus ? 'border-border'
+          : 'border-danger/50'
+      }>
         <div className="flex items-center gap-3">
-          {vpnStatus?.connected ? (
+          {vpnStatus?.status === 'connected' ? (
             <ShieldCheck className="h-5 w-5 text-success" />
+          ) : vpnStatus?.status === 'connecting' ? (
+            <Loader2 className="h-5 w-5 animate-spin text-warning" />
+          ) : vpnStatus?.status === 'error' ? (
+            <ShieldAlert className="h-5 w-5 text-danger" />
           ) : !vpnStatus ? (
             <Shield className="h-5 w-5 text-muted-foreground" />
           ) : (
@@ -68,16 +78,29 @@ export function VpnTab({ env }: VpnTabProps) {
           )}
           <div className="flex-1">
             <p className="text-sm font-medium">
-              VPN {vpnStatus?.connected ? 'Connected' : !vpnStatus ? 'Unknown' : 'Disconnected'}
+              {vpnStatus?.status === 'connected' ? 'VPN Connected'
+                : vpnStatus?.status === 'connecting' ? 'VPN Connecting'
+                : vpnStatus?.status === 'error' ? 'VPN Error'
+                : !vpnStatus ? 'VPN Unknown'
+                : 'VPN Disconnected'}
             </p>
             <p className="text-xs text-muted-foreground">
               {vpnStatus?.ip
                 ? <>IP: {vpnStatus.ip}{vpnStatus.country && ` — ${vpnStatus.country}`}</>
-                : vpnStatus?.connected ? 'IP: Unavailable' : null}
+                : vpnStatus?.statusMessage || null}
             </p>
           </div>
-          <Badge variant={vpnStatus?.connected ? 'success' : !vpnStatus ? 'outline' : 'danger'}>
-            {vpnStatus?.connected ? 'Online' : !vpnStatus ? 'Unknown' : 'Offline'}
+          <Badge variant={
+            vpnStatus?.status === 'connected' ? 'success'
+              : vpnStatus?.status === 'connecting' ? 'warning'
+              : !vpnStatus ? 'outline'
+              : 'danger'
+          }>
+            {vpnStatus?.status === 'connected' ? 'Online'
+              : vpnStatus?.status === 'connecting' ? 'Connecting'
+              : vpnStatus?.status === 'error' ? 'Error'
+              : !vpnStatus ? 'Unknown'
+              : 'Offline'}
           </Badge>
         </div>
       </Card>

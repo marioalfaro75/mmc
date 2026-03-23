@@ -54,8 +54,12 @@ export interface ServiceHealth {
   url: string;
 }
 
+export type VpnConnectionStatus = 'connected' | 'connecting' | 'error' | 'disconnected';
+
 export interface VpnStatus {
   connected: boolean;
+  status: VpnConnectionStatus;
+  statusMessage: string;
   ip: string | null;
   country: string | null;
 }

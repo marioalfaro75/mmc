@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MessageSquare, Check, X, Loader2, Search, Film, Tv, Plus, Trash2 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Skeleton } from '@/components/common/Skeleton';
@@ -45,6 +46,7 @@ function getMediaStatus(item: SeerrSearchResult): 'available' | 'requested' | 'n
 }
 
 export default function RequestsPage() {
+  const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -133,18 +135,20 @@ export default function RequestsPage() {
           <MessageSquare className="h-6 w-6" />
           <h1 className="text-2xl font-bold">Requests</h1>
         </div>
-        <button
-          onClick={() => !seerrConfigured && configureMutation.mutate()}
-          disabled={configureMutation.isPending || seerrConfigured}
-          className="flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
-        >
-          {configureMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <span className={`inline-block h-2.5 w-2.5 rounded-full ${seerrConfigured ? 'bg-green-500' : 'bg-orange-500'}`} />
-          )}
-          {seerrConfigured ? 'Configured' : 'Auto-configure Seerr'}
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => !seerrConfigured && configureMutation.mutate()}
+            disabled={configureMutation.isPending || seerrConfigured}
+            className="flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+          >
+            {configureMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <span className={`inline-block h-2.5 w-2.5 rounded-full ${seerrConfigured ? 'bg-green-500' : 'bg-orange-500'}`} />
+            )}
+            {seerrConfigured ? 'Configured' : 'Auto-configure Seerr'}
+          </button>
+        )}
       </div>
 
       {isError && (

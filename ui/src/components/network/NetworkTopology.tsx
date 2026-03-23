@@ -5,11 +5,13 @@ import {
   Shield,
   ShieldCheck,
   ShieldX,
+  ShieldAlert,
   HardDrive,
   Download,
   ArrowDown,
   ArrowRight,
   Server,
+  Loader2,
 } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import type { NetworkStats, ServiceNetIO } from '@/lib/types/common';
@@ -90,18 +92,25 @@ export function NetworkTopology({ data, tunnelRate }: Props) {
 
           {/* VPN Tunnel */}
           <div className="flex flex-col items-center gap-1 rounded-lg border-2 border-dashed p-3 min-w-[120px]"
-            style={{ borderColor: data.vpn.connected ? 'var(--success)' : 'var(--danger)' }}
+            style={{ borderColor: data.vpn.status === 'connected' ? 'var(--success)' : data.vpn.status === 'connecting' ? 'var(--warning)' : 'var(--danger)' }}
           >
-            {data.vpn.connected ? (
+            {data.vpn.status === 'connected' ? (
               <ShieldCheck className="h-6 w-6 text-success" />
+            ) : data.vpn.status === 'connecting' ? (
+              <Loader2 className="h-6 w-6 animate-spin text-warning" />
+            ) : data.vpn.status === 'error' ? (
+              <ShieldAlert className="h-6 w-6 text-danger" />
             ) : (
               <ShieldX className="h-6 w-6 text-danger" />
             )}
             <span className="text-xs font-medium">
               {data.tunnel?.interface === 'wg0' ? 'WireGuard' : 'VPN'} Tunnel
             </span>
-            <Badge variant={data.vpn.connected ? 'success' : 'danger'}>
-              {data.vpn.connected ? 'Connected' : 'Disconnected'}
+            <Badge variant={data.vpn.status === 'connected' ? 'success' : data.vpn.status === 'connecting' ? 'warning' : 'danger'}>
+              {data.vpn.status === 'connected' ? 'Connected'
+                : data.vpn.status === 'connecting' ? 'Connecting'
+                : data.vpn.status === 'error' ? 'Error'
+                : 'Disconnected'}
             </Badge>
             {data.tunnel && (
               <div className="text-[10px] text-muted-foreground text-center mt-1">

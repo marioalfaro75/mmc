@@ -2,7 +2,7 @@
 
 import { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, ShieldCheck, ShieldX, Globe, ArrowDownUp, Lock } from 'lucide-react';
+import { Loader2, ShieldCheck, ShieldX, ShieldAlert, Globe, ArrowDownUp, Lock } from 'lucide-react';
 import { NetworkTopology } from '@/components/network/NetworkTopology';
 import { Badge } from '@/components/common/Badge';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
@@ -78,8 +78,15 @@ export default function NetworkPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Network</h1>
-        <Badge variant={data.vpn.connected ? 'success' : 'danger'}>
-          {data.vpn.connected ? 'VPN Connected' : 'VPN Disconnected'}
+        <Badge variant={
+          data.vpn.status === 'connected' ? 'success'
+            : data.vpn.status === 'connecting' ? 'warning'
+            : 'danger'
+        }>
+          {data.vpn.status === 'connected' ? 'VPN Connected'
+            : data.vpn.status === 'connecting' ? 'VPN Connecting'
+            : data.vpn.status === 'error' ? 'VPN Error'
+            : 'VPN Disconnected'}
         </Badge>
       </div>
 
@@ -88,16 +95,26 @@ export default function NetworkPage() {
         {/* VPN Status */}
         <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-            {data.vpn.connected ? (
+            {data.vpn.status === 'connected' ? (
               <ShieldCheck className="h-4 w-4 text-success" />
+            ) : data.vpn.status === 'connecting' ? (
+              <Loader2 className="h-4 w-4 animate-spin text-warning" />
+            ) : data.vpn.status === 'error' ? (
+              <ShieldAlert className="h-4 w-4 text-danger" />
             ) : (
               <ShieldX className="h-4 w-4 text-danger" />
             )}
             VPN Status
           </div>
           <p className="text-lg font-semibold">
-            {data.vpn.connected ? 'Connected' : 'Disconnected'}
+            {data.vpn.status === 'connected' ? 'Connected'
+              : data.vpn.status === 'connecting' ? 'Connecting'
+              : data.vpn.status === 'error' ? 'Error'
+              : 'Disconnected'}
           </p>
+          {data.vpn.statusMessage && data.vpn.status !== 'connected' && (
+            <p className="text-xs text-muted-foreground mt-1">{data.vpn.statusMessage}</p>
+          )}
           {data.tunnel && (
             <p className="text-xs text-muted-foreground mt-1">
               via {data.tunnel.interface === 'wg0' ? 'WireGuard' : 'OpenVPN'} ({data.tunnel.interface})

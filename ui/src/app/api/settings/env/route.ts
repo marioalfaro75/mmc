@@ -3,8 +3,11 @@ import { readEnv, writeEnv } from '@/lib/env';
 import { ENV_SCHEMA, maskSensitiveValues, isMaskedValue, validateEnvVars, getAffectedServices } from '@/lib/env-schema';
 import { logger } from '@/lib/logger';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const vars = readEnv();
     return NextResponse.json({
@@ -20,6 +23,9 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   try {
     const body = await request.json();
     const vars: Record<string, string> = body.vars;

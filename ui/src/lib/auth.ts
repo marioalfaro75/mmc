@@ -191,3 +191,22 @@ export function getAdminSession(request: Request): Session | null {
   if (!match) return null;
   return getSession(match[1]);
 }
+
+/**
+ * Guard for admin-only API routes. Returns a 401 NextResponse if no valid
+ * admin session exists, or null if the session is valid.
+ * Usage:
+ *   const denied = requireAdmin(request);
+ *   if (denied) return denied;
+ */
+export function requireAdmin(request: Request): Response | null {
+  if (!hasAdmins()) return null; // no admins configured — open access
+  const session = getAdminSession(request);
+  if (!session) {
+    return Response.json(
+      { error: 'Unauthorized — admin login required' },
+      { status: 401 },
+    );
+  }
+  return null;
+}

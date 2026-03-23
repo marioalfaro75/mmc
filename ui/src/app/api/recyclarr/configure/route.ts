@@ -4,10 +4,13 @@ import { promisify } from 'util';
 import { readFileSync, writeFileSync } from 'fs';
 import { sanitizeError } from '@/lib/security';
 import { readEnv } from '@/lib/env';
+import { requireAdmin } from '@/lib/auth';
 
 const execFileAsync = promisify(execFile);
 
-export async function POST() {
+export async function POST(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   const results: { step: string; status: string; error?: string }[] = [];
 
   try {

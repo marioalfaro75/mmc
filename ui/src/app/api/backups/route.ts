@@ -6,6 +6,7 @@ import { promisify } from 'util';
 import { readEnv } from '@/lib/env';
 import { logger } from '@/lib/logger';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
 const execFileAsync = promisify(execFile);
 let MAX_BACKUPS = 7;
@@ -77,7 +78,10 @@ function rotateBackups(dir: string): void {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   try {
     const { backupDir } = getBackupPaths();
     const backups = listBackups(backupDir);
@@ -112,7 +116,10 @@ async function createBackup(maxBackups?: number): Promise<{ filename: string }> 
   return { filename };
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   try {
     const { filename } = await createBackup();
     const { backupDir } = getBackupPaths();

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSeries, addSeries, deleteSeries } from '@/lib/api/sonarr';
+import { requireAdmin } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   if (!process.env.SONARR_API_KEY) {
     return NextResponse.json(
       { error: 'Sonarr API key not configured', reason: 'no_api_key', service: 'sonarr' },
@@ -20,6 +23,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   try {
     const body = await request.json();
     const series = await addSeries(body);
@@ -33,6 +39,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

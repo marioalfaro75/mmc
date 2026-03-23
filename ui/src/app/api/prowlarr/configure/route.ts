@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getApplications, addApplication } from '@/lib/api/prowlarr';
+import { requireAdmin } from '@/lib/auth';
 
-export async function POST() {
+export async function POST(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   const results: { step: string; status: 'ok' | 'skipped' | 'error'; error?: string }[] = [];
 
   const sonarrKey = process.env.SONARR_API_KEY;

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getVpnStatus, getPublicIP } from '@/lib/api/gluetun';
 import { lookupCountry } from '@/lib/api/geolocation';
-import type { VpnStatus } from '@/lib/types/common';
+import type { VpnStatus, VpnConnectionStatus } from '@/lib/types/common';
 
 export async function GET() {
   try {
@@ -10,7 +10,7 @@ export async function GET() {
       getPublicIP(),
     ]);
 
-    const connected = statusResult.status === 'fulfilled' &&
+    const gluetunRunning = statusResult.status === 'fulfilled' &&
       statusResult.value.status === 'running';
 
     const ip = ipResult.status === 'fulfilled' && ipResult.value.public_ip
@@ -23,7 +23,35 @@ export async function GET() {
       country = await lookupCountry(ip);
     }
 
-    const vpn: VpnStatus = { connected, ip, country };
+    // Determine granular connection status
+    let status: VpnConnectionStatus;
+    let statusMessage: string;
+
+    if (statusResult.status === 'rejected') {
+      status = 'disconnected';
+      statusMessage = 'Gluetun is not reachable';
+    } else if (!gluetunRunning) {
+      status = 'disconnected';
+      statusMessage = `VPN status: ${statusResult.value.status}`;
+    } else if (ip) {
+      status = 'connected';
+      statusMessage = `Connected via ${ip}`;
+    } else if (ipResult.status === 'rejected') {
+      status = 'error';
+      statusMessage = 'VPN tunnel is not passing traffic — check VPN credentials or server';
+    } else {
+      // Gluetun says running, IP endpoint responded but returned empty
+      status = 'connecting';
+      statusMessage = 'VPN is starting up — waiting for tunnel to establish';
+    }
+
+    const vpn: VpnStatus = {
+      connected: status === 'connected',
+      status,
+      statusMessage,
+      ip,
+      country,
+    };
 
     return NextResponse.json(vpn);
   } catch (error) {

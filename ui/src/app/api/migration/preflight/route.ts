@@ -7,6 +7,7 @@ import { getQueue as getSonarrQueue } from '@/lib/api/sonarr';
 import { getQueue as getRadarrQueue } from '@/lib/api/radarr';
 import { sanitizeError } from '@/lib/security';
 import { readEnv } from '@/lib/env';
+import { requireAdmin } from '@/lib/auth';
 
 const execFileAsync = promisify(execFile);
 
@@ -28,6 +29,8 @@ interface PreflightCheck {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const { destinationPath } = await request.json();
 

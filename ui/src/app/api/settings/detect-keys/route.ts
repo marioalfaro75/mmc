@@ -3,8 +3,11 @@ import { readApiKeysFromConfig } from '@/lib/config-keys';
 import { readEnv, writeEnv } from '@/lib/env';
 import { restartService, selfRestart } from '@/lib/docker';
 import { logger } from '@/lib/logger';
+import { requireAdmin } from '@/lib/auth';
 
-export async function POST() {
+export async function POST(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   const env = readEnv();
   const configRoot = env.CONFIG_ROOT || process.env.CONFIG_ROOT;
 

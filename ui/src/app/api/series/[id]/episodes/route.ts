@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getEpisodes } from '@/lib/api/sonarr';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireAdmin(_request);
+  if (denied) return denied;
+
   const { id } = await params;
   const seriesId = parseInt(id, 10);
 

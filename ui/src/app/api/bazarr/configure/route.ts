@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 import { getSettings, updateSettings } from '@/lib/api/bazarr';
 import { logger } from '@/lib/logger';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
-export async function POST() {
+export async function POST(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   const bazarrKey = process.env.BAZARR_API_KEY;
   if (!bazarrKey) {
     return NextResponse.json(

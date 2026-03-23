@@ -2,8 +2,12 @@ import { NextResponse } from 'next/server';
 import { execFile } from 'child_process';
 import { restartServicesStaged } from '@/lib/docker';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
 export async function POST(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   const projectDir = process.env.HOST_PROJECT_DIR;
 
   if (!projectDir) {

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readAppLogs, LogLevel } from '@/lib/logger';
+import { requireAdmin } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const { searchParams } = new URL(request.url);
     const lines = Math.min(parseInt(searchParams.get('lines') || '200', 10), 2000);

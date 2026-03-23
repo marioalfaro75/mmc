@@ -7,7 +7,10 @@ import {
   RefreshCw,
   Server,
   Terminal,
+  Copy,
+  Check,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 type Tab = 'services' | 'deploy';
 type LogSource = 'app' | 'docker';
@@ -201,10 +204,24 @@ function ServiceLogTab({
         </div>
       )}
 
-      <div className="rounded-lg border border-border bg-black/50 p-3 font-mono text-xs leading-5 max-h-[70vh] overflow-auto whitespace-pre-wrap">
-        {data?.logs || (
-          <span className="text-muted-foreground">No logs available.</span>
+      <div className="relative">
+        {data?.logs && (
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(data.logs);
+              toast.success('Logs copied to clipboard');
+            }}
+            className="absolute right-2 top-2 z-10 rounded-md border border-border bg-surface px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="Copy logs to clipboard"
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </button>
         )}
+        <div className="rounded-lg border border-border bg-black/50 p-3 font-mono text-xs leading-5 max-h-[70vh] overflow-auto whitespace-pre-wrap">
+          {data?.logs || (
+            <span className="text-muted-foreground">No logs available.</span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -267,16 +284,30 @@ function DeployLogTab({
         </button>
       </div>
 
-      <div className="rounded-lg border border-border bg-black/50 p-3 font-mono text-xs leading-5 max-h-[70vh] overflow-auto whitespace-pre-wrap">
-        {!selectedFile ? (
-          <p className="text-muted-foreground">Select a deploy log file to view.</p>
-        ) : contentQuery.isLoading ? (
-          <p className="text-muted-foreground">Loading...</p>
-        ) : (
-          contentQuery.data?.content || (
-            <span className="text-muted-foreground">Log file is empty.</span>
-          )
+      <div className="relative">
+        {contentQuery.data?.content && (
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(contentQuery.data!.content);
+              toast.success('Logs copied to clipboard');
+            }}
+            className="absolute right-2 top-2 z-10 rounded-md border border-border bg-surface px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="Copy logs to clipboard"
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </button>
         )}
+        <div className="rounded-lg border border-border bg-black/50 p-3 font-mono text-xs leading-5 max-h-[70vh] overflow-auto whitespace-pre-wrap">
+          {!selectedFile ? (
+            <p className="text-muted-foreground">Select a deploy log file to view.</p>
+          ) : contentQuery.isLoading ? (
+            <p className="text-muted-foreground">Loading...</p>
+          ) : (
+            contentQuery.data?.content || (
+              <span className="text-muted-foreground">Log file is empty.</span>
+            )
+          )}
+        </div>
       </div>
     </div>
   );

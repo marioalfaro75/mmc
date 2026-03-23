@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Loader2, RefreshCw, Copy } from 'lucide-react';
+import { toast } from 'sonner';
 import { Modal } from '@/components/common/Modal';
 
 interface LogViewerModalProps {
@@ -69,9 +70,22 @@ export function LogViewerModal({ open, onClose, serviceName }: LogViewerModalPro
           <span className="ml-1 text-xs text-muted-foreground">lines</span>
         </div>
         <button
+          onClick={() => {
+            if (logs) {
+              navigator.clipboard.writeText(logs);
+              toast.success('Logs copied to clipboard');
+            }
+          }}
+          disabled={!logs}
+          className="ml-auto flex items-center gap-1.5 rounded-md border border-input px-2 py-1 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
+        >
+          <Copy className="h-3.5 w-3.5" />
+          Copy
+        </button>
+        <button
           onClick={fetchLogs}
           disabled={loading}
-          className="ml-auto flex items-center gap-1.5 rounded-md border border-input px-2 py-1 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-md border border-input px-2 py-1 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
         >
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
           Refresh

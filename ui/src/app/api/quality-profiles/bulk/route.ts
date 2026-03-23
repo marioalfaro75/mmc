@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSeries, massUpdateSeries } from '@/lib/api/sonarr';
 import { getMovies, massUpdateMovies } from '@/lib/api/radarr';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
 export async function PUT(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const { service, qualityProfileId } = await request.json();
 

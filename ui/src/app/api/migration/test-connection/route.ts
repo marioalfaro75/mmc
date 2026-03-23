@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
 const execFileAsync = promisify(execFile);
 
@@ -16,6 +17,8 @@ async function runOnHost(image: string, cmd: string[], timeoutMs = 15000): Promi
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const { host, protocol, sharePath, smbUser, smbPassword } = await request.json();
 

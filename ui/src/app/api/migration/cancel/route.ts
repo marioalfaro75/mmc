@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getMigrationState, setMigrationState } from '@/lib/migration-state';
+import { requireAdmin } from '@/lib/auth';
 
-export async function POST() {
+export async function POST(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   const state = getMigrationState();
 
   if (!state.running) {

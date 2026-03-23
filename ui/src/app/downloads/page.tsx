@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Shield, ShieldAlert, Download, ArrowDownAZ, ArrowUp, ArrowDown, Percent } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck, Download, ArrowDownAZ, ArrowUp, ArrowDown, Percent, Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { DownloadQueue } from '@/components/downloads/DownloadQueue';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
@@ -100,19 +100,35 @@ export default function DownloadsPage() {
       </div>
 
       {/* VPN Banner */}
-      {vpn && !vpn.connected && (
+      {vpn?.status === 'connected' && (
+        <div className="flex items-center gap-2 rounded-lg bg-success/10 px-4 py-3 text-success">
+          <ShieldCheck className="h-5 w-5 shrink-0" />
+          <p className="text-sm">
+            VPN Connected — {vpn.ip}{vpn.country ? ` (${vpn.country})` : ''}
+          </p>
+        </div>
+      )}
+      {vpn?.status === 'connecting' && (
+        <div className="flex items-center gap-2 rounded-lg bg-warning/10 px-4 py-3 text-warning">
+          <Loader2 className="h-5 w-5 shrink-0 animate-spin" />
+          <p className="text-sm font-medium">
+            VPN Connecting — {vpn.statusMessage}
+          </p>
+        </div>
+      )}
+      {vpn?.status === 'error' && (
+        <div className="flex items-center gap-2 rounded-lg bg-danger/10 px-4 py-3 text-danger">
+          <ShieldAlert className="h-5 w-5 shrink-0" />
+          <p className="text-sm font-medium">
+            VPN Error — {vpn.statusMessage}
+          </p>
+        </div>
+      )}
+      {vpn && vpn.status === 'disconnected' && (
         <div className="flex items-center gap-2 rounded-lg bg-danger/10 px-4 py-3 text-danger">
           <ShieldAlert className="h-5 w-5 shrink-0" />
           <p className="text-sm font-medium">
             VPN Disconnected — downloads are paused for your protection.
-          </p>
-        </div>
-      )}
-      {vpn?.connected && (
-        <div className="flex items-center gap-2 rounded-lg bg-success/10 px-4 py-3 text-success">
-          <Shield className="h-5 w-5 shrink-0" />
-          <p className="text-sm">
-            VPN Connected — {vpn.ip} ({vpn.country})
           </p>
         </div>
       )}
@@ -178,8 +194,8 @@ export default function DownloadsPage() {
         isLoading={isLoading}
         activeTab={activeTab}
         sortMode={sortMode}
-        onPause={(id) => actionMutation.mutate({ id, action: 'pause' })}
-        onResume={(id) => actionMutation.mutate({ id, action: 'resume' })}
+        onPause={isAdmin ? (id) => actionMutation.mutate({ id, action: 'pause' }) : undefined}
+        onResume={isAdmin ? (id) => actionMutation.mutate({ id, action: 'resume' }) : undefined}
         onForceStart={isAdmin ? (id) => actionMutation.mutate({ id, action: 'forceStart' }) : undefined}
         onDelete={isAdmin ? (id, deleteFiles) => deleteMutation.mutate({ id, deleteFiles }) : undefined}
         onBlocklist={isAdmin ? (item) => blocklistMutation.mutate({ item, searchAfter: false }) : undefined}

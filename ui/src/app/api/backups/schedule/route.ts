@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readSchedule, writeSchedule } from '@/lib/backup-schedule';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     return NextResponse.json(readSchedule());
   } catch (error) {
@@ -14,6 +17,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   try {
     const body = await request.json();
     const current = readSchedule();

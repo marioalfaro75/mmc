@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isTmdbConfigured, discoverMoviesByActor } from '@/lib/api/tmdb';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     if (!isTmdbConfigured()) {
       return NextResponse.json(

@@ -15,6 +15,7 @@ import {
   updateStep,
 } from '@/lib/migration-state';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
 function resolvePath(p: string): string {
   if (p.startsWith('~')) return `${process.env.HOME}${p.slice(1)}`;
@@ -22,6 +23,8 @@ function resolvePath(p: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   const current = getMigrationState();
   if (current.running) {
     return NextResponse.json({ success: false, error: 'Migration already in progress' }, { status: 409 });

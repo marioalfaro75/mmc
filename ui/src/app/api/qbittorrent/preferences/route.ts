@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPreferences, setPreferences } from '@/lib/api/qbittorrent';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const prefs = await getPreferences();
     return NextResponse.json({
@@ -23,6 +26,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   try {
     const body = await request.json();
     await setPreferences(body);

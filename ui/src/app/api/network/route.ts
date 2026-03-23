@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getVpnStatus, getPublicIP, getPortForward } from '@/lib/api/gluetun';
+import { lookupCountry } from '@/lib/api/geolocation';
 import { getTunnelStats, getContainerNetworkStats } from '@/lib/docker';
-import type { NetworkStats } from '@/lib/types/common';
+import type { NetworkStats, VpnConnectionStatus } from '@/lib/types/common';
+import { requireAdmin } from '@/lib/auth';
 
 const MONITORED_CONTAINERS = [
   'gluetun',
@@ -14,7 +16,10 @@ const MONITORED_CONTAINERS = [
   'media-ui',
 ];
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   try {
     const [statusResult, ipResult, portResult, tunnelResult, containerStats] =
       await Promise.allSettled([
@@ -25,15 +30,46 @@ export async function GET() {
         getContainerNetworkStats(MONITORED_CONTAINERS),
       ]);
 
-    const connected =
+    const gluetunRunning =
       statusResult.status === 'fulfilled' &&
       statusResult.value.status === 'running';
 
+    const ip = ipResult.status === 'fulfilled' && ipResult.value.public_ip
+      ? ipResult.value.public_ip : null;
+    let country = ipResult.status === 'fulfilled' && ipResult.value.country
+      ? ipResult.value.country : null;
+
+    if (ip && !country) {
+      country = await lookupCountry(ip);
+    }
+
+    let status: VpnConnectionStatus;
+    let statusMessage: string;
+
+    if (statusResult.status === 'rejected') {
+      status = 'disconnected';
+      statusMessage = 'Gluetun is not reachable';
+    } else if (!gluetunRunning) {
+      status = 'disconnected';
+      statusMessage = `VPN status: ${statusResult.value.status}`;
+    } else if (ip) {
+      status = 'connected';
+      statusMessage = `Connected via ${ip}`;
+    } else if (ipResult.status === 'rejected') {
+      status = 'error';
+      statusMessage = 'VPN tunnel is not passing traffic — check VPN credentials or server';
+    } else {
+      status = 'connecting';
+      statusMessage = 'VPN is starting up — waiting for tunnel to establish';
+    }
+
     const stats: NetworkStats = {
       vpn: {
-        connected,
-        ip: ipResult.status === 'fulfilled' ? ipResult.value.public_ip : null,
-        country: ipResult.status === 'fulfilled' ? ipResult.value.country : null,
+        connected: status === 'connected',
+        status,
+        statusMessage,
+        ip,
+        country,
       },
       portForward:
         portResult.status === 'fulfilled' ? portResult.value.port : null,

@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getQualityProfiles as getSonarrProfiles, updateQualityProfile as updateSonarrProfile } from '@/lib/api/sonarr';
 import { getQualityProfiles as getRadarrProfiles, updateQualityProfile as updateRadarrProfile } from '@/lib/api/radarr';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   const { id } = await params;
   const profileId = parseInt(id, 10);
 

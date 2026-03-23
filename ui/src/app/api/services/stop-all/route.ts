@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 import { VALID_SERVICES, stopService } from '@/lib/docker';
 import { logger } from '@/lib/logger';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
-export async function POST() {
+export async function POST(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   const servicesToStop = Array.from(VALID_SERVICES).filter((s) => s !== 'media-ui');
 
   const results: { service: string; status: string; error?: string }[] = [];

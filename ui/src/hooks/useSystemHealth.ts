@@ -26,7 +26,7 @@ export function useSystemHealth() {
 
   return {
     services,
-    vpn: vpnQuery.data ?? { connected: false, ip: null, country: null },
+    vpn: vpnQuery.data ?? { connected: false, status: 'disconnected' as const, statusMessage: '', ip: null, country: null },
     isLoading: healthQuery.isLoading,
     isError: healthQuery.isError,
     onlineCount,

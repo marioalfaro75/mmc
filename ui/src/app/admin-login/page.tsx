@@ -37,7 +37,7 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+    <div className="flex justify-center p-4 pt-[12vh]">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
           <Film className="mx-auto h-10 w-10 text-primary" />

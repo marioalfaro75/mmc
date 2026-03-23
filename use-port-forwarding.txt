@@ -1,0 +1,111 @@
+Proposal: Expose Media UI, Sonarr, and Radarr to Home Network via Windows Port Forwarding
+=========================================================================================
+
+Goal
+----
+Allow other devices on the home network to access the Media UI (port 3000),
+Sonarr (port 8989), and Radarr (port 7878) without changing WSL2's networking
+mode or affecting VPN-routed download clients.
+
+
+Overview
+--------
+Three changes are needed:
+
+1. Change Docker port bindings for media-ui, sonarr, and radarr from
+   127.0.0.1 to 0.0.0.0 so they listen on all WSL2 interfaces.
+
+2. Create a PowerShell script that sets up Windows port forwarding from
+   the host to WSL2 (since WSL2 uses a NAT'd virtual network).
+
+3. Register a Windows Scheduled Task to run the script at logon so port
+   forwarding survives reboots (WSL2's IP changes each boot).
+
+
+Detailed Plan
+-------------
+
+STEP 1 — Update docker-compose.yml port bindings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Change ONLY these three services from 127.0.0.1 to 0.0.0.0:
+
+  media-ui:    "127.0.0.1:${PORT_UI}:3000"          -> "0.0.0.0:${PORT_UI}:3000"
+  sonarr:      "127.0.0.1:${PORT_SONARR}:8989"      -> "0.0.0.0:${PORT_SONARR}:8989"
+  radarr:      "127.0.0.1:${PORT_RADARR}:7878"      -> "0.0.0.0:${PORT_RADARR}:7878"
+
+Everything else stays on 127.0.0.1:
+  - Gluetun control (8000) — admin only
+  - qBittorrent (8080)     — exposed via Gluetun, VPN-routed
+  - SABnzbd (8081)         — exposed via Gluetun, VPN-routed
+  - Prowlarr (9696)        — indexer management, admin only
+  - Bazarr (6767)          — subtitle management, admin only
+  - Seerr (5055)           — accessible through Media UI requests page
+
+No impact on VPN kill-switch: qBittorrent and SABnzbd use
+network_mode: service:gluetun, which is unaffected by port binding changes.
+
+
+STEP 2 — Create PowerShell port forwarding script
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Create: scripts/mmc-port-forward.ps1
+
+The script will:
+  a) Detect WSL2's current IP via "wsl hostname -I"
+  b) Clear any existing MMC port proxy rules
+  c) Create netsh portproxy rules for ports 3000, 8989, 7878
+  d) Ensure a single Windows Firewall rule allows inbound TCP on those ports
+  e) Print a confirmation message with the WSL2 IP
+
+The script is idempotent — safe to run multiple times.
+
+
+STEP 3 — Add setup/teardown commands to the script
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The script will accept arguments:
+
+  mmc-port-forward.ps1              — set up forwarding (default)
+  mmc-port-forward.ps1 -Install     — set up forwarding + create scheduled task
+  mmc-port-forward.ps1 -Uninstall   — remove forwarding rules, firewall rule, and scheduled task
+
+The -Install flag will create a Windows Scheduled Task called "MMC Port Forward"
+that runs at logon with a 30-second delay (to let WSL2 start), with elevated
+privileges.
+
+
+STEP 4 — Add instructions to the Guide page
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Add a "Network Access" section to the Setup Guide page (/guide) explaining:
+  - What the script does
+  - How to run it (copy the script to Windows, run in elevated PowerShell)
+  - How to install the scheduled task
+  - How to verify it works (access http://<laptop-ip>:3000 from another device)
+  - How to uninstall/remove everything
+  - Note: MMC_API_KEY and admin auth should be set before exposing to the network
+
+
+STEP 5 — Update deploy.sh (optional)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+During --install, after the .env wizard, ask the user:
+
+  "Do you want to make the Media UI accessible from other devices
+   on your home network? (y/N)"
+
+If yes, run the PowerShell script with -Install from WSL2 via:
+  powershell.exe -ExecutionPolicy Bypass -File scripts/mmc-port-forward.ps1 -Install
+
+
+Files Changed
+-------------
+  docker-compose.yml                         — 3 port binding changes
+  scripts/mmc-port-forward.ps1               — new file (PowerShell script)
+  ui/src/app/guide/page.tsx                  — new "Network Access" section
+
+
+Security Considerations
+-----------------------
+  - Media UI is protected by MMC_API_KEY (site gate) + admin auth
+  - Sonarr and Radarr have their own API key authentication
+  - Download clients remain on 127.0.0.1, VPN-routed via Gluetun
+  - Only 3 specific ports are forwarded — no blanket exposure
+  - Firewall rule is scoped to those 3 ports only
+  - The script and scheduled task can be fully removed with -Uninstall

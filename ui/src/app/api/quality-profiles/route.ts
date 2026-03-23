@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getQualityProfiles as getSonarrProfiles, getSeries } from '@/lib/api/sonarr';
 import { getQualityProfiles as getRadarrProfiles, getMovies } from '@/lib/api/radarr';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
 interface ProfileInfo {
   id: number;
@@ -11,7 +12,10 @@ interface ProfileInfo {
   usedBy: number;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   try {
     const [sonarrProfiles, radarrProfiles, series, movies] = await Promise.all([
       getSonarrProfiles().catch(() => []),

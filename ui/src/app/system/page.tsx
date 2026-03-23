@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Activity, Shield, ShieldAlert, ExternalLink, Info,
+  Activity, Shield, ShieldAlert, ShieldCheck, ExternalLink, Info,
   Play, Square, RotateCcw, ScrollText, Loader2, RefreshCw,
   Power,
 } from 'lucide-react';
@@ -336,21 +336,37 @@ export default function SystemPage() {
         <CardHeader>
           <CardTitle>
             <div className="flex items-center gap-2">
-              {vpnData?.connected ? <Shield className="h-4 w-4 text-success" /> : <ShieldAlert className="h-4 w-4 text-danger" />}
+              {vpnData?.status === 'connected' ? <ShieldCheck className="h-4 w-4 text-success" />
+                : vpnData?.status === 'connecting' ? <Loader2 className="h-4 w-4 animate-spin text-warning" />
+                : vpnData?.status === 'error' ? <ShieldAlert className="h-4 w-4 text-danger" />
+                : !vpnData ? <Shield className="h-4 w-4 text-muted-foreground" />
+                : <ShieldAlert className="h-4 w-4 text-danger" />}
               VPN Status
             </div>
           </CardTitle>
-          <Badge variant={vpnData?.connected ? 'success' : 'danger'}>
-            {vpnData?.connected ? 'Connected' : 'Disconnected'}
+          <Badge variant={
+            vpnData?.status === 'connected' ? 'success'
+              : vpnData?.status === 'connecting' ? 'warning'
+              : !vpnData ? 'outline'
+              : 'danger'
+          }>
+            {vpnData?.status === 'connected' ? 'Connected'
+              : vpnData?.status === 'connecting' ? 'Connecting'
+              : vpnData?.status === 'error' ? 'Error'
+              : !vpnData ? 'Unknown'
+              : 'Disconnected'}
           </Badge>
         </CardHeader>
+        {vpnData?.statusMessage && vpnData.status !== 'connected' && (
+          <p className="mb-3 text-xs text-muted-foreground">{vpnData.statusMessage}</p>
+        )}
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-md bg-muted/50 p-3">
             <p className="text-xs text-muted-foreground">Public IP</p>
             {!vpnData ? (
               <Skeleton className="mt-1 h-4 w-28" />
             ) : (
-              <p className="font-mono text-sm">{vpnData.ip || (vpnData.connected ? 'Unavailable' : '—')}</p>
+              <p className="font-mono text-sm">{vpnData.ip || '—'}</p>
             )}
           </div>
           <div className="rounded-md bg-muted/50 p-3">
@@ -358,7 +374,7 @@ export default function SystemPage() {
             {!vpnData ? (
               <Skeleton className="mt-1 h-4 w-24" />
             ) : (
-              <p className="text-sm">{vpnData.country || (vpnData.connected ? 'Unavailable' : '—')}</p>
+              <p className="text-sm">{vpnData.country || '—'}</p>
             )}
           </div>
         </div>

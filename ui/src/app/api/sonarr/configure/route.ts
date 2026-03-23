@@ -4,8 +4,11 @@ import {
   getDownloadClients, addDownloadClient,
   getNaming, updateNaming,
 } from '@/lib/api/sonarr';
+import { requireAdmin } from '@/lib/auth';
 
-export async function POST() {
+export async function POST(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   const results: { step: string; status: 'ok' | 'skipped' | 'error'; error?: string }[] = [];
 
   // Root folder

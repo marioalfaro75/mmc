@@ -4,6 +4,7 @@ import { readEnv } from '@/lib/env';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
 interface ServiceLogConfig {
   /** Path relative to CONFIG_ROOT (or absolute if starts with /) */
@@ -70,6 +71,9 @@ function readLogFile(filepath: string, lines: number): string | null {
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ name: string }> }) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   const { name } = await params;
 
   if (!VALID_SERVICES.has(name)) {

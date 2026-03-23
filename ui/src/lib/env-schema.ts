@@ -45,6 +45,7 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'SERVER_COUNTRIES', label: 'Server Country', type: 'string', group: 'vpn', description: 'VPN server country (e.g. Netherlands)', affectsServices: VPN_SERVICES },
   { key: 'SECURE_CORE_ONLY', label: 'Secure Core', type: 'select', group: 'vpn', description: 'Route through privacy-friendly entry countries before exiting (ProtonVPN only)', options: ['on', 'off'], default: 'off', affectsServices: VPN_SERVICES },
   { key: 'SERVER_HOSTNAMES', label: 'Server Hostname', type: 'string', group: 'vpn', description: 'Entry-exit hostname, e.g. is-au-01.protonvpn.com (Iceland → Australia), ch-us-01a.protonvpn.com (Switzerland → US)', affectsServices: VPN_SERVICES },
+  { key: 'WIREGUARD_MTU', label: 'WireGuard MTU', type: 'integer', group: 'vpn', description: 'Tunnel MTU size — lower values fix connectivity on WSL2/NAT networks', default: '1280', affectsServices: VPN_SERVICES },
   { key: 'VPN_PORT_FORWARDING', label: 'Port Forwarding', type: 'select', group: 'vpn', description: 'Enable VPN port forwarding', options: ['on', 'off'], default: 'on', affectsServices: VPN_SERVICES },
   { key: 'FIREWALL_VPN_INPUT_PORTS', label: 'Forwarded Port', type: 'string', group: 'vpn', description: 'Forwarded port number (if known)', affectsServices: VPN_SERVICES },
 

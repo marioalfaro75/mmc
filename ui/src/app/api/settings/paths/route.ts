@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 import { readEnv, writeEnv } from '@/lib/env';
+import { requireAdmin } from '@/lib/auth';
 
 const PATH_KEYS = ['DATA_ROOT', 'CONFIG_ROOT', 'BACKUP_DIR'] as const;
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const vars = readEnv();
     const paths: Record<string, string> = {};
@@ -20,6 +23,9 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   try {
     const body = await request.json();
 

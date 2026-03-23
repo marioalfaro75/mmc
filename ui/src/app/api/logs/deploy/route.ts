@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
 function getDeployLogDir(): string {
   // Deploy logs are stored in ~/.mmc/logs by the deploy script
@@ -18,6 +19,9 @@ function getDeployLogDir(): string {
 }
 
 export async function GET(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(request.url);
     const file = searchParams.get('file');

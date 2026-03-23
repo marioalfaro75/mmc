@@ -9,8 +9,11 @@ import {
 } from '@/lib/api/seerr';
 import { sanitizeError } from '@/lib/security';
 import { logger } from '@/lib/logger';
+import { requireAdmin } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const [radarr, sonarr] = await Promise.all([
       getRadarrSettings(),
@@ -22,7 +25,10 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
+
   const sonarrUrl = process.env.SONARR_URL || 'http://sonarr:8989';
   const sonarrKey = process.env.SONARR_API_KEY || '';
   const radarrUrl = process.env.RADARR_URL || 'http://radarr:7878';

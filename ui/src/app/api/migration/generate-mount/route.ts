@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFileSync, mkdirSync, chmodSync } from 'fs';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
 function resolvePath(p: string): string {
   if (p.startsWith('~')) return `${process.env.HOME}${p.slice(1)}`;
@@ -8,6 +9,8 @@ function resolvePath(p: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const { protocol, host, sharePath, mountPoint, smbUser, smbPassword } = await request.json();
 

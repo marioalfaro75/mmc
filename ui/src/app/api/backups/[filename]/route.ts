@@ -3,6 +3,7 @@ import { existsSync, readFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { readEnv } from '@/lib/env';
 import { sanitizeError } from '@/lib/security';
+import { requireAdmin } from '@/lib/auth';
 
 function getBackupDir(): string {
   const vars = readEnv();
@@ -17,6 +18,9 @@ function validateFilename(filename: string): boolean {
 }
 
 export async function GET(_request: Request, { params }: { params: Promise<{ filename: string }> }) {
+  const denied = requireAdmin(_request);
+  if (denied) return denied;
+
   const { filename } = await params;
 
   if (!validateFilename(filename)) {
@@ -47,6 +51,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ fil
 }
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ filename: string }> }) {
+  const denied = requireAdmin(_request);
+  if (denied) return denied;
+
   const { filename } = await params;
 
   if (!validateFilename(filename)) {

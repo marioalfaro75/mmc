@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runCommand } from '@/lib/api/radarr';
+import { requireAdmin } from '@/lib/auth';
 
 const ALLOWED_COMMANDS = ['MissingMoviesSearch', 'MoviesSearch'];
 
 export async function POST(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const body = await request.json();
     if (!ALLOWED_COMMANDS.includes(body.name)) {

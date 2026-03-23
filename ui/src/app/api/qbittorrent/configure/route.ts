@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { setPreferences, createCategory } from '@/lib/api/qbittorrent';
+import { requireAdmin } from '@/lib/auth';
 
-export async function POST() {
+export async function POST(request: Request) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   const results: { step: string; status: 'ok' | 'error'; error?: string }[] = [];
 
   // Apply preferences in one call

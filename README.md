@@ -244,7 +244,8 @@ After first deploy, go to the Guide page and click **Detect API Keys**. This rea
 The stack includes security hardening out of the box:
 
 - **All ports localhost-only** — services are not exposed to the network (except torrent port 6881)
-- **Admin authentication** — create admin accounts via Settings → Admins or the first-time setup page. Admin-only pages (TV Shows, Movies, Settings, System, etc.) require login. Public pages (Dashboard, Downloads, Calendar, Requests) are accessible to anyone.
+- **Admin authentication** — create admin accounts via Settings → Admins or the first-time setup page. Admin-only pages (TV Shows, Movies, Settings, System, etc.) require login. Public pages (Dashboard, Downloads, Calendar, Requests) are accessible to anyone. Non-admins cannot pause/resume downloads or auto-configure Seerr.
+- **Defence-in-depth** — admin-only API routes are protected by both middleware and per-handler session validation (`requireAdmin`), so a middleware bypass cannot expose admin endpoints
 - **Optional site-wide lock** — set `MMC_API_KEY` in `.env` to require an API key for all access (applied before admin auth)
 - **VPN control auth** — Gluetun control API uses basic auth (`GLUETUN_CONTROL_PASSWORD`)
 - **Security headers** — CSP, X-Frame-Options, rate limiting (120 req/min), CSRF protection
@@ -256,6 +257,8 @@ The stack includes security hardening out of the box:
 Gluetun supports 60+ VPN providers. Below are common examples. For the full list, see the [Gluetun provider list](https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers).
 
 > **WireGuard vs OpenVPN:** WireGuard is faster and uses less CPU. OpenVPN has broader provider support. Use WireGuard when your provider offers it.
+
+> **WireGuard MTU:** `WIREGUARD_MTU` defaults to 1280 for maximum compatibility, especially on WSL2 where the Hyper-V NAT adds encapsulation overhead. If you experience VPN connectivity issues (DNS timeouts, healthcheck failures), this default should resolve them. You can adjust the value in Settings → VPN or in `.env`.
 
 ### ProtonVPN (WireGuard)
 
@@ -339,7 +342,7 @@ The Mars Media Centre dashboard at `http://localhost:3000` provides:
 - Media request management with search, request, approve/decline, and delete
 - Media migration wizard: move media to a NAS/network share or local directory with filesystem browser and rsync progress tracking
 - Network page with live VPN topology, tunnel bandwidth monitoring, and per-service traffic stats
-- System page with unified service monitoring (Docker state, API health), VPN status with IP and country display, per-service start/stop/restart, and log viewer
+- System page with unified service monitoring (Docker state, API health), granular VPN status (connected/connecting/error/disconnected) with IP and country display, per-service start/stop/restart, and log viewer with copy-to-clipboard
 - Settings with API key management, auto-detection, configuration, qBittorrent download preferences, scheduled backups, and backup management
 - Global service status bar showing offline services with recovery notifications
 - Plex sidebar link for quick access to your media server

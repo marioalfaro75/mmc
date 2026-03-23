@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { lookupMovie } from '@/lib/api/radarr';
+import { requireAdmin } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const { searchParams } = new URL(request.url);
     const term = searchParams.get('term');
