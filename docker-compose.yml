@@ -151,6 +151,7 @@ services:
     volumes:
       - ${CONFIG_ROOT}/sonarr:/config
       - ${DATA_ROOT}:/data
+      - /mnt:/mnt
     restart: unless-stopped
     labels:
       - com.centurylinklabs.watchtower.enable=true
@@ -169,6 +170,7 @@ services:
     volumes:
       - ${CONFIG_ROOT}/radarr:/config
       - ${DATA_ROOT}:/data
+      - /mnt:/mnt
     restart: unless-stopped
     labels:
       - com.centurylinklabs.watchtower.enable=true
@@ -278,12 +280,17 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MMC_API_KEY=${MMC_API_KEY:-}
       - GLUETUN_CONTROL_PASSWORD=${GLUETUN_CONTROL_PASSWORD:-changeme}
+      - DATA_ROOT=${DATA_ROOT}
+      - PUID=${PUID}
+      - PGID=${PGID}
       - TZ=${TZ}
     volumes:
       - ./:${HOST_PROJECT_DIR}
       - /var/run/docker.sock:/var/run/docker.sock
       - ${CONFIG_ROOT}:${CONFIG_ROOT}
+      - ${DATA_ROOT}:${DATA_ROOT}
       - ${BACKUP_DIR}:${BACKUP_DIR}
+      - /mnt:/mnt
       - ${HOME}/.mmc/logs:/app/logs
       - ${HOME}/.mmc/scripts:/app/scripts
     depends_on:

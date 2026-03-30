@@ -4,6 +4,8 @@ export interface MigrationStep {
   step: string;
   status: 'pending' | 'running' | 'ok' | 'error' | 'skipped';
   message?: string;
+  startedAt?: number;
+  completedAt?: number;
 }
 
 export interface MigrationState {
@@ -13,6 +15,8 @@ export interface MigrationState {
   currentStep: number;
   rsyncProgress: {
     percentage: number;
+    bytesTransferred: number;
+    totalBytes: number;
     filesTransferred: number;
     totalFiles: number;
     speed: string;

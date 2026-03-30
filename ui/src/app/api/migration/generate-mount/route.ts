@@ -58,7 +58,9 @@ export async function POST(request: NextRequest) {
 
       if (smbUser) {
         const credFile = resolvePath('~/.mmc/.nas-credentials');
-        mountOpts = `credentials=${credFile},uid=$(id -u),gid=$(id -g),_netdev,nofail,iocharset=utf8`;
+        const puid = process.env.PUID || '1000';
+        const pgid = process.env.PGID || '1000';
+        mountOpts = `credentials=${credFile},uid=${puid},gid=${pgid},_netdev,nofail,iocharset=utf8`;
         credentialSection = `
 # Store SMB credentials securely
 mkdir -p "$(dirname "${credFile}")"
@@ -70,7 +72,9 @@ chmod 600 "${credFile}"
 echo "  Credentials stored at ${credFile} (mode 600)"
 `;
       } else {
-        mountOpts = `uid=$(id -u),gid=$(id -g),_netdev,nofail,iocharset=utf8`;
+        const puid = process.env.PUID || '1000';
+        const pgid = process.env.PGID || '1000';
+        mountOpts = `uid=${puid},gid=${pgid},_netdev,nofail,iocharset=utf8`;
       }
     }
 
@@ -90,13 +94,19 @@ echo ""
 echo "Installing ${protocol === 'nfs' ? 'nfs-common' : 'cifs-utils and smbclient'}..."
 ${installCmd}
 ${protocol === 'smb' ? 'apt-get install -y -qq smbclient 2>/dev/null || true' : ''}
+dpkg -l rsync 2>/dev/null | grep -q "^ii" || apt-get install -y -qq rsync
 echo "  Done"
 ${credentialSection}
 # Create mount point
 mkdir -p "${resolvedMount}"
 echo "  Created mount point: ${resolvedMount}"
 
-# Mount the share
+# Mount the share (unmount first if already mounted)
+if mountpoint -q "${resolvedMount}" 2>/dev/null; then
+    echo "  ${resolvedMount} is already mounted — unmounting first..."
+    umount "${resolvedMount}" || umount -l "${resolvedMount}"
+    echo "  Unmounted"
+fi
 echo "Mounting ${mountSrc} -> ${resolvedMount}..."
 mount -t ${fstabType} -o ${mountOpts} "${mountSrc}" "${resolvedMount}"
 echo "  Mount successful"

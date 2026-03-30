@@ -491,6 +491,14 @@ setup_nas() {
         fi
     fi
 
+    # rsync is used by the migration feature to copy media to the NAS
+    if dpkg -l rsync 2>/dev/null | grep -q "^ii"; then
+        pass "rsync already installed"
+    else
+        sudo apt-get install -y -qq rsync
+        pass "rsync installed"
+    fi
+
     # Create mount point
     sudo mkdir -p "$_mount_point"
     pass "Created mount point: $_mount_point"

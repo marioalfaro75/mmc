@@ -1,15 +1,22 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { CheckCircle2, XCircle, Loader2, Circle, Ban } from 'lucide-react';
 
 interface MigrationStep {
   step: string;
   status: string;
   message?: string;
+  startedAt?: number;
+  completedAt?: number;
 }
 
 interface RsyncProgress {
   percentage: number;
+  bytesTransferred: number;
+  totalBytes: number;
+  filesTransferred: number;
+  totalFiles: number;
   speed: string;
   eta: string;
 }
@@ -22,6 +29,34 @@ interface MigrationProgressProps {
   error: string | null;
   onCancel: () => void;
   cancelling: boolean;
+  onDismiss?: () => void;
+}
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
+}
+
+function formatElapsed(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rs = s % 60;
+  if (m < 60) return `${m}m ${rs}s`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return `${h}h ${rm}m`;
+}
+
+function ElapsedTimer({ startedAt }: { startedAt: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+  return <span className="text-xs text-muted-foreground ml-2">({formatElapsed(now - startedAt)})</span>;
 }
 
 function StepIcon({ status }: { status: string }) {
@@ -47,6 +82,7 @@ export function MigrationProgress({
   error,
   onCancel,
   cancelling,
+  onDismiss,
 }: MigrationProgressProps) {
   return (
     <div className="space-y-6">
@@ -61,7 +97,12 @@ export function MigrationProgress({
           >
             <StepIcon status={step.status} />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium">{step.step}</p>
+              <div className="flex items-center">
+                <p className="text-sm font-medium">{step.step}</p>
+                {step.status === 'running' && step.startedAt && (
+                  <ElapsedTimer startedAt={step.startedAt} />
+                )}
+              </div>
               {step.message && (
                 <p className="text-xs text-muted-foreground mt-0.5">{step.message}</p>
               )}
@@ -84,8 +125,18 @@ export function MigrationProgress({
             />
           </div>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{rsyncProgress.speed}</span>
-            <span>ETA: {rsyncProgress.eta}</span>
+            <span>
+              {formatBytes(rsyncProgress.bytesTransferred)}
+              {rsyncProgress.totalBytes > 0 && ` / ${formatBytes(rsyncProgress.totalBytes)}`}
+              {rsyncProgress.filesTransferred > 0 && (
+                <> — {rsyncProgress.filesTransferred.toLocaleString()}
+                  {rsyncProgress.totalFiles > 0
+                    ? ` / ${rsyncProgress.totalFiles.toLocaleString()} files`
+                    : ' files'}
+                </>
+              )}
+            </span>
+            <span>{rsyncProgress.speed} — ETA {rsyncProgress.eta}</span>
           </div>
         </div>
       )}
@@ -132,6 +183,16 @@ export function MigrationProgress({
           ) : (
             'Cancel Migration'
           )}
+        </button>
+      )}
+
+      {/* Dismiss Button — return to pre-flight view after completion/error/cancel */}
+      {onDismiss && (phase === 'complete' || phase === 'error' || phase === 'cancelled') && (
+        <button
+          onClick={onDismiss}
+          className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
+        >
+          Dismiss
         </button>
       )}
     </div>

@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
-import { Badge } from '@/components/common/Badge';
 import {
   Loader2, CheckCircle2, XCircle, AlertTriangle,
   ArrowRight, FolderSync,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useMigrationStatus, usePreflight, useStartMigration, useCancelMigration,
 } from '@/hooks/useMigration';
@@ -22,24 +22,19 @@ export function MediaMigration({ mountPoint }: MediaMigrationProps) {
   const [preflightPassed, setPreflightPassed] = useState(false);
   const [updateDataRoot, setUpdateDataRoot] = useState(true);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [migrationStarted, setMigrationStarted] = useState(false);
 
   const preflight = usePreflight();
   const startMigration = useStartMigration();
   const cancelMigration = useCancelMigration();
+  const queryClient = useQueryClient();
 
-  // Poll status when migration is running
-  const { data: status } = useMigrationStatus(
-    preflightRun && (startMigration.isSuccess || false)
-  );
+  // Always poll migration status — shows progress for active, completed, or failed migrations
+  const { data: migrationStatus } = useMigrationStatus(true);
+  const activeMigration = migrationStatus?.phase && migrationStatus.phase !== 'idle';
 
-  const isRunning = status?.running || false;
-  const phase = status?.phase || 'idle';
-
-  // Auto-poll when there's an active migration
-  const { data: activeStatus } = useMigrationStatus(true);
-  const hasActiveMigration = activeStatus?.running || (activeStatus?.phase && activeStatus.phase !== 'idle');
-
-  const displayStatus = hasActiveMigration ? activeStatus : status;
+  // Show progress view when migration was started OR when poll shows non-idle state
+  const showProgress = migrationStarted || activeMigration;
 
   const handlePreflight = () => {
     preflight.mutate({ destinationPath: mountPoint }, {
@@ -60,7 +55,10 @@ export function MediaMigration({ mountPoint }: MediaMigrationProps) {
     startMigration.mutate({ destinationPath: mountPoint, updateDataRoot }, {
       onSuccess: () => {
         setShowConfirm(false);
+        setMigrationStarted(true);
         toast.success('Migration started');
+        // Force immediate status refetch so UI picks up the running state
+        queryClient.invalidateQueries({ queryKey: ['migration-status'] });
       },
       onError: (err) => toast.error(err.message),
     });
@@ -73,8 +71,12 @@ export function MediaMigration({ mountPoint }: MediaMigrationProps) {
     });
   };
 
-  // If there's an active migration, show progress directly
-  if (hasActiveMigration && displayStatus) {
+  const handleDismiss = () => {
+    setMigrationStarted(false);
+  };
+
+  // Show progress view when migration is active, completed, errored, or cancelled
+  if (showProgress && migrationStatus) {
     return (
       <Card>
         <CardHeader>
@@ -85,14 +87,33 @@ export function MediaMigration({ mountPoint }: MediaMigrationProps) {
         </CardHeader>
         <div className="p-6 pt-0">
           <MigrationProgress
-            steps={displayStatus.steps}
-            currentStep={displayStatus.currentStep}
-            rsyncProgress={displayStatus.rsyncProgress}
-            phase={displayStatus.phase}
-            error={displayStatus.error}
+            steps={migrationStatus.steps}
+            currentStep={migrationStatus.currentStep}
+            rsyncProgress={migrationStatus.rsyncProgress}
+            phase={migrationStatus.phase}
+            error={migrationStatus.error}
             onCancel={handleCancel}
             cancelling={cancelMigration.isPending}
+            onDismiss={handleDismiss}
           />
+        </div>
+      </Card>
+    );
+  }
+
+  // Show a loading card while waiting for first poll after start
+  if (migrationStarted && !migrationStatus) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FolderSync className="h-5 w-5" />
+            Media Migration
+          </CardTitle>
+        </CardHeader>
+        <div className="p-6 pt-0 flex items-center gap-3">
+          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          <span className="text-sm text-muted-foreground">Starting migration...</span>
         </div>
       </Card>
     );
@@ -114,7 +135,7 @@ export function MediaMigration({ mountPoint }: MediaMigrationProps) {
             <code className="rounded bg-muted px-2 py-0.5">DATA_ROOT/media</code>
             <ArrowRight className="h-4 w-4" />
             <span>Destination:</span>
-            <code className="rounded bg-muted px-2 py-0.5">{mountPoint}/media</code>
+            <code className="rounded bg-muted px-2 py-0.5">{mountPoint.endsWith('/media') ? mountPoint : `${mountPoint}/media`}</code>
           </div>
 
           <button
@@ -189,9 +210,9 @@ export function MediaMigration({ mountPoint }: MediaMigrationProps) {
               <div className="rounded-md border border-border p-4 space-y-3">
                 <p className="text-sm font-medium">Are you sure?</p>
                 <p className="text-sm text-muted-foreground">
-                  This will copy completed media from DATA_ROOT/media to the destination and update Sonarr/Radarr
-                  root folders. Download directories (torrents/usenet) are not moved. The process may take a while
-                  depending on library size and network speed.
+                  This will move completed media from DATA_ROOT/media to the destination and update Sonarr/Radarr
+                  root folders. Source files are removed after verification. Download directories (torrents/usenet)
+                  are not moved. The process may take a while depending on library size and network speed.
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -217,26 +238,6 @@ export function MediaMigration({ mountPoint }: MediaMigrationProps) {
                 </div>
               </div>
             )}
-          </div>
-        </Card>
-      )}
-
-      {/* Migration Progress (after started) */}
-      {displayStatus && displayStatus.phase !== 'idle' && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Migration Progress</CardTitle>
-          </CardHeader>
-          <div className="p-6 pt-0">
-            <MigrationProgress
-              steps={displayStatus.steps}
-              currentStep={displayStatus.currentStep}
-              rsyncProgress={displayStatus.rsyncProgress}
-              phase={displayStatus.phase}
-              error={displayStatus.error}
-              onCancel={handleCancel}
-              cancelling={cancelMigration.isPending}
-            />
           </div>
         </Card>
       )}

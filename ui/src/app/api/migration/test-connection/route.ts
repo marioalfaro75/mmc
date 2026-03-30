@@ -1,19 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import { sanitizeError } from '@/lib/security';
 import { requireAdmin } from '@/lib/auth';
-
-const execFileAsync = promisify(execFile);
 
 // Run a command on the host network via a temporary Docker container.
 // The media-ui container is on an isolated Docker network and cannot
 // reach the LAN directly, so we use the Docker socket to spawn a
 // short-lived Alpine container with --net=host.
-async function runOnHost(image: string, cmd: string[], timeoutMs = 15000): Promise<string> {
-  const args = ['run', '--rm', '--net=host', image, ...cmd];
-  const { stdout } = await execFileAsync('docker', args, { timeout: timeoutMs });
-  return stdout;
+// Uses spawn instead of execFile to avoid SIGPIPE issues with
+// long-running commands like smbclient in Docker-in-Docker.
+async function runOnHost(image: string, cmd: string[], timeoutMs = 30000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const args = ['run', '--rm', '--net=host', image, ...cmd];
+    const proc = spawn('docker', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', (d: Buffer) => { stdout += d; });
+    proc.stderr.on('data', (d: Buffer) => { stderr += d; });
+    const timer = setTimeout(() => { proc.kill(); reject(new Error('Command timed out')); }, timeoutMs);
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve(stdout);
+      else reject(new Error(stderr.trim() || `Command exited with code ${code}`));
+    });
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -51,23 +61,24 @@ export async function POST(request: NextRequest) {
           const stdout = await runOnHost(
             'alpine',
             ['sh', '-c', `apk add --no-cache -q nfs-utils >/dev/null 2>&1 && showmount -e --no-headers ${host}`],
-            20000
+            60000
           );
           availableShares = stdout
             .split('\n')
             .map((line) => line.trim().split(/\s+/)[0])
             .filter(Boolean);
         } else if (protocol === 'smb') {
-          let smbCmd = `smbclient -L ${host} -N --no-pass`;
+          const smbProto = "--option='client min protocol=SMB2'";
+          let smbCmd = `smbclient -L ${host} -N --no-pass ${smbProto}`;
           if (smbUser) {
             const escapedUser = smbUser.replace(/'/g, "'\\''");
             const escapedPass = (smbPassword || '').replace(/'/g, "'\\''");
-            smbCmd = `smbclient -L ${host} -U '${escapedUser}%${escapedPass}'`;
+            smbCmd = `printf 'username=${escapedUser}\\npassword=${escapedPass}\\n' > /tmp/.smbauth && smbclient -L ${host} -A /tmp/.smbauth ${smbProto}; rm -f /tmp/.smbauth`;
           }
           const stdout = await runOnHost(
             'alpine',
             ['sh', '-c', `apk add --no-cache -q samba-client >/dev/null 2>&1 && ${smbCmd}`],
-            20000
+            60000
           );
           // Parse smbclient output — share lines look like: "  ShareName  Disk  Comment"
           const shareLines = stdout.split('\n').filter((line) => /^\s+\S+\s+Disk/.test(line));

@@ -3,7 +3,7 @@ export class ApiError extends Error {
   reason?: string;
 
   constructor(status: number, statusText: string, reason?: string) {
-    super(`${status} ${statusText}`);
+    super(reason || `${status} ${statusText}`);
     this.status = status;
     this.reason = reason;
   }
@@ -20,7 +20,7 @@ export async function fetchApi<T>(url: string, init?: RequestInit): Promise<T> {
     let reason: string | undefined;
     try {
       const body = await res.json();
-      reason = body?.reason;
+      reason = body?.reason || body?.error;
     } catch { /* ignore parse errors */ }
     throw new ApiError(res.status, res.statusText, reason);
   }

@@ -6,10 +6,12 @@ import { fetchApi } from '@/lib/utils/fetchApi';
 interface MigrationStatus {
   running: boolean;
   phase: 'idle' | 'migrating' | 'complete' | 'error' | 'cancelled';
-  steps: { step: string; status: string; message?: string }[];
+  steps: { step: string; status: string; message?: string; startedAt?: number; completedAt?: number }[];
   currentStep: number;
   rsyncProgress: {
     percentage: number;
+    bytesTransferred: number;
+    totalBytes: number;
     filesTransferred: number;
     totalFiles: number;
     speed: string;
