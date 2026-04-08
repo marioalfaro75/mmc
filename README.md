@@ -78,14 +78,16 @@ The wizard prompts for these during first run. You can also change them later vi
 
 #### NAS Storage
 
-To store media on a NAS or network share, use either:
+To store media on a NAS or network share, use the **Migration** page in the web UI (recommended) or, for legacy fresh-install setups, the deploy wizard.
 
-- **During install:** The setup wizard asks "Store media on a NAS?" and walks through NFS/SMB configuration
-- **After install:** Run `./scripts/deploy.sh --nas` or use the **Migration** page in the web UI
+The Migration page offers two NAS modes:
 
-The NAS setup handles package installation, mounting, fstab persistence, and WSL auto-mount. On every subsequent deploy, the script automatically verifies the NAS mount is active.
+- **Managed Volume (recommended)** — Docker mounts the share directly via a named volume with the CIFS/NFS driver. No host mount, no `sudo`, no fstab edits, and no WSL2 shadow-mount headaches. One click writes the override file, recreates services, and the volume is live. Works identically on Linux, macOS, and WSL2.
+- **Host Mount Script (legacy)** — Generates a bash script you run with `sudo` to mount the share via fstab. Kept as a fallback; prefer the managed volume on WSL2.
 
-See the [Migration page](#nas-migration) section below for details on moving an existing library to a NAS.
+Either way, the internal container path is `/mnt/nas/media`, so existing Sonarr/Radarr root folders keep working unchanged. The managed-volume mode writes a gitignored `docker-compose.nas.override.yml` and stores credentials in `.env` (`NAS_HOST`, `NAS_SHARE`, `NAS_USERNAME`, `NAS_PASSWORD`, `NAS_VERS`). The deploy script's `--nas` flag is still available for fresh installs.
+
+See the [Migration page](#media-migration) section below for details on moving an existing library to a NAS.
 
 ## Deploy Script
 
@@ -244,7 +246,7 @@ After first deploy, go to the Guide page and click **Detect API Keys**. This rea
 The stack includes security hardening out of the box:
 
 - **All ports localhost-only** — services are not exposed to the network (except torrent port 6881)
-- **Admin authentication** — create admin accounts via Settings → Admins or the first-time setup page. Admin-only pages (TV Shows, Movies, Settings, System, etc.) require login. Public pages (Dashboard, Downloads, Calendar, Requests) are accessible to anyone. Non-admins cannot pause/resume downloads or auto-configure Seerr.
+- **Admin authentication** — create admin accounts via Settings → Admins or the first-time setup page. Admin-only pages (TV Shows, Movies, Settings, System, etc.) require login. Public pages (Dashboard, Downloads, Calendar, Requests) are accessible to anyone. Non-admins cannot pause/resume downloads or auto-configure Seerr. Sessions are persisted to `${CONFIG_ROOT}/admin-sessions.json` so you stay logged in across container restarts.
 - **Defence-in-depth** — admin-only API routes are protected by both middleware and per-handler session validation (`requireAdmin`), so a middleware bypass cannot expose admin endpoints
 - **Optional site-wide lock** — set `MMC_API_KEY` in `.env` to require an API key for all access (applied before admin auth)
 - **VPN control auth** — Gluetun control API uses basic auth (`GLUETUN_CONTROL_PASSWORD`)
@@ -374,7 +376,7 @@ The Migration page (`http://localhost:3000/migration`) lets you move your media 
 
 ### Destination Options
 
-- **NAS / Network Share** — SMB or NFS share on your network (e.g. Synology, TrueNAS)
+- **NAS / Network Share** — SMB or NFS share on your network (e.g. Synology, TrueNAS). Two setup modes: **Managed Volume** (recommended; Docker mounts the share per-container) or **Host Mount Script** (legacy; bash script you run with sudo).
 - **Local Directory** — Another drive or path on this machine (e.g. `/mnt/d`, a second SSD, external USB). Includes a filesystem browser.
 
 ### How It Works
@@ -401,17 +403,17 @@ Migration copies only the `media/` folder (completed movies and TV shows) to the
 ### Migration Steps
 
 1. **Choose Destination** — Select NAS or local directory.
-2. **Setup** — For NAS: enter connection details, generate mount script, verify mount. For local: browse or type the path, verify it's writable.
-3. **Pre-flight Checks** — Validates Sonarr/Radarr connectivity, active downloads, and available disk space.
-4. **Migrate** — Copies existing media via rsync with progress tracking, updates Sonarr/Radarr root folders, and optionally updates `DATA_ROOT` in `.env`.
+2. **Setup** — For NAS managed volume: enter connection details and click *Configure NAS Volume*. For NAS script mode: enter connection details, generate the mount script, run it with sudo, verify the mount. For local: browse or type the path and verify it's writable.
+3. **Pre-flight Checks** — Validates Sonarr/Radarr/Bazarr connectivity, active downloads, and available disk space. Bazarr is checked with retries to ride out its slow startup after a recreate.
+4. **Migrate** — Copies existing media via rsync with progress tracking, **verifies via checksum** (not just mtimes), updates Sonarr/Radarr root folders, optionally updates `DATA_ROOT` in `.env`, then deletes the source files **last** for safety. If anything fails, the source stays intact.
 
 ### CLI Alternative
 
 ```bash
-./scripts/deploy.sh --nas    # Interactive NAS setup (mount, fstab, WSL auto-mount)
+./scripts/deploy.sh --nas    # Interactive NAS setup (legacy host-mount mode)
 ```
 
-The deploy script automatically verifies NAS mounts on every subsequent run.
+For new setups, prefer the Migration page Managed Volume mode — it avoids the host-mount and works on WSL2 without the docker-desktop shadow-mount issue.
 
 ## Backup & Restore
 

@@ -1,4 +1,6 @@
 .env
+.env.bak.*
+docker-compose.nas.override.yml
 *.tar.gz
 ui/node_modules/
 ui/.next/

@@ -14,7 +14,7 @@ import {
 } from '@/lib/api/radarr';
 import {
   getMigrationState, setMigrationState, resetMigrationState,
-  updateStep,
+  updateStep, acquireMigrationLock, releaseMigrationLock,
 } from '@/lib/migration-state';
 import { sanitizeError } from '@/lib/security';
 import { requireAdmin } from '@/lib/auth';
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
   const denied = requireAdmin(request);
   if (denied) return denied;
   const current = getMigrationState();
-  if (current.running) {
+  if (current.running || !acquireMigrationLock()) {
     return NextResponse.json({ success: false, error: 'Migration already in progress' }, { status: 409 });
   }
 
@@ -102,20 +102,22 @@ export async function POST(request: NextRequest) {
         { step: 'Add Radarr root folder', status: 'pending' },
         { step: 'Copy files to NAS', status: 'pending' },
         { step: 'Verify copied files', status: 'pending' },
-        { step: 'Remove source files', status: 'pending' },
         { step: 'Update Sonarr series paths', status: 'pending' },
         { step: 'Update Radarr movie paths', status: 'pending' },
         { step: 'Remove old root folders', status: 'pending' },
         ...(updateDataRoot ? [{ step: 'Update DATA_ROOT in .env', status: 'pending' as const }] : []),
+        { step: 'Remove source files', status: 'pending' },
       ],
     });
 
-    // Run migration asynchronously
-    runMigration(sourcePath, destMedia, updateDataRoot).catch((err) => {
-      const msg = sanitizeError(err);
-      logger.error(LOG, `Migration failed unexpectedly: ${msg}`);
-      setMigrationState({ running: false, phase: 'error', error: msg });
-    });
+    // Run migration asynchronously — always release lock when done
+    runMigration(sourcePath, destMedia, updateDataRoot)
+      .catch((err) => {
+        const msg = sanitizeError(err);
+        logger.error(LOG, `Migration failed unexpectedly: ${msg}`);
+        setMigrationState({ running: false, phase: 'error', error: msg });
+      })
+      .finally(() => releaseMigrationLock());
 
     return NextResponse.json({ success: true, message: 'Migration started' });
   } catch (error) {
@@ -125,6 +127,8 @@ export async function POST(request: NextRequest) {
 
 async function runMigration(sourcePath: string, destMedia: string, updateDataRoot: boolean) {
   let stepIdx = 0;
+  const oldTvPath = `${sourcePath}/tv`;
+  const oldMoviesPath = `${sourcePath}/movies`;
 
   // Step 1: Add Sonarr root folder
   try {
@@ -208,33 +212,34 @@ async function runMigration(sourcePath: string, destMedia: string, updateDataRoo
   }
   stepIdx++;
 
-  // Step 4: Verify copied files using rsync dry-run
+  // Step 4: Verify copied files using rsync dry-run with checksum comparison
   try {
     startStep(stepIdx);
     logger.info(LOG, 'Step 4: Verifying copied files');
-    updateStep(stepIdx, { message: 'Running verification (rsync dry-run)...' });
+    updateStep(stepIdx, { message: 'Running verification (checksum comparison)...' });
 
     const src = sourcePath.endsWith('/') ? sourcePath : `${sourcePath}/`;
     const { stdout: dryRunOut } = await execFileAsync('rsync', [
-      '-av', '--dry-run', '--itemize-changes', src, destMedia,
-    ], { timeout: 120000 });
+      '-av', '--checksum', '--dry-run', '--itemize-changes', src, destMedia,
+    ], { timeout: 300000 });
 
-    // rsync dry-run outputs lines like ">f..T...... file.mkv" for files that differ
-    // Filter to actual file transfers (lines starting with >f or cf for new/changed files)
+    // rsync dry-run with --checksum outputs lines like ">fcsT...... file.mkv" for files that differ
+    // Filter to actual content differences (lines starting with >f or cf indicating new/changed files)
     const pendingFiles = dryRunOut
       .split('\n')
       .filter((line) => /^[>c]f/.test(line));
 
     if (pendingFiles.length > 0) {
-      const msg = `${pendingFiles.length} file(s) differ between source and destination`;
+      const examples = pendingFiles.slice(0, 5).map((l) => l.replace(/^[>c]f\S+\s+/, '')).join(', ');
+      const msg = `${pendingFiles.length} file(s) differ between source and destination: ${examples}`;
       failStep(stepIdx, msg);
       logger.error(LOG, `Verification failed: ${msg}`);
       setMigrationState({ running: false, phase: 'error', error: 'Verification failed — source files will NOT be removed' });
       return;
     }
 
-    completeStep(stepIdx, 'All files verified — source and destination match');
-    logger.info(LOG, 'File verification passed — source and destination match');
+    completeStep(stepIdx, 'All files verified — checksums match');
+    logger.info(LOG, 'File verification passed — checksums match');
   } catch (error) {
     const msg = sanitizeError(error);
     failStep(stepIdx, msg);
@@ -244,28 +249,10 @@ async function runMigration(sourcePath: string, destMedia: string, updateDataRoo
   }
   stepIdx++;
 
-  // Step 5: Remove source files (only reached if verification passed)
+  // Step 5: Mass update Sonarr series
   try {
     startStep(stepIdx);
-    logger.info(LOG, `Step 5: Removing source files: ${sourcePath}`);
-    updateStep(stepIdx, { message: `Removing ${sourcePath}...` });
-
-    await rm(sourcePath, { recursive: true, force: true });
-
-    completeStep(stepIdx, `Removed ${sourcePath}`);
-    logger.info(LOG, `Source files removed: ${sourcePath}`);
-  } catch (error) {
-    const msg = sanitizeError(error);
-    failStep(stepIdx, msg);
-    logger.error(LOG, `Failed to remove source files: ${msg}`);
-    // Non-fatal — files are already on the NAS, cleanup can be done manually
-  }
-  stepIdx++;
-
-  // Step 6: Mass update Sonarr series
-  try {
-    startStep(stepIdx);
-    logger.info(LOG, 'Step 6: Updating Sonarr series paths');
+    logger.info(LOG, 'Step 5: Updating Sonarr series paths');
     updateStep(stepIdx, { message: 'Fetching series from Sonarr...' });
     const series = await getSeries();
     const seriesIds = series.map((s) => s.id);
@@ -287,10 +274,10 @@ async function runMigration(sourcePath: string, destMedia: string, updateDataRoo
   }
   stepIdx++;
 
-  // Step 7: Mass update Radarr movies
+  // Step 6: Mass update Radarr movies
   try {
     startStep(stepIdx);
-    logger.info(LOG, 'Step 7: Updating Radarr movie paths');
+    logger.info(LOG, 'Step 6: Updating Radarr movie paths');
     updateStep(stepIdx, { message: 'Fetching movies from Radarr...' });
     const movies = await getMovies();
     const movieIds = movies.map((m) => m.id);
@@ -312,26 +299,26 @@ async function runMigration(sourcePath: string, destMedia: string, updateDataRoo
   }
   stepIdx++;
 
-  // Step 8: Remove old root folders
+  // Step 7: Remove old root folders (uses source path, not hardcoded)
   try {
     startStep(stepIdx);
-    logger.info(LOG, 'Step 8: Removing old root folders');
+    logger.info(LOG, 'Step 7: Removing old root folders');
     updateStep(stepIdx, { message: 'Checking for old root folders...' });
 
     const sonarrFolders = await getSonarrRootFolders();
-    const oldSonarrFolder = sonarrFolders.find((f) => f.path === '/data/media/tv');
+    const oldSonarrFolder = sonarrFolders.find((f) => f.path === oldTvPath);
     if (oldSonarrFolder) {
-      updateStep(stepIdx, { message: 'Removing old Sonarr root folder...' });
+      updateStep(stepIdx, { message: `Removing old Sonarr root folder (${oldTvPath})...` });
       await deleteSonarrRootFolder(oldSonarrFolder.id);
-      logger.info(LOG, 'Removed old Sonarr root folder: /data/media/tv');
+      logger.info(LOG, `Removed old Sonarr root folder: ${oldTvPath}`);
     }
 
     const radarrFolders = await getRadarrRootFolders();
-    const oldRadarrFolder = radarrFolders.find((f) => f.path === '/data/media/movies');
+    const oldRadarrFolder = radarrFolders.find((f) => f.path === oldMoviesPath);
     if (oldRadarrFolder) {
-      updateStep(stepIdx, { message: 'Removing old Radarr root folder...' });
+      updateStep(stepIdx, { message: `Removing old Radarr root folder (${oldMoviesPath})...` });
       await deleteRadarrRootFolder(oldRadarrFolder.id);
-      logger.info(LOG, 'Removed old Radarr root folder: /data/media/movies');
+      logger.info(LOG, `Removed old Radarr root folder: ${oldMoviesPath}`);
     }
 
     completeStep(stepIdx, 'Old root folders removed');
@@ -343,11 +330,11 @@ async function runMigration(sourcePath: string, destMedia: string, updateDataRoo
   }
   stepIdx++;
 
-  // Step 9 (optional): Update DATA_ROOT in .env
+  // Step 8 (optional): Update DATA_ROOT in .env — done BEFORE source deletion for safety
   if (updateDataRoot) {
     try {
       startStep(stepIdx);
-      logger.info(LOG, 'Step 9: Updating DATA_ROOT in .env');
+      logger.info(LOG, 'Step 8: Updating DATA_ROOT in .env');
       updateStep(stepIdx, { message: 'Writing .env file...' });
 
       const { writeEnv } = await import('@/lib/env');
@@ -360,7 +347,26 @@ async function runMigration(sourcePath: string, destMedia: string, updateDataRoo
       const msg = sanitizeError(error);
       failStep(stepIdx, msg);
       logger.error(LOG, `Failed to update DATA_ROOT: ${msg}`);
+      // Non-fatal — continue to deletion since files are already on destination
     }
+    stepIdx++;
+  }
+
+  // Final step: Remove source files (last step for maximum safety)
+  try {
+    startStep(stepIdx);
+    logger.info(LOG, `Removing source files: ${sourcePath}`);
+    updateStep(stepIdx, { message: `Removing ${sourcePath}...` });
+
+    await rm(sourcePath, { recursive: true, force: true });
+
+    completeStep(stepIdx, `Removed ${sourcePath}`);
+    logger.info(LOG, `Source files removed: ${sourcePath}`);
+  } catch (error) {
+    const msg = sanitizeError(error);
+    failStep(stepIdx, msg);
+    logger.error(LOG, `Failed to remove source files: ${msg}`);
+    // Non-fatal — files are already on the destination, cleanup can be done manually
   }
 
   setMigrationState({ running: false, phase: 'complete', currentStep: -1 });

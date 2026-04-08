@@ -1,15 +1,30 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { existsSync } from 'fs';
 
 const execFileAsync = promisify(execFile);
 
 const PROJECT_DIR = process.env.HOST_PROJECT_DIR || '';
 
+// Optional override files that get chained into every compose command when present.
+// Order matters: later files override earlier ones.
+const OVERRIDE_FILES = ['docker-compose.nas.override.yml'];
+
+function composeFileArgs(): string[] {
+  const args = ['-f', `${PROJECT_DIR}/docker-compose.yml`];
+  for (const name of OVERRIDE_FILES) {
+    if (existsSync(`${PROJECT_DIR}/${name}`)) {
+      args.push('-f', `${PROJECT_DIR}/${name}`);
+    }
+  }
+  return args;
+}
+
 function composeArgs(): string[] {
   if (!PROJECT_DIR) throw new Error('HOST_PROJECT_DIR is not set');
   return [
     'compose',
-    '-f', `${PROJECT_DIR}/docker-compose.yml`,
+    ...composeFileArgs(),
     '--project-directory', PROJECT_DIR,
     '--env-file', `${PROJECT_DIR}/.env`,
   ];
@@ -220,7 +235,7 @@ export function selfStop(): void {
     '-v', `${PROJECT_DIR}:${PROJECT_DIR}:ro`,
     'docker:cli',
     'docker', 'compose',
-    '-f', `${PROJECT_DIR}/docker-compose.yml`,
+    ...composeFileArgs(),
     '--project-directory', PROJECT_DIR,
     '--env-file', `${PROJECT_DIR}/.env`,
     'stop', '-t', '30', 'media-ui',
@@ -234,7 +249,8 @@ export function selfRestart(): void {
     throw new Error('Invalid or missing HOST_PROJECT_DIR');
   }
 
-  // To pick up new env vars, we need `docker compose up -d --force-recreate media-ui`.
+  // To pick up new env vars or volume mounts, we need
+  // `docker compose up -d --force-recreate media-ui`.
   // But that command kills this container mid-execution.
   // Solution: run the compose command from a short-lived helper container that
   // shares the Docker socket and project directory. This container survives
@@ -246,7 +262,7 @@ export function selfRestart(): void {
     '-v', `${PROJECT_DIR}:${PROJECT_DIR}:ro`,
     'docker:cli',
     'docker', 'compose',
-    '-f', `${PROJECT_DIR}/docker-compose.yml`,
+    ...composeFileArgs(),
     '--project-directory', PROJECT_DIR,
     '--env-file', `${PROJECT_DIR}/.env`,
     'up', '-d', '--force-recreate', 'media-ui',

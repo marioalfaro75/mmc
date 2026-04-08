@@ -3,6 +3,51 @@ import { spawn } from 'child_process';
 import { sanitizeError } from '@/lib/security';
 import { requireAdmin } from '@/lib/auth';
 
+// Classify smbclient errors to give users actionable guidance
+function classifySmbError(raw: string, hasCredentials: boolean): { authFailed: boolean; message: string } {
+  const s = raw || '';
+  // Authentication failures
+  if (/NT_STATUS_LOGON_FAILURE/i.test(s)) {
+    return {
+      authFailed: true,
+      message: 'Authentication failed — the username or password is incorrect. Please check the credentials and try again.',
+    };
+  }
+  if (/NT_STATUS_ACCOUNT_LOCKED_OUT/i.test(s)) {
+    return {
+      authFailed: true,
+      message: 'Authentication failed — the account is locked. Unlock it on the NAS and try again.',
+    };
+  }
+  if (/NT_STATUS_PASSWORD_(EXPIRED|MUST_CHANGE)/i.test(s)) {
+    return {
+      authFailed: true,
+      message: 'Authentication failed — the password has expired. Update it on the NAS and try again.',
+    };
+  }
+  if (/NT_STATUS_ACCESS_DENIED/i.test(s)) {
+    return {
+      authFailed: true,
+      message: hasCredentials
+        ? 'Access denied — the credentials are valid but lack permission to list shares.'
+        : 'Access denied — this NAS requires credentials. Enter a username and password and try again.',
+    };
+  }
+  // Non-auth failures
+  if (/NT_STATUS_BAD_NETWORK_NAME/i.test(s)) {
+    return { authFailed: false, message: 'Could not list shares — the host or share name is invalid.' };
+  }
+  if (/Connection refused|NT_STATUS_CONNECTION_REFUSED/i.test(s)) {
+    return { authFailed: false, message: 'Could not list shares — SMB service is not running on the host.' };
+  }
+  if (/protocol negotiation failed|NT_STATUS_INVALID_NETWORK_RESPONSE/i.test(s)) {
+    return { authFailed: false, message: 'Could not list shares — SMB protocol negotiation failed (the NAS may require a different SMB version).' };
+  }
+  // Fallback — show the raw error so user has something to work with
+  const trimmed = s.trim().split('\n').slice(-3).join(' ').slice(0, 200);
+  return { authFailed: false, message: `Could not list shares: ${trimmed || 'unknown error'}` };
+}
+
 // Run a command on the host network via a temporary Docker container.
 // The media-ui container is on an isolated Docker network and cannot
 // reach the LAN directly, so we use the Docker socket to spawn a
@@ -21,7 +66,12 @@ async function runOnHost(image: string, cmd: string[], timeoutMs = 30000): Promi
     proc.on('close', (code) => {
       clearTimeout(timer);
       if (code === 0) resolve(stdout);
-      else reject(new Error(stderr.trim() || `Command exited with code ${code}`));
+      else {
+        // smbclient writes auth errors (NT_STATUS_*) to stdout, not stderr,
+        // so combine both streams in the rejected error so callers can classify it.
+        const combined = [stderr.trim(), stdout.trim()].filter(Boolean).join('\n');
+        reject(new Error(combined || `Command exited with code ${code}`));
+      }
     });
   });
 }
@@ -54,6 +104,7 @@ export async function POST(request: NextRequest) {
     let shareFound: boolean | null = null;
     let availableShares: string[] = [];
     let shareError: string | null = null;
+    let authFailed = false;
 
     if (protocol) {
       try {
@@ -69,23 +120,35 @@ export async function POST(request: NextRequest) {
             .filter(Boolean);
         } else if (protocol === 'smb') {
           const smbProto = "--option='client min protocol=SMB2'";
-          let smbCmd = `smbclient -L ${host} -N --no-pass ${smbProto}`;
+          let smbCmd: string;
           if (smbUser) {
             const escapedUser = smbUser.replace(/'/g, "'\\''");
             const escapedPass = (smbPassword || '').replace(/'/g, "'\\''");
-            smbCmd = `printf 'username=${escapedUser}\\npassword=${escapedPass}\\n' > /tmp/.smbauth && smbclient -L ${host} -A /tmp/.smbauth ${smbProto}; rm -f /tmp/.smbauth`;
+            // Preserve smbclient's exit code (don't let `rm` mask it)
+            smbCmd = `printf 'username=${escapedUser}\\npassword=${escapedPass}\\n' > /tmp/.smbauth && smbclient -L ${host} -A /tmp/.smbauth ${smbProto}; rc=$?; rm -f /tmp/.smbauth; exit $rc`;
+          } else {
+            smbCmd = `smbclient -L ${host} -N --no-pass ${smbProto}`;
           }
           const stdout = await runOnHost(
             'alpine',
             ['sh', '-c', `apk add --no-cache -q samba-client >/dev/null 2>&1 && ${smbCmd}`],
             60000
           );
-          // Parse smbclient output — share lines look like: "  ShareName  Disk  Comment"
-          const shareLines = stdout.split('\n').filter((line) => /^\s+\S+\s+Disk/.test(line));
-          availableShares = shareLines.map((line) => {
-            const name = line.trim().split(/\s+/)[0];
-            return `/${name}`;
-          });
+          // Even on exit-0 success, smbclient sometimes prints NT_STATUS errors to stdout
+          // (e.g. some SMB servers respond to bad creds without setting non-zero exit).
+          // Detect that case here so we still surface the auth failure.
+          if (/NT_STATUS_\w+/i.test(stdout)) {
+            const classified = classifySmbError(stdout, Boolean(smbUser));
+            authFailed = classified.authFailed;
+            shareError = classified.message;
+          } else {
+            // Parse smbclient output — share lines look like: "  ShareName  Disk  Comment"
+            const shareLines = stdout.split('\n').filter((line) => /^\s+\S+\s+Disk/.test(line));
+            availableShares = shareLines.map((line) => {
+              const name = line.trim().split(/\s+/)[0];
+              return `/${name}`;
+            });
+          }
         }
 
         // Check if the user's share path is in the list
@@ -98,8 +161,14 @@ export async function POST(request: NextRequest) {
           }
         }
       } catch (err) {
-        const msg = sanitizeError(err);
-        shareError = `Could not list shares: ${msg}`;
+        const raw = err instanceof Error ? err.message : String(err);
+        if (protocol === 'smb') {
+          const classified = classifySmbError(raw, Boolean(smbUser));
+          authFailed = classified.authFailed;
+          shareError = classified.message;
+        } else {
+          shareError = `Could not list shares: ${sanitizeError(err)}`;
+        }
       }
     }
 
@@ -109,6 +178,7 @@ export async function POST(request: NextRequest) {
       shareFound,
       availableShares,
       shareError,
+      authFailed,
       message: !reachable ? 'Host did not respond to ping (may still work if ICMP is blocked)' : undefined,
     });
   } catch (error) {

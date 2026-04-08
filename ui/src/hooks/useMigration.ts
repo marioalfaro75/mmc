@@ -44,12 +44,48 @@ interface GenerateMountResult {
   fstabLine: string;
 }
 
+interface VerifyNasVolumeResult {
+  success: boolean;
+  mounted?: boolean;
+  writable?: boolean;
+  freeSpace?: string;
+  totalSpace?: string;
+  freeBytes?: number;
+  totalBytes?: number;
+  error?: string;
+  rawError?: string;
+}
+
+interface SetupNasVolumeResult {
+  success: boolean;
+  overridePath?: string;
+  mountPath?: string;
+  message?: string;
+  error?: string;
+}
+
+interface NasVolumeStatusResult {
+  active: boolean;
+  overridePath?: string;
+  mountPath?: string;
+}
+
+interface NasVolumeRequest {
+  protocol: 'smb' | 'nfs';
+  host: string;
+  sharePath: string;
+  smbUser?: string;
+  smbPassword?: string;
+  vers?: string;
+}
+
 interface TestConnectionResult {
   success: boolean;
   reachable?: boolean;
   shareFound?: boolean | null;
   availableShares?: string[];
   shareError?: string | null;
+  authFailed?: boolean;
   message?: string;
   error?: string;
 }
@@ -58,8 +94,18 @@ export function useMigrationStatus(enabled: boolean) {
   return useQuery<MigrationStatus>({
     queryKey: ['migration-status'],
     queryFn: () => fetchApi('/api/migration/status'),
-    refetchInterval: enabled ? 2000 : false,
+    refetchInterval: (query) => {
+      if (!enabled) return false;
+      const phase = query.state.data?.phase;
+      // Poll fast during active migration, slow down for terminal/idle states
+      if (phase === 'migrating') return 2000;
+      if (phase === 'idle') return 10000;
+      // Terminal states (complete, error, cancelled) — slow poll
+      return 5000;
+    },
     staleTime: 1000,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
   });
 }
 
@@ -95,6 +141,36 @@ export function useGenerateMount() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       }),
+  });
+}
+
+export function useVerifyNasVolume() {
+  return useMutation<VerifyNasVolumeResult, Error, NasVolumeRequest>({
+    mutationFn: (data) =>
+      fetchApi('/api/migration/verify-nas-volume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }),
+  });
+}
+
+export function useSetupNasVolume() {
+  return useMutation<SetupNasVolumeResult, Error, NasVolumeRequest>({
+    mutationFn: (data) =>
+      fetchApi('/api/migration/setup-nas-volume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }),
+  });
+}
+
+export function useNasVolumeStatus() {
+  return useQuery<NasVolumeStatusResult>({
+    queryKey: ['nas-volume-status'],
+    queryFn: () => fetchApi('/api/migration/setup-nas-volume'),
+    staleTime: 30000,
   });
 }
 

@@ -11,6 +11,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   useMigrationStatus, usePreflight, useStartMigration, useCancelMigration,
 } from '@/hooks/useMigration';
+import { fetchApi } from '@/lib/utils/fetchApi';
 import { MigrationProgress } from './MigrationProgress';
 
 interface MediaMigrationProps {
@@ -22,7 +23,6 @@ export function MediaMigration({ mountPoint }: MediaMigrationProps) {
   const [preflightPassed, setPreflightPassed] = useState(false);
   const [updateDataRoot, setUpdateDataRoot] = useState(true);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [migrationStarted, setMigrationStarted] = useState(false);
 
   const preflight = usePreflight();
   const startMigration = useStartMigration();
@@ -30,11 +30,9 @@ export function MediaMigration({ mountPoint }: MediaMigrationProps) {
   const queryClient = useQueryClient();
 
   // Always poll migration status — shows progress for active, completed, or failed migrations
+  // Survives page refreshes since it reads from server state
   const { data: migrationStatus } = useMigrationStatus(true);
-  const activeMigration = migrationStatus?.phase && migrationStatus.phase !== 'idle';
-
-  // Show progress view when migration was started OR when poll shows non-idle state
-  const showProgress = migrationStarted || activeMigration;
+  const showProgress = migrationStatus?.phase && migrationStatus.phase !== 'idle';
 
   const handlePreflight = () => {
     preflight.mutate({ destinationPath: mountPoint }, {
@@ -55,7 +53,6 @@ export function MediaMigration({ mountPoint }: MediaMigrationProps) {
     startMigration.mutate({ destinationPath: mountPoint, updateDataRoot }, {
       onSuccess: () => {
         setShowConfirm(false);
-        setMigrationStarted(true);
         toast.success('Migration started');
         // Force immediate status refetch so UI picks up the running state
         queryClient.invalidateQueries({ queryKey: ['migration-status'] });
@@ -72,7 +69,17 @@ export function MediaMigration({ mountPoint }: MediaMigrationProps) {
   };
 
   const handleDismiss = () => {
-    setMigrationStarted(false);
+    // Reset server-side state to idle so the progress view is dismissed
+    fetchApi('/api/migration/status', { method: 'DELETE' }).catch(() => {});
+    queryClient.invalidateQueries({ queryKey: ['migration-status'] });
+  };
+
+  const handleRetry = () => {
+    // Reset server state, then go back to preflight view
+    fetchApi('/api/migration/status', { method: 'DELETE' }).catch(() => {});
+    setPreflightRun(false);
+    setPreflightPassed(false);
+    queryClient.invalidateQueries({ queryKey: ['migration-status'] });
   };
 
   // Show progress view when migration is active, completed, errored, or cancelled
@@ -95,25 +102,8 @@ export function MediaMigration({ mountPoint }: MediaMigrationProps) {
             onCancel={handleCancel}
             cancelling={cancelMigration.isPending}
             onDismiss={handleDismiss}
+            onRetry={handleRetry}
           />
-        </div>
-      </Card>
-    );
-  }
-
-  // Show a loading card while waiting for first poll after start
-  if (migrationStarted && !migrationStatus) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FolderSync className="h-5 w-5" />
-            Media Migration
-          </CardTitle>
-        </CardHeader>
-        <div className="p-6 pt-0 flex items-center gap-3">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-          <span className="text-sm text-muted-foreground">Starting migration...</span>
         </div>
       </Card>
     );

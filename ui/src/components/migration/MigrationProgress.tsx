@@ -30,6 +30,7 @@ interface MigrationProgressProps {
   onCancel: () => void;
   cancelling: boolean;
   onDismiss?: () => void;
+  onRetry?: () => void;
 }
 
 function formatBytes(bytes: number): string {
@@ -83,6 +84,7 @@ export function MigrationProgress({
   onCancel,
   cancelling,
   onDismiss,
+  onRetry,
 }: MigrationProgressProps) {
   return (
     <div className="space-y-6">
@@ -186,14 +188,26 @@ export function MigrationProgress({
         </button>
       )}
 
-      {/* Dismiss Button — return to pre-flight view after completion/error/cancel */}
-      {onDismiss && (phase === 'complete' || phase === 'error' || phase === 'cancelled') && (
-        <button
-          onClick={onDismiss}
-          className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
-        >
-          Dismiss
-        </button>
+      {/* Action buttons — return to pre-flight view after completion/error/cancel */}
+      {(phase === 'complete' || phase === 'error' || phase === 'cancelled') && (
+        <div className="flex gap-2">
+          {onRetry && (phase === 'error' || phase === 'cancelled') && (
+            <button
+              onClick={onRetry}
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              Retry
+            </button>
+          )}
+          {onDismiss && (
+            <button
+              onClick={onDismiss}
+              className="rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-muted"
+            >
+              Dismiss
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

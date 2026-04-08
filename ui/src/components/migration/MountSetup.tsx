@@ -5,16 +5,20 @@ import { Card, CardHeader, CardTitle } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import {
   Loader2, CheckCircle2, XCircle, AlertTriangle,
-  Copy, Check, HardDrive, Wifi,
+  Copy, Check, HardDrive, Wifi, Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useTestConnection, useGenerateMount, useVerifyMount } from '@/hooks/useMigration';
+import {
+  useTestConnection, useGenerateMount, useVerifyMount,
+  useVerifyNasVolume, useSetupNasVolume,
+} from '@/hooks/useMigration';
 
 interface MountSetupProps {
   onMountVerified: (mountPoint: string) => void;
 }
 
 export function MountSetup({ onMountVerified }: MountSetupProps) {
+  const [setupMode, setSetupMode] = useState<'managed' | 'script'>('managed');
   const [protocol, setProtocol] = useState('smb');
   const [host, setHost] = useState('');
   const [sharePath, setSharePath] = useState('');
@@ -28,10 +32,16 @@ export function MountSetup({ onMountVerified }: MountSetupProps) {
     writable: boolean;
     freeSpace: string | null;
   } | null>(null);
+  const [managedStatus, setManagedStatus] = useState<{
+    phase: 'idle' | 'verifying' | 'configuring' | 'reconnecting' | 'done' | 'error';
+    message?: string;
+  }>({ phase: 'idle' });
 
   const testConnection = useTestConnection();
   const generateMount = useGenerateMount();
   const verifyMount = useVerifyMount();
+  const verifyNasVolume = useVerifyNasVolume();
+  const setupNasVolume = useSetupNasVolume();
 
   const [discoveredShares, setDiscoveredShares] = useState<string[]>([]);
 
@@ -49,7 +59,9 @@ export function MountSetup({ onMountVerified }: MountSetupProps) {
             setDiscoveredShares(data.availableShares);
           }
 
-          if (data.reachable && data.shareFound === true) {
+          if (data.authFailed) {
+            toast.error('Authentication failed — check the SMB username and password');
+          } else if (data.reachable && data.shareFound === true) {
             toast.success(`${host} is reachable and share path found`);
           } else if (data.reachable && data.shareFound === false) {
             toast.warning(`${host} is reachable but share path not found`);
@@ -108,8 +120,137 @@ export function MountSetup({ onMountVerified }: MountSetupProps) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Wait for the UI server to come back online after the self-restart sidecar
+  // recreates media-ui with the new volume mount.
+  const waitForMediaUiReady = async (timeoutMs = 60000): Promise<boolean> => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const res = await fetch('/api/migration/setup-nas-volume', { credentials: 'include' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.active) return true;
+        }
+      } catch {
+        // server still restarting — keep polling
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    return false;
+  };
+
+  const handleConfigureManaged = async () => {
+    if (!host || !sharePath) {
+      toast.error('Enter host and share path first');
+      return;
+    }
+    if (protocol === 'smb' && !smbUser) {
+      toast.error('SMB requires a username');
+      return;
+    }
+
+    const payload = {
+      protocol: protocol as 'smb' | 'nfs',
+      host,
+      sharePath,
+      smbUser: smbUser || undefined,
+      smbPassword: smbPassword || undefined,
+    };
+
+    // Step 1: verify the volume options actually mount and write
+    setManagedStatus({ phase: 'verifying', message: 'Testing NAS volume mount...' });
+    let verifyResult;
+    try {
+      verifyResult = await verifyNasVolume.mutateAsync(payload);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Verification request failed';
+      setManagedStatus({ phase: 'error', message: msg });
+      toast.error(msg);
+      return;
+    }
+    if (!verifyResult.success) {
+      setManagedStatus({ phase: 'error', message: verifyResult.error || 'Volume verification failed' });
+      toast.error(verifyResult.error || 'Volume verification failed');
+      return;
+    }
+    toast.success(`Volume verified — ${verifyResult.freeSpace} free`);
+
+    // Step 2: write the override file, update .env, recreate sonarr/radarr/bazarr,
+    // schedule media-ui restart
+    setManagedStatus({ phase: 'configuring', message: 'Writing config and recreating services...' });
+    let setupResult;
+    try {
+      setupResult = await setupNasVolume.mutateAsync(payload);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Setup request failed';
+      setManagedStatus({ phase: 'error', message: msg });
+      toast.error(msg);
+      return;
+    }
+    if (!setupResult.success) {
+      setManagedStatus({ phase: 'error', message: setupResult.error || 'Setup failed' });
+      toast.error(setupResult.error || 'Setup failed');
+      return;
+    }
+
+    // Step 3: wait for media-ui to come back after self-restart
+    setManagedStatus({ phase: 'reconnecting', message: 'media-ui is restarting — reconnecting...' });
+    const ready = await waitForMediaUiReady(90000);
+    if (!ready) {
+      setManagedStatus({
+        phase: 'error',
+        message: 'Timed out waiting for media-ui to restart. Try refreshing the page.',
+      });
+      toast.error('media-ui did not come back in time — refresh the page');
+      return;
+    }
+
+    setManagedStatus({ phase: 'done', message: 'NAS volume is configured and active.' });
+    toast.success('NAS volume configured');
+    onMountVerified(setupResult.mountPath || '/mnt/nas/media');
+  };
+
   return (
     <div className="space-y-6">
+      {/* Setup mode selector */}
+      <Card>
+        <div className="p-6 space-y-3">
+          <p className="text-sm font-medium">How should containers access the NAS?</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setSetupMode('managed')}
+              className={`text-left rounded-md border p-4 transition ${
+                setupMode === 'managed' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <span className="font-medium text-sm">Managed Volume (recommended)</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Docker mounts the share directly per container. No host mount, no sudo, works on WSL2.
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSetupMode('script')}
+              className={`text-left rounded-md border p-4 transition ${
+                setupMode === 'script' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <HardDrive className="h-4 w-4" />
+                <span className="font-medium text-sm">Host Mount Script</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Generates a bash script you run with sudo to mount via fstab. Legacy mode.
+              </p>
+            </button>
+          </div>
+        </div>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -215,7 +356,18 @@ export function MountSetup({ onMountVerified }: MountSetupProps) {
                   {testConnection.data.availableShares.length} share(s) discovered
                 </div>
               )}
-              {testConnection.data.shareError && (
+              {testConnection.data.shareError && testConnection.data.authFailed && (
+                <div className="flex items-start gap-2">
+                  <XCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                  <div>
+                    <span className="text-red-500 font-medium">{testConnection.data.shareError}</span>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Update the SMB username and password above, then click Test Connection again.
+                    </p>
+                  </div>
+                </div>
+              )}
+              {testConnection.data.shareError && !testConnection.data.authFailed && (
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 text-yellow-500" />
                   <span className="text-muted-foreground">{testConnection.data.shareError}</span>
@@ -266,37 +418,92 @@ export function MountSetup({ onMountVerified }: MountSetupProps) {
             )}
           </div>
 
-          {/* Mount Point */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1">Local Mount Point</label>
-            <input
-              type="text"
-              value={mountPoint}
-              onChange={(e) => setMountPoint(e.target.value)}
-              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
-            />
-          </div>
+          {/* Mount Point — only relevant for script mode */}
+          {setupMode === 'script' && (
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">Local Mount Point</label>
+              <input
+                type="text"
+                value={mountPoint}
+                onChange={(e) => setMountPoint(e.target.value)}
+                className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
+              />
+            </div>
+          )}
 
-          {/* Generate Script Button */}
-          <button
-            onClick={handleGenerateMount}
-            disabled={generateMount.isPending || !host || !sharePath || !mountPoint}
-            className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            {generateMount.isPending ? (
-              <span className="flex items-center justify-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Generating...
-              </span>
-            ) : (
-              'Generate Mount Script'
-            )}
-          </button>
+          {/* Action button — different per mode */}
+          {setupMode === 'managed' ? (
+            <>
+              <button
+                onClick={handleConfigureManaged}
+                disabled={
+                  verifyNasVolume.isPending || setupNasVolume.isPending ||
+                  managedStatus.phase === 'reconnecting' ||
+                  !host || !sharePath || (protocol === 'smb' && !smbUser)
+                }
+                className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {managedStatus.phase === 'verifying' && (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Verifying volume...
+                  </span>
+                )}
+                {managedStatus.phase === 'configuring' && (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Configuring services...
+                  </span>
+                )}
+                {managedStatus.phase === 'reconnecting' && (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Reconnecting to media-ui...
+                  </span>
+                )}
+                {(managedStatus.phase === 'idle' || managedStatus.phase === 'done' || managedStatus.phase === 'error') && (
+                  'Configure NAS Volume'
+                )}
+              </button>
+
+              {managedStatus.phase === 'done' && (
+                <div className="rounded-md bg-green-500/10 border border-green-500/20 p-3">
+                  <div className="flex items-center gap-2 text-sm text-green-600">
+                    <CheckCircle2 className="h-4 w-4" />
+                    {managedStatus.message}
+                  </div>
+                </div>
+              )}
+              {managedStatus.phase === 'error' && managedStatus.message && (
+                <div className="rounded-md bg-red-500/10 border border-red-500/20 p-3">
+                  <div className="flex items-start gap-2 text-sm text-red-500">
+                    <XCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>{managedStatus.message}</span>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <button
+              onClick={handleGenerateMount}
+              disabled={generateMount.isPending || !host || !sharePath || !mountPoint}
+              className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              {generateMount.isPending ? (
+                <span className="flex items-center justify-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Generating...
+                </span>
+              ) : (
+                'Generate Mount Script'
+              )}
+            </button>
+          )}
         </div>
       </Card>
 
-      {/* Mount Command */}
-      {generatedCommand && (
+      {/* Mount Command — only in script mode */}
+      {setupMode === 'script' && generatedCommand && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Run This Command</CardTitle>

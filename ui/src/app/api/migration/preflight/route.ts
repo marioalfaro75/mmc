@@ -76,19 +76,30 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Check Bazarr connectivity (optional)
+    // Check Bazarr connectivity (optional). Bazarr's LinuxServer image takes
+    // 30-60s to fully initialise, so retry a few times before giving up.
     const bazarrKey = process.env.BAZARR_API_KEY;
     if (bazarrKey) {
-      try {
-        const { getSystemStatus } = await import('@/lib/api/bazarr');
-        await getSystemStatus();
+      const { getSystemStatus } = await import('@/lib/api/bazarr');
+      let bazarrErr: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await getSystemStatus();
+          bazarrErr = null;
+          break;
+        } catch (e) {
+          bazarrErr = e;
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 3000));
+        }
+      }
+      if (!bazarrErr) {
         checks.push({ check: 'bazarr', status: 'ok', message: 'Bazarr connected' });
-      } catch (error) {
+      } else {
         checks.push({
           check: 'bazarr',
           status: 'warn',
           message: 'Cannot reach Bazarr — subtitle root folders will need manual update',
-          detail: sanitizeError(error),
+          detail: sanitizeError(bazarrErr),
         });
       }
     } else {

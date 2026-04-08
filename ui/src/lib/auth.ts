@@ -1,5 +1,5 @@
 import { randomBytes, scrypt, timingSafeEqual } from 'crypto';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'fs';
 import { dirname } from 'path';
 
 /* ------------------------------------------------------------------ */
@@ -31,14 +31,17 @@ interface Session {
 
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-const ADMINS_FILE = (() => {
+const CONFIG_DIR = (() => {
   // CONFIG_ROOT may not be an env var in the container; derive from HOST_PROJECT_DIR
-  if (process.env.CONFIG_ROOT) return `${process.env.CONFIG_ROOT}/admins.json`;
+  if (process.env.CONFIG_ROOT) return process.env.CONFIG_ROOT;
   const hostProjectDir = process.env.HOST_PROJECT_DIR || '';
   const homeMatch = hostProjectDir.match(/^(\/home\/[^/]+)/);
   const home = homeMatch ? homeMatch[1] : process.env.HOME || '/root';
-  return `${home}/.mmc/config/admins.json`;
+  return `${home}/.mmc/config`;
 })();
+
+const ADMINS_FILE = `${CONFIG_DIR}/admins.json`;
+const SESSIONS_FILE = `${CONFIG_DIR}/admin-sessions.json`;
 
 // Public pages that don't require admin login
 const PUBLIC_PAGE_PATHS = new Set(['/', '/downloads', '/calendar', '/requests']);
@@ -134,12 +137,45 @@ export async function authenticateAdmin(username: string, password: string): Pro
 }
 
 /* ------------------------------------------------------------------ */
-/*  Session management (in-memory)                                     */
+/*  Session management (file-backed, survives container restarts)      */
 /* ------------------------------------------------------------------ */
 
 const sessions = new Map<string, Session>();
+let hydrated = false;
+
+function hydrateSessions(): void {
+  if (hydrated) return;
+  hydrated = true;
+  try {
+    if (!existsSync(SESSIONS_FILE)) return;
+    const raw = readFileSync(SESSIONS_FILE, 'utf-8');
+    const data = JSON.parse(raw) as Session[];
+    const now = Date.now();
+    for (const s of data) {
+      // Validate shape and only keep unexpired sessions
+      if (s && typeof s.token === 'string' && typeof s.expiresAt === 'number' && s.expiresAt > now) {
+        sessions.set(s.token, s);
+      }
+    }
+  } catch {
+    // Corrupt or unreadable file — start fresh; log on next persist
+  }
+}
+
+function persistSessions(): void {
+  try {
+    mkdirSync(dirname(SESSIONS_FILE), { recursive: true });
+    const tmp = `${SESSIONS_FILE}.tmp`;
+    const data = JSON.stringify(Array.from(sessions.values()));
+    writeFileSync(tmp, data, { mode: 0o600 });
+    renameSync(tmp, SESSIONS_FILE);
+  } catch {
+    // Persistence failed — sessions still work in-memory until next restart
+  }
+}
 
 export function createSession(admin: Admin): string {
+  hydrateSessions();
   const token = randomBytes(32).toString('hex');
   const now = Date.now();
   sessions.set(token, {
@@ -149,21 +185,27 @@ export function createSession(admin: Admin): string {
     createdAt: now,
     expiresAt: now + SESSION_MAX_AGE_MS,
   });
+  persistSessions();
   return token;
 }
 
 export function getSession(token: string): Session | null {
+  hydrateSessions();
   const session = sessions.get(token);
   if (!session) return null;
   if (Date.now() > session.expiresAt) {
     sessions.delete(token);
+    persistSessions();
     return null;
   }
   return session;
 }
 
 export function deleteSession(token: string): void {
-  sessions.delete(token);
+  hydrateSessions();
+  if (sessions.delete(token)) {
+    persistSessions();
+  }
 }
 
 /* ------------------------------------------------------------------ */

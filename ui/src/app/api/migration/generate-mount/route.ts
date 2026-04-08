@@ -8,6 +8,18 @@ function resolvePath(p: string): string {
   return p;
 }
 
+// Escape a string for safe embedding in a bash script (single-quote wrapping)
+function shellEscape(s: string): string {
+  // Replace single quotes with '\'' (end quote, escaped quote, start quote)
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
+// Validate that a path contains only safe characters for fstab/mount usage
+function isValidPath(p: string): boolean {
+  // Allow alphanumeric, slashes, dots, hyphens, underscores
+  return /^[a-zA-Z0-9/._ -]+$/.test(p) && !p.includes('..');
+}
+
 export async function POST(request: NextRequest) {
   const denied = requireAdmin(request);
   if (denied) return denied;
@@ -31,6 +43,14 @@ export async function POST(request: NextRequest) {
     // Validate host format
     if (!/^[a-zA-Z0-9._-]+$/.test(host)) {
       return NextResponse.json({ success: false, error: 'Invalid host format' }, { status: 400 });
+    }
+
+    // Validate mount point and share path contain only safe characters
+    if (!isValidPath(mountPoint)) {
+      return NextResponse.json({ success: false, error: 'Mount point contains invalid characters' }, { status: 400 });
+    }
+    if (!isValidPath(sharePath)) {
+      return NextResponse.json({ success: false, error: 'Share path contains invalid characters' }, { status: 400 });
     }
 
     const resolvedMount = resolvePath(mountPoint);
@@ -63,12 +83,9 @@ export async function POST(request: NextRequest) {
         mountOpts = `credentials=${credFile},uid=${puid},gid=${pgid},_netdev,nofail,iocharset=utf8`;
         credentialSection = `
 # Store SMB credentials securely
-mkdir -p "$(dirname "${credFile}")"
-cat > "${credFile}" << 'CRED'
-username=${smbUser}
-password=${smbPassword || ''}
-CRED
-chmod 600 "${credFile}"
+mkdir -p "$(dirname ${shellEscape(credFile)})"
+printf 'username=%s\\npassword=%s\\n' ${shellEscape(smbUser)} ${shellEscape(smbPassword || '')} > ${shellEscape(credFile)}
+chmod 600 ${shellEscape(credFile)}
 echo "  Credentials stored at ${credFile} (mode 600)"
 `;
       } else {
