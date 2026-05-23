@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Constant-time string equality. Both inputs must be utf-8 strings.
+// Differing-length inputs return false early but in constant time relative
+// to the longer string — sufficient because we only ever compare the
+// configured key against an attacker-controlled candidate.
+function constantTimeEqual(a: string, b: string): boolean {
+  const aBytes = new TextEncoder().encode(a);
+  const bBytes = new TextEncoder().encode(b);
+  if (aBytes.length !== bBytes.length) return false;
+  let diff = 0;
+  for (let i = 0; i < aBytes.length; i++) diff |= aBytes[i] ^ bBytes[i];
+  return diff === 0;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Rate limiting – simple in-memory Map with lazy cleanup             */
 /* ------------------------------------------------------------------ */
@@ -215,7 +228,7 @@ export async function middleware(request: NextRequest) {
       try {
         const body = await request.json();
         const submittedKey = body?.key;
-        if (apiKey && submittedKey === apiKey) {
+        if (apiKey && typeof submittedKey === 'string' && constantTimeEqual(submittedKey, apiKey)) {
           const res = NextResponse.json({ ok: true }, { status: 200 });
           res.cookies.set('mmc-auth', apiKey, {
             httpOnly: true,
@@ -251,7 +264,9 @@ export async function middleware(request: NextRequest) {
     if (!isPublic) {
       const cookieAuth = request.cookies.get('mmc-auth')?.value;
       const headerAuth = request.headers.get('x-api-key');
-      const authenticated = cookieAuth === apiKey || headerAuth === apiKey;
+      const authenticated =
+        (typeof cookieAuth === 'string' && constantTimeEqual(cookieAuth, apiKey)) ||
+        (typeof headerAuth === 'string' && constantTimeEqual(headerAuth, apiKey));
 
       if (!authenticated) {
         if (pathname.startsWith('/api/')) {

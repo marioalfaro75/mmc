@@ -3,18 +3,19 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { sanitizeError } from '@/lib/security';
 import { requireAdmin } from '@/lib/auth';
+import { isValidPath } from '@/lib/shell-safe';
 
 const execFileAsync = promisify(execFile);
 
-// Run a command on the host via a temporary Docker container.
-// The media-ui container cannot see host mounts, so we spawn a
-// short-lived container with the mount point bind-mounted in.
-async function runOnHost(cmd: string, mountPoint: string, timeoutMs = 15000): Promise<string> {
-  const { stdout } = await execFileAsync('docker', [
-    'run', '--rm', '--net=host',
-    '-v', `${mountPoint}:${mountPoint}`,
-    'alpine', 'sh', '-c', cmd,
-  ], { timeout: timeoutMs });
+// Run a tool inside a short-lived alpine container with the user-supplied
+// mount point bind-mounted. argv is passed as Docker arguments directly —
+// nothing is ever fed to a shell, so user input can't escape its slot.
+async function runOnHost(argv: string[], bindPath: string, timeoutMs = 15000): Promise<string> {
+  const { stdout } = await execFileAsync(
+    'docker',
+    ['run', '--rm', '--net=host', '-v', `${bindPath}:${bindPath}`, 'alpine', ...argv],
+    { timeout: timeoutMs },
+  );
   return stdout;
 }
 
@@ -27,10 +28,8 @@ export async function POST(request: NextRequest) {
     if (!mountPoint || typeof mountPoint !== 'string') {
       return NextResponse.json({ success: false, error: 'Mount point is required' }, { status: 400 });
     }
-
-    // Validate no path traversal
-    if (mountPoint.includes('..')) {
-      return NextResponse.json({ success: false, error: 'Path traversal not allowed' }, { status: 400 });
+    if (!isValidPath(mountPoint) || !mountPoint.startsWith('/')) {
+      return NextResponse.json({ success: false, error: 'Invalid mount point' }, { status: 400 });
     }
 
     const result: {
@@ -45,12 +44,18 @@ export async function POST(request: NextRequest) {
       totalSpace: null,
     };
 
-    // Check if mounted on the host by inspecting /proc/mounts
+    // Is it a mount? awk with -v passes the target as a script variable,
+    // not as shell text — safe even if mountPoint contained metacharacters
+    // (it can't, after isValidPath, but defense-in-depth). awk exits 0 if a
+    // matching mount line was found, non-zero otherwise — runOnHost rejects
+    // on non-zero so we use try/catch to read the result.
     try {
-      const mounts = await runOnHost(`cat /proc/mounts | grep ' ${mountPoint} '`, mountPoint);
-      result.mounted = mounts.trim().length > 0;
+      await runOnHost(
+        ['awk', '-v', `t=${mountPoint}`, '$2 == t { found=1 } END { exit !found }', '/proc/mounts'],
+        mountPoint,
+      );
+      result.mounted = true;
     } catch {
-      // grep returns exit 1 if no match — not mounted
       result.mounted = false;
     }
 
@@ -58,21 +63,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, ...result });
     }
 
-    // Check if writable
+    // Can we write? touch + rm a probe file inside the mount.
+    const probe = `${mountPoint}/.mmc-mount-test`;
     try {
-      await runOnHost(
-        `touch ${mountPoint}/.mmc-mount-test && rm -f ${mountPoint}/.mmc-mount-test && echo ok`,
-        mountPoint
-      );
+      await runOnHost(['sh', '-c', 'touch "$1" && rm -f "$1"', 'sh', probe], mountPoint);
       result.writable = true;
     } catch {
       result.writable = false;
     }
 
-    // Get disk space
+    // Disk space: df with the mount point as a positional argv argument.
     try {
-      const dfOutput = await runOnHost(`df -h ${mountPoint} | tail -1`, mountPoint);
-      const parts = dfOutput.trim().split(/\s+/);
+      const dfOutput = await runOnHost(['df', '-h', mountPoint], mountPoint);
+      const last = dfOutput.trim().split('\n').pop() || '';
+      const parts = last.split(/\s+/);
       if (parts.length >= 4) {
         result.totalSpace = parts[1] || null;
         result.freeSpace = parts[3] || null;

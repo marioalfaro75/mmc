@@ -229,7 +229,8 @@ export function isPublicRoute(pathname: string): boolean {
 
 export function getAdminSession(request: Request): Session | null {
   const cookieHeader = request.headers.get('cookie') || '';
-  const match = cookieHeader.match(/mmc-session=([^;]+)/);
+  // Anchor on cookie boundary to avoid matching e.g. `other-mmc-session=evil`.
+  const match = cookieHeader.match(/(?:^|;\s*)mmc-session=([^;]+)/);
   if (!match) return null;
   return getSession(match[1]);
 }

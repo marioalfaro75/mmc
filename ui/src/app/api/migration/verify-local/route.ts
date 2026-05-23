@@ -3,15 +3,16 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { sanitizeError } from '@/lib/security';
 import { requireAdmin } from '@/lib/auth';
+import { isValidPath } from '@/lib/shell-safe';
 
 const execFileAsync = promisify(execFile);
 
-async function runOnHost(cmd: string, bindPath: string, timeoutMs = 15000): Promise<string> {
-  const { stdout } = await execFileAsync('docker', [
-    'run', '--rm',
-    '-v', `${bindPath}:${bindPath}`,
-    'alpine', 'sh', '-c', cmd,
-  ], { timeout: timeoutMs });
+async function runOnHost(argv: string[], bindPath: string, timeoutMs = 15000): Promise<string> {
+  const { stdout } = await execFileAsync(
+    'docker',
+    ['run', '--rm', '-v', `${bindPath}:${bindPath}`, 'alpine', ...argv],
+    { timeout: timeoutMs },
+  );
   return stdout;
 }
 
@@ -24,11 +25,8 @@ export async function POST(request: NextRequest) {
     if (!path || typeof path !== 'string') {
       return NextResponse.json({ error: 'Path is required' }, { status: 400 });
     }
-    if (path.includes('..')) {
-      return NextResponse.json({ error: 'Path traversal not allowed' }, { status: 400 });
-    }
-    if (!path.startsWith('/')) {
-      return NextResponse.json({ error: 'Path must be absolute' }, { status: 400 });
+    if (!isValidPath(path) || !path.startsWith('/')) {
+      return NextResponse.json({ error: 'Invalid path' }, { status: 400 });
     }
 
     const result: {
@@ -37,29 +35,27 @@ export async function POST(request: NextRequest) {
       freeSpace: string | null;
     } = { exists: false, writable: false, freeSpace: null };
 
-    // Check if directory exists on the host
     try {
-      await runOnHost(`test -d ${path} && echo yes`, path);
+      await runOnHost(['test', '-d', path], path);
       result.exists = true;
     } catch {
       return NextResponse.json(result);
     }
 
-    // Check writable
+    const probe = `${path}/.mmc-verify-test`;
     try {
-      await runOnHost(
-        `touch ${path}/.mmc-verify-test && rm -f ${path}/.mmc-verify-test && echo ok`,
-        path
-      );
+      // `sh -c '<script>' sh "$arg"` puts $arg in $1 inside the script — no
+      // additional shell interpretation of its value.
+      await runOnHost(['sh', '-c', 'touch "$1" && rm -f "$1"', 'sh', probe], path);
       result.writable = true;
     } catch {
       result.writable = false;
     }
 
-    // Get free space
     try {
-      const dfOutput = await runOnHost(`df -h ${path} | tail -1`, path);
-      const parts = dfOutput.trim().split(/\s+/);
+      const dfOutput = await runOnHost(['df', '-h', path], path);
+      const last = dfOutput.trim().split('\n').pop() || '';
+      const parts = last.split(/\s+/);
       if (parts.length >= 4) {
         result.freeSpace = parts[3] || null;
       }

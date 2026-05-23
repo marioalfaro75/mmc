@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
       maxAge: 60 * 60 * 24 * 30,
     });
     res.cookies.set('mmc-has-admins', '1', {
+      httpOnly: true,
       sameSite: 'strict',
       path: '/',
       maxAge: 60 * 60 * 24 * 365 * 10,
