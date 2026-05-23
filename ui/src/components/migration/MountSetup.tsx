@@ -229,7 +229,7 @@ export function MountSetup({ onMountVerified }: MountSetupProps) {
                 <span className="font-medium text-sm">Managed Volume (recommended)</span>
               </div>
               <p className="text-xs text-muted-foreground">
-                Docker mounts the share directly per container. No host mount, no sudo, works on WSL2.
+                Docker mounts the share directly per container. No host mount, no sudo, no fstab edits.
               </p>
             </button>
             <button

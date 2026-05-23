@@ -4,7 +4,7 @@
 # ============================================================
 # Usage: ./scripts/deploy.sh [--install] [--dry-run] [--skip-ui] [--ui-only] [--ui-docker] [--update] [--nas] [--help]
 #
-# One-liner install (WSL/Linux):
+# One-liner install (Ubuntu):
 #   curl -fsSL https://raw.githubusercontent.com/marioalfaro75/mmc/main/scripts/deploy.sh | bash -s -- --install
 #
 # Modes:
@@ -34,17 +34,34 @@ else
     PROJECT_DIR=""
 fi
 
-# Chain in any override files that are present so every `docker compose`
+# Chain in the NAS override file when present so every `docker compose`
 # invocation below — and the UI inside the container — sees the same view.
 # Keep this list in sync with ui/src/lib/docker.ts OVERRIDE_FILES.
 compose_files() {
     [ -z "$PROJECT_DIR" ] && return
     _files="$PROJECT_DIR/docker-compose.yml"
-    [ -f "$PROJECT_DIR/docker-compose.wsl.override.yml" ] && _files="$_files:$PROJECT_DIR/docker-compose.wsl.override.yml"
     [ -f "$PROJECT_DIR/docker-compose.nas.override.yml" ] && _files="$_files:$PROJECT_DIR/docker-compose.nas.override.yml"
     export COMPOSE_FILE="$_files"
 }
 compose_files
+
+# This stack only supports Linux hosts (Ubuntu in particular). Fail early on
+# WSL or macOS so users don't get cryptic errors deep in the deploy.
+require_linux_host() {
+    _uname="$(uname -s 2>/dev/null || echo unknown)"
+    if [ "$_uname" != "Linux" ]; then
+        echo "ERROR: Mars Media Centre only supports Linux hosts (got $_uname)." >&2
+        echo "       Run this on an Ubuntu VM or bare-metal Ubuntu host." >&2
+        exit 1
+    fi
+    if grep -qi microsoft /proc/version 2>/dev/null; then
+        echo "ERROR: WSL is no longer supported. Run on a real Ubuntu host instead." >&2
+        echo "       WSL's dynamic IP and Docker-Desktop integration kept causing" >&2
+        echo "       problems — moving to a VM removes the whole class of issue." >&2
+        exit 1
+    fi
+}
+require_linux_host
 
 # --- Defaults ---
 DRY_RUN=0
@@ -284,23 +301,7 @@ find_free_subnet() {
 }
 
 detect_local_subnet() {
-    # On WSL, the Linux network is virtual — detect the real LAN from Windows
-    if grep -qi microsoft /proc/version 2>/dev/null; then
-        _win_net=$(powershell.exe -NoProfile -Command \
-            "Get-NetIPAddress -AddressFamily IPv4 | Where-Object { \$_.InterfaceAlias -notmatch 'Loopback|vEthernet|Bluetooth' -and \$_.PrefixOrigin -eq 'Dhcp' } | Select-Object -First 1 IPAddress, PrefixLength | ForEach-Object { \"\$(\$_.IPAddress)/\$(\$_.PrefixLength)\" }" 2>/dev/null | tr -d '\r')
-        if [ -n "$_win_net" ]; then
-            _ip="${_win_net%/*}"
-            _mask="${_win_net#*/}"
-            if [ "$_mask" = "24" ]; then
-                echo "${_ip%.*}.0/24"
-                return 0
-            fi
-            echo "$_win_net"
-            return 0
-        fi
-    fi
-
-    # Native Linux: find the default route interface, then get its subnet
+    # Find the default route interface, then derive its subnet.
     _iface=$(ip route show default 2>/dev/null | awk '{print $5; exit}')
     if [ -n "$_iface" ]; then
         _cidr=$(ip -4 addr show "$_iface" 2>/dev/null | awk '/inet / {print $2; exit}')
@@ -565,30 +566,8 @@ setup_nas() {
     fi
     echo "$_fstab_line" | sudo tee -a /etc/fstab >/dev/null
     pass "Added fstab entry for persistence"
-
-    # Handle WSL auto-mount
-    if detect_wsl; then
-        info "WSL detected — configuring auto-mount on startup"
-        _wsl_conf="/etc/wsl.conf"
-        if [ -f "$_wsl_conf" ] && grep -q "^\[boot\]" "$_wsl_conf"; then
-            if grep -q "^command" "$_wsl_conf"; then
-                # Append mount to existing boot command
-                _existing=$(grep "^command" "$_wsl_conf" | head -1 | sed 's/^command\s*=\s*//')
-                if ! echo "$_existing" | grep -qF "mount -a"; then
-                    sudo sed -i "s|^command\s*=.*|command=${_existing} \&\& mount -a|" "$_wsl_conf"
-                    pass "Added mount -a to existing WSL boot command"
-                else
-                    pass "WSL boot command already includes mount -a"
-                fi
-            else
-                echo "command=mount -a" | sudo tee -a "$_wsl_conf" >/dev/null
-                pass "Added mount -a to WSL boot command"
-            fi
-        else
-            printf "[boot]\ncommand=mount -a\n" | sudo tee -a "$_wsl_conf" >/dev/null
-            pass "Created WSL boot config with mount -a"
-        fi
-    fi
+    # systemd-fstab-generator promotes _netdev,nofail entries to proper
+    # network-dependent .mount units automatically on Ubuntu — no extra work.
 
     # Update DATA_ROOT in .env
     if [ -f "$ENV_FILE" ]; then
@@ -835,7 +814,6 @@ validate_compose_syntax() {
         warn "Skipped — .env file missing (compose cannot resolve variables)"
         return
     fi
-    sync_wsl_override
     if docker compose config -q 2>/dev/null; then
         pass "docker-compose.yml is valid"
     else
@@ -1372,34 +1350,6 @@ print_summary() {
 # INSTALL / BOOTSTRAP FUNCTIONS
 # ============================================================
 
-detect_wsl() {
-    if grep -qi microsoft /proc/version 2>/dev/null; then
-        return 0
-    fi
-    return 1
-}
-
-# Toggle the WSL compose override and refresh COMPOSE_FILE so subsequent
-# `docker compose` calls in this run see the new file list.
-sync_wsl_override() {
-    [ -z "$PROJECT_DIR" ] && return
-    _override="$PROJECT_DIR/docker-compose.wsl.override.yml.disabled"
-    _active="$PROJECT_DIR/docker-compose.wsl.override.yml"
-    if detect_wsl; then
-        # Make sure the override is active. Shipped as the .yml file already,
-        # but if a previous Linux run renamed it to .disabled, restore it.
-        if [ ! -f "$_active" ] && [ -f "$_override" ]; then
-            mv "$_override" "$_active"
-        fi
-    else
-        # On non-WSL hosts, hide the override so /mnt is not bind-mounted.
-        if [ -f "$_active" ]; then
-            mv "$_active" "$_override"
-        fi
-    fi
-    compose_files
-}
-
 install_docker() {
     section "Install Docker"
     if command -v docker >/dev/null 2>&1; then
@@ -1437,14 +1387,7 @@ install_docker() {
     # Start Docker daemon if not running
     if ! docker info >/dev/null 2>&1; then
         info "Starting Docker daemon..."
-        if detect_wsl; then
-            # WSL typically lacks systemd — fall back to service / background dockerd
-            sudo service docker start 2>/dev/null || sudo dockerd &
-        elif command -v systemctl >/dev/null 2>&1; then
-            sudo systemctl enable --now docker
-        else
-            sudo service docker start 2>/dev/null || true
-        fi
+        sudo systemctl enable --now docker
         sleep 3
     fi
 
@@ -1560,15 +1503,7 @@ run_install() {
     printf "  ${BOLD}Welcome to Mars Media Centre!${RESET}\n"
     echo ""
 
-    if detect_wsl; then
-        pass "Running on WSL"
-        info "Tip: Add this to C:\\Users\\<you>\\.wslconfig to keep containers running:"
-        info "  [wsl2]"
-        info "  vmIdleTimeout=-1"
-        echo ""
-    else
-        info "Running on Linux"
-    fi
+    info "Running on Linux"
 
     # Ensure basic tools
     install_curl

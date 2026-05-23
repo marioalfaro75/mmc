@@ -143,23 +143,8 @@ if grep -qF "${resolvedMount}" /etc/fstab 2>/dev/null; then
 fi
 echo "${fstabLine}" >> /etc/fstab
 echo "  Added fstab entry for persistence"
-
-# Handle WSL auto-mount
-if grep -qi microsoft /proc/version 2>/dev/null; then
-    echo "  WSL detected — configuring auto-mount"
-    if [ -f /etc/wsl.conf ] && grep -q "^\\[boot\\]" /etc/wsl.conf; then
-        if grep -q "^command" /etc/wsl.conf; then
-            if ! grep -qF "mount -a" /etc/wsl.conf; then
-                sed -i "s|^command\\s*=.*|&  \\&\\& mount -a|" /etc/wsl.conf
-            fi
-        else
-            sed -i "/^\\[boot\\]/a command=mount -a" /etc/wsl.conf
-        fi
-    else
-        printf "\\n[boot]\\ncommand=mount -a\\n" >> /etc/wsl.conf
-    fi
-    echo "  WSL boot config updated"
-fi
+# systemd-fstab-generator promotes _netdev,nofail entries to proper
+# network-dependent .mount units automatically on Ubuntu — no extra work.
 
 echo ""
 echo "=== NAS mount complete ==="

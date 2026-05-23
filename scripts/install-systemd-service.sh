@@ -23,12 +23,6 @@ if [ ! -f "$TEMPLATE" ]; then
     exit 1
 fi
 
-if grep -qi microsoft /proc/version 2>/dev/null; then
-    echo "WSL detected — systemd is not the right boot mechanism here."
-    echo "Use the [boot] section of /etc/wsl.conf instead. Aborting."
-    exit 1
-fi
-
 if ! command -v systemctl >/dev/null 2>&1; then
     echo "ERROR: systemctl not found — this host doesn't use systemd." >&2
     exit 1

@@ -255,8 +255,8 @@ services:
     ports:
       - "${HOST_BIND:-127.0.0.1}:${PORT_UI}:3000"
     extra_hosts:
-      # Lets PLEX_URL=http://host.docker.internal:32400 reach the host's Plex
-      # on bare-metal Linux (Docker Desktop / WSL provide this hostname natively).
+      # Resolve host.docker.internal to the host on bare-metal Linux so the
+      # PLEX_URL default ({...}:host.docker.internal:32400) reaches host Plex.
       - "host.docker.internal:host-gateway"
     environment:
       - SONARR_URL=http://sonarr:8989

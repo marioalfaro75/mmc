@@ -809,7 +809,7 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
             <p className="mt-1">Select the type of destination for your media:</p>
             <ul className="ml-4 mt-1 list-disc text-xs text-muted-foreground">
               <li><strong className="text-foreground">NAS / Network Share</strong> — an SMB or NFS share on your network (e.g. Synology, TrueNAS)</li>
-              <li><strong className="text-foreground">Local Directory</strong> — another drive or path on this machine (e.g. <Code>/mnt/d</Code>, a second SSD, or an external USB drive). Use the <strong>Browse</strong> button to navigate your filesystem and select a folder.</li>
+              <li><strong className="text-foreground">Local Directory</strong> — another drive or path on this machine (e.g. <Code>/srv/media</Code>, a second SSD, or an external USB drive mounted under <Code>/mnt</Code>). Use the <strong>Browse</strong> button to navigate your filesystem and select a folder.</li>
             </ul>
 
             <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Step 2a: NAS Setup</h4>
@@ -835,7 +835,7 @@ sudo bash ~/.mmc/scripts/mount-nas.sh`}</Pre>
             <h4 className="mt-3 text-xs font-semibold uppercase text-muted-foreground">Step 2b: Local Directory Setup</h4>
             <p className="mt-1 text-xs text-muted-foreground">Only if you chose Local Directory:</p>
             <Step n={1}>
-              <p>Type a path or click <strong>Browse</strong> to navigate your filesystem. The browser shows all mounted drives including Windows drives (<Code>/mnt/c</Code>, <Code>/mnt/d</Code>), USB drives, and other mount points.</p>
+              <p>Type a path or click <strong>Browse</strong> to navigate your filesystem. The browser shows everything mounted on the host — extra drives, USB devices, and any directories you've mounted under <Code>/mnt</Code> or <Code>/srv</Code>.</p>
             </Step>
             <Step n={2}>
               <p>Click <strong>Verify Directory</strong> to confirm the path exists, is writable, and check available disk space.</p>

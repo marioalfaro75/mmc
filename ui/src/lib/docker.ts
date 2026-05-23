@@ -8,7 +8,7 @@ const PROJECT_DIR = process.env.HOST_PROJECT_DIR || '';
 
 // Optional override files that get chained into every compose command when present.
 // Order matters: later files override earlier ones.
-const OVERRIDE_FILES = ['docker-compose.wsl.override.yml', 'docker-compose.nas.override.yml'];
+const OVERRIDE_FILES = ['docker-compose.nas.override.yml'];
 
 function composeFileArgs(): string[] {
   const args = ['-f', `${PROJECT_DIR}/docker-compose.yml`];
