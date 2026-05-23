@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  shell:
+    name: Shell syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n all scripts
+        run: |
+          set -e
+          for f in scripts/*.sh; do
+            echo "checking $f"
+            bash -n "$f"
+          done
+
+  compose:
+    name: docker compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Render .env from example
+        run: |
+          cp .env.example .env
+          # docker compose needs HOST_PROJECT_DIR to interpolate the media-ui bind mount.
+          sed -i "s|^HOST_PROJECT_DIR=.*|HOST_PROJECT_DIR=$PWD|" .env
+      - name: Validate base compose
+        run: docker compose -f docker-compose.yml config -q
+      - name: Validate with NAS override (synthetic)
+        run: |
+          cat > docker-compose.nas.override.yml <<'YAML'
+          volumes:
+            nas:
+              driver: local
+              driver_opts:
+                type: cifs
+                o: username=guest,password=,vers=3.0
+                device: //example.lan/share
+          services:
+            sonarr:
+              volumes:
+                - nas:/data
+          YAML
+          docker compose -f docker-compose.yml -f docker-compose.nas.override.yml config -q
+
+  ui:
+    name: UI typecheck and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Unit tests
+        run: npm test
+
+  systemd:
+    name: systemd unit syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Render and verify mmc.service
+        run: |
+          mkdir -p /tmp/units
+          sed -e "s|__PROJECT_DIR__|$PWD|g" -e "s|__USER__|runner|g" \
+            scripts/mmc.service > /tmp/units/mmc.service
+          systemd-analyze verify /tmp/units/mmc.service

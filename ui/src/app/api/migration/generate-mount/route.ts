@@ -2,23 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeFileSync, mkdirSync, chmodSync } from 'fs';
 import { sanitizeError } from '@/lib/security';
 import { requireAdmin } from '@/lib/auth';
-
-function resolvePath(p: string): string {
-  if (p.startsWith('~')) return `${process.env.HOME}${p.slice(1)}`;
-  return p;
-}
-
-// Escape a string for safe embedding in a bash script (single-quote wrapping)
-function shellEscape(s: string): string {
-  // Replace single quotes with '\'' (end quote, escaped quote, start quote)
-  return `'${s.replace(/'/g, "'\\''")}'`;
-}
-
-// Validate that a path contains only safe characters for fstab/mount usage
-function isValidPath(p: string): boolean {
-  // Allow alphanumeric, slashes, dots, hyphens, underscores
-  return /^[a-zA-Z0-9/._ -]+$/.test(p) && !p.includes('..');
-}
+import { resolvePath, shellEscape, isValidPath, isValidHost } from '@/lib/shell-safe';
 
 export async function POST(request: NextRequest) {
   const denied = requireAdmin(request);
@@ -41,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate host format
-    if (!/^[a-zA-Z0-9._-]+$/.test(host)) {
+    if (!isValidHost(host)) {
       return NextResponse.json({ success: false, error: 'Invalid host format' }, { status: 400 });
     }
 

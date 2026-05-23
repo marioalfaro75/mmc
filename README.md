@@ -515,6 +515,22 @@ crontab -e
 | Container keeps restarting | Check logs: `docker logs <container-name>`. Common cause: missing or invalid config. |
 | Web UI shows login page | `MMC_API_KEY` is set in `.env`. Clear it to disable auth, or enter the key to log in. |
 
+## Tests
+
+Static checks run on every push and PR via `.github/workflows/ci.yml`:
+
+| Check | Command | What it catches |
+|-------|---------|-----------------|
+| Shell syntax | `bash -n scripts/*.sh` | Typos in deploy/init/backup scripts |
+| Compose render | `docker compose config -q` | Bad YAML or unresolved `${VAR}` references |
+| TypeScript | `cd ui && npx tsc --noEmit` | Type errors in the UI |
+| Unit tests | `cd ui && npm test` | Schema integrity, shell-escape safety, mount-script input validation |
+| systemd unit | `systemd-analyze verify scripts/mmc.service` | Malformed boot unit |
+
+Run the UI tests locally with `cd ui && npm test` (or `npm run test:watch`). The test suite lives in `ui/src/**/*.test.ts`.
+
+These are static + unit checks only. Full end-to-end testing (VPN kill-switch, NAS mounts, boot survival) needs to run against a real Ubuntu VM — see the deploy guide above.
+
 ## Managing Containers
 
 ### All Services
