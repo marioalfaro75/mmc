@@ -34,6 +34,18 @@ else
     PROJECT_DIR=""
 fi
 
+# Chain in any override files that are present so every `docker compose`
+# invocation below — and the UI inside the container — sees the same view.
+# Keep this list in sync with ui/src/lib/docker.ts OVERRIDE_FILES.
+compose_files() {
+    [ -z "$PROJECT_DIR" ] && return
+    _files="$PROJECT_DIR/docker-compose.yml"
+    [ -f "$PROJECT_DIR/docker-compose.wsl.override.yml" ] && _files="$_files:$PROJECT_DIR/docker-compose.wsl.override.yml"
+    [ -f "$PROJECT_DIR/docker-compose.nas.override.yml" ] && _files="$_files:$PROJECT_DIR/docker-compose.nas.override.yml"
+    export COMPOSE_FILE="$_files"
+}
+compose_files
+
 # --- Defaults ---
 DRY_RUN=0
 SKIP_UI=0
@@ -823,6 +835,7 @@ validate_compose_syntax() {
         warn "Skipped — .env file missing (compose cannot resolve variables)"
         return
     fi
+    sync_wsl_override
     if docker compose config -q 2>/dev/null; then
         pass "docker-compose.yml is valid"
     else
@@ -1364,6 +1377,27 @@ detect_wsl() {
         return 0
     fi
     return 1
+}
+
+# Toggle the WSL compose override and refresh COMPOSE_FILE so subsequent
+# `docker compose` calls in this run see the new file list.
+sync_wsl_override() {
+    [ -z "$PROJECT_DIR" ] && return
+    _override="$PROJECT_DIR/docker-compose.wsl.override.yml.disabled"
+    _active="$PROJECT_DIR/docker-compose.wsl.override.yml"
+    if detect_wsl; then
+        # Make sure the override is active. Shipped as the .yml file already,
+        # but if a previous Linux run renamed it to .disabled, restore it.
+        if [ ! -f "$_active" ] && [ -f "$_override" ]; then
+            mv "$_override" "$_active"
+        fi
+    else
+        # On non-WSL hosts, hide the override so /mnt is not bind-mounted.
+        if [ -f "$_active" ]; then
+            mv "$_active" "$_override"
+        fi
+    fi
+    compose_files
 }
 
 install_docker() {

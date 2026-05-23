@@ -21,11 +21,11 @@ services:
     networks:
       - medianet
     ports:
-      - "127.0.0.1:${PORT_QBITTORRENT}:8080"       # qBittorrent WebUI
-      - "127.0.0.1:${PORT_SABNZBD}:8081"           # SABnzbd WebUI
+      - "${HOST_BIND:-127.0.0.1}:${PORT_QBITTORRENT}:8080"       # qBittorrent WebUI
+      - "${HOST_BIND:-127.0.0.1}:${PORT_SABNZBD}:8081"           # SABnzbd WebUI
       - "6881:6881/tcp"                   # Torrent listening
       - "6881:6881/udp"
-      - "127.0.0.1:${PORT_GLUETUN_CONTROL}:8000"   # Gluetun control API
+      - "${HOST_BIND:-127.0.0.1}:${PORT_GLUETUN_CONTROL}:8000"   # Gluetun control API
     environment:
       - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
       - VPN_TYPE=${VPN_TYPE}
@@ -126,7 +126,7 @@ services:
     networks:
       - medianet
     ports:
-      - "127.0.0.1:${PORT_PROWLARR}:9696"
+      - "${HOST_BIND:-127.0.0.1}:${PORT_PROWLARR}:9696"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -143,7 +143,7 @@ services:
     networks:
       - medianet
     ports:
-      - "127.0.0.1:${PORT_SONARR}:8989"
+      - "${HOST_BIND:-127.0.0.1}:${PORT_SONARR}:8989"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -151,7 +151,6 @@ services:
     volumes:
       - ${CONFIG_ROOT}/sonarr:/config
       - ${DATA_ROOT}:/data
-      - /mnt:/mnt
     restart: unless-stopped
     labels:
       - com.centurylinklabs.watchtower.enable=true
@@ -162,7 +161,7 @@ services:
     networks:
       - medianet
     ports:
-      - "127.0.0.1:${PORT_RADARR}:7878"
+      - "${HOST_BIND:-127.0.0.1}:${PORT_RADARR}:7878"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -170,7 +169,6 @@ services:
     volumes:
       - ${CONFIG_ROOT}/radarr:/config
       - ${DATA_ROOT}:/data
-      - /mnt:/mnt
     restart: unless-stopped
     labels:
       - com.centurylinklabs.watchtower.enable=true
@@ -184,7 +182,7 @@ services:
     networks:
       - medianet
     ports:
-      - "127.0.0.1:${PORT_BAZARR}:6767"
+      - "${HOST_BIND:-127.0.0.1}:${PORT_BAZARR}:6767"
     environment:
       - PUID=${PUID}
       - PGID=${PGID}
@@ -205,7 +203,7 @@ services:
     networks:
       - medianet
     ports:
-      - "127.0.0.1:${PORT_SEERR}:5055"
+      - "${HOST_BIND:-127.0.0.1}:${PORT_SEERR}:5055"
     environment:
       - TZ=${TZ}
       - LOG_LEVEL=info
@@ -255,7 +253,7 @@ services:
     networks:
       - medianet
     ports:
-      - "127.0.0.1:${PORT_UI}:3000"
+      - "${HOST_BIND:-127.0.0.1}:${PORT_UI}:3000"
     extra_hosts:
       # Lets PLEX_URL=http://host.docker.internal:32400 reach the host's Plex
       # on bare-metal Linux (Docker Desktop / WSL provide this hostname natively).
@@ -294,7 +292,6 @@ services:
       - ${CONFIG_ROOT}:${CONFIG_ROOT}
       - ${DATA_ROOT}:${DATA_ROOT}
       - ${BACKUP_DIR}:${BACKUP_DIR}
-      - /mnt:/mnt
       - ${HOME}/.mmc/logs:/app/logs
       - ${HOME}/.mmc/scripts:/app/scripts
     depends_on:

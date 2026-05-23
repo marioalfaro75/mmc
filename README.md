@@ -241,6 +241,28 @@ After first deploy, go to the Guide page and click **Detect API Keys**. This rea
 
 > All ports are bound to `127.0.0.1` (localhost only) by default. Plex runs externally and is accessed via the sidebar link.
 
+### Exposing services on the LAN
+
+On a dedicated Ubuntu VM you'll usually want other devices on the network to reach the UIs. Set `HOST_BIND` in `.env`:
+
+```env
+HOST_BIND=0.0.0.0           # bind to every interface
+# or
+HOST_BIND=192.168.1.50      # bind to one LAN IP only
+```
+
+Then restart: `docker compose up -d`. Pair this with `ufw` so only your LAN can reach the ports — for example:
+
+```bash
+sudo ufw default deny incoming
+sudo ufw allow from 192.168.1.0/24 to any port 3000   # media-ui
+sudo ufw allow from 192.168.1.0/24 to any port 5055   # seerr (optional)
+sudo ufw allow 6881                                   # torrent peer port
+sudo ufw enable
+```
+
+Note: torrent port 6881 must accept connections from the public internet, so don't lock it down to your LAN.
+
 ## Security
 
 The stack includes security hardening out of the box:
