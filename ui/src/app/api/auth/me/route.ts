@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, hasAdmins } from '@/lib/auth';
+import { HAS_ADMINS_COOKIE_OPTIONS } from '@/lib/cookies';
 
 export async function GET(request: NextRequest) {
   const token = request.cookies.get('mmc-session')?.value;
@@ -12,12 +13,7 @@ export async function GET(request: NextRequest) {
     // route, which reads from disk. Marking httpOnly stops client JS from
     // tampering with it.
     if (adminsExist && request.cookies.get('mmc-has-admins')?.value !== '1') {
-      res.cookies.set('mmc-has-admins', '1', {
-        httpOnly: true,
-        sameSite: 'strict',
-        path: '/',
-        maxAge: 60 * 60 * 24 * 365 * 10,
-      });
+      res.cookies.set('mmc-has-admins', '1', HAS_ADMINS_COOKIE_OPTIONS);
     }
     return res;
   };

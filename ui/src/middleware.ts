@@ -59,12 +59,23 @@ function getRateLimitResult(ip: string): { allowed: boolean; retryAfter: number 
 /*  Security headers applied to every response                         */
 /* ------------------------------------------------------------------ */
 
+// HTTPS_ONLY=1 in .env tells us the stack is behind TLS (reverse proxy or
+// direct cert). When set we mark auth cookies Secure and send HSTS so the
+// browser refuses to downgrade. Off by default — the standard LAN deploy is
+// plain HTTP.
+const HTTPS_ONLY = process.env.HTTPS_ONLY === '1' || process.env.HTTPS_ONLY === 'true';
+
 function applySecurityHeaders(res: NextResponse): void {
   res.headers.set('X-Content-Type-Options', 'nosniff');
   res.headers.set('X-Frame-Options', 'DENY');
-  res.headers.set('X-XSS-Protection', '1; mode=block');
+  // X-XSS-Protection is deprecated and can cause security issues in older
+  // browsers — modern browsers ignore it. CSP frame-ancestors + XSS hardening
+  // in the app code is the real defence.
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (HTTPS_ONLY) {
+    res.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -232,6 +243,7 @@ export async function middleware(request: NextRequest) {
           const res = NextResponse.json({ ok: true }, { status: 200 });
           res.cookies.set('mmc-auth', apiKey, {
             httpOnly: true,
+            secure: HTTPS_ONLY,
             sameSite: 'strict',
             path: '/',
             maxAge: 60 * 60 * 24 * 30, // 30 days

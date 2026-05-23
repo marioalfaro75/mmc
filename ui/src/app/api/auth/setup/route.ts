@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { hasAdmins, createAdmin, createSession } from '@/lib/auth';
 import { sanitizeError } from '@/lib/security';
+import { SESSION_COOKIE_OPTIONS, HAS_ADMINS_COOKIE_OPTIONS } from '@/lib/cookies';
 
 export async function GET() {
   return NextResponse.json({ hasAdmins: hasAdmins() });
@@ -25,18 +26,8 @@ export async function POST(request: NextRequest) {
     const token = createSession(admin);
 
     const res = NextResponse.json({ ok: true, username: admin.username });
-    res.cookies.set('mmc-session', token, {
-      httpOnly: true,
-      sameSite: 'strict',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 30,
-    });
-    res.cookies.set('mmc-has-admins', '1', {
-      httpOnly: true,
-      sameSite: 'strict',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 365 * 10, // 10 years
-    });
+    res.cookies.set('mmc-session', token, SESSION_COOKIE_OPTIONS);
+    res.cookies.set('mmc-has-admins', '1', HAS_ADMINS_COOKIE_OPTIONS);
     return res;
   } catch (err) {
     return NextResponse.json({ error: sanitizeError(err) }, { status: 500 });
