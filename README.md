@@ -50,6 +50,37 @@ The installer will:
 > vmIdleTimeout=-1
 > ```
 
+### Running on a dedicated Ubuntu VM
+
+This is the recommended deployment target. A few tips for a clean setup:
+
+1. **Pin a static IP.** Without one, the VM's address can change after a DHCP lease renewal and break your bookmarks. The simplest path is a DHCP reservation on the router (bind the VM's MAC to a fixed IP). For belt-and-braces, also give the VM a static address via netplan, e.g. `/etc/netplan/01-mmc.yaml`:
+   ```yaml
+   network:
+     version: 2
+     ethernets:
+       eth0:
+         dhcp4: no
+         addresses: [192.168.1.50/24]
+         routes:
+           - to: default
+             via: 192.168.1.1
+         nameservers:
+           addresses: [1.1.1.1, 9.9.9.9]
+   ```
+   Then `sudo netplan apply`.
+
+2. **Bind services to the LAN.** Set `HOST_BIND=0.0.0.0` (or the static IP) in `.env` — see [Exposing services on the LAN](#exposing-services-on-the-lan) above.
+
+3. **Start on boot.** Install the systemd unit so the stack comes back after a reboot:
+   ```bash
+   ./scripts/install-systemd-service.sh
+   sudo systemctl start mmc       # or just reboot
+   ```
+   The installer templates the unit with the project path and your username, enables it, and prints status commands.
+
+4. **NAS shares.** Use the Migration page's *Managed Volume* mode (no `sudo`, no fstab). If you prefer host mounts, the generated script uses `_netdev,nofail` fstab entries that systemd turns into proper network-dependent mount units on Ubuntu — no further wiring needed.
+
 ### Manual Install
 
 If you prefer to install prerequisites yourself:
