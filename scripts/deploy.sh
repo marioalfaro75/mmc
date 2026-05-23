@@ -732,7 +732,8 @@ run_setup_wizard() {
     fi
 
     cp "$ENV_EXAMPLE" "$ENV_FILE"
-    pass "Copied .env.example → .env"
+    chmod 600 "$ENV_FILE"
+    pass "Copied .env.example → .env (mode 600 — contains VPN keys & API keys)"
 
     # Auto-detect PUID/PGID
     _puid=$(id -u)
@@ -797,11 +798,22 @@ run_setup_wizard() {
         setup_nas
     fi
 
-    # Redact secrets from log file
+    # Redact secrets from log file. Anything that holds a credential or
+    # API key — whether it was set in .env, prompted from the user, or
+    # echoed back during the deploy — needs to land here.
     if [ -n "$_MMC_LOGGED" ] && [ -f "$_MMC_LOGGED" ]; then
-        sed -i 's/WIREGUARD_PRIVATE_KEY=.*/WIREGUARD_PRIVATE_KEY=[REDACTED]/' "$_MMC_LOGGED"
-        sed -i 's/WIREGUARD_PRESHARED_KEY=.*/WIREGUARD_PRESHARED_KEY=[REDACTED]/' "$_MMC_LOGGED"
-        sed -i 's/TMDB_API_KEY=.*/TMDB_API_KEY=[REDACTED]/' "$_MMC_LOGGED"
+        for _k in \
+            WIREGUARD_PRIVATE_KEY WIREGUARD_PRESHARED_KEY \
+            TMDB_API_KEY MMC_API_KEY \
+            GLUETUN_CONTROL_PASSWORD \
+            NAS_PASSWORD \
+            QBITTORRENT_PASSWORD \
+            SONARR_API_KEY RADARR_API_KEY PROWLARR_API_KEY \
+            SABNZBD_API_KEY SEERR_API_KEY BAZARR_API_KEY \
+            UN_SONARR_0_API_KEY UN_RADARR_0_API_KEY
+        do
+            sed -i "s/${_k}=.*/${_k}=[REDACTED]/g" "$_MMC_LOGGED"
+        done
     fi
 
     info "You can edit $ENV_FILE to fine-tune other settings."
