@@ -1400,10 +1400,17 @@ install_docker() {
     sudo usermod -aG docker "$USER"
     pass "Docker installed and user added to docker group"
 
-    # Start Docker daemon if not running (common in WSL without systemd)
+    # Start Docker daemon if not running
     if ! docker info >/dev/null 2>&1; then
         info "Starting Docker daemon..."
-        sudo service docker start 2>/dev/null || sudo dockerd &
+        if detect_wsl; then
+            # WSL typically lacks systemd — fall back to service / background dockerd
+            sudo service docker start 2>/dev/null || sudo dockerd &
+        elif command -v systemctl >/dev/null 2>&1; then
+            sudo systemctl enable --now docker
+        else
+            sudo service docker start 2>/dev/null || true
+        fi
         sleep 3
     fi
 

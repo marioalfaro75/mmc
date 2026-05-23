@@ -260,7 +260,7 @@ Gluetun supports 60+ VPN providers. Below are common examples. For the full list
 
 > **WireGuard vs OpenVPN:** WireGuard is faster and uses less CPU. OpenVPN has broader provider support. Use WireGuard when your provider offers it.
 
-> **WireGuard MTU:** `WIREGUARD_MTU` defaults to 1280 for maximum compatibility, especially on WSL2 where the Hyper-V NAT adds encapsulation overhead. If you experience VPN connectivity issues (DNS timeouts, healthcheck failures), this default should resolve them. You can adjust the value in Settings → VPN or in `.env`.
+> **WireGuard MTU:** `WIREGUARD_MTU` defaults to 1420 — the standard value and the best throughput on a regular LAN. If you see VPN connectivity issues (DNS timeouts, healthcheck failures) on WSL2, a double-NAT link, or some mobile carriers, lower it to 1280 in Settings → VPN or in `.env`.
 
 ### ProtonVPN (WireGuard)
 

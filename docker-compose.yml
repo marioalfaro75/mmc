@@ -32,7 +32,7 @@ services:
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
       - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES}
       - WIREGUARD_PRESHARED_KEY=${WIREGUARD_PRESHARED_KEY}
-      - WIREGUARD_MTU=${WIREGUARD_MTU:-1280}
+      - WIREGUARD_MTU=${WIREGUARD_MTU:-1420}
       - SERVER_COUNTRIES=${SERVER_COUNTRIES}
       - VPN_PORT_FORWARDING=${VPN_PORT_FORWARDING}
       - FIREWALL_VPN_INPUT_PORTS=${FIREWALL_VPN_INPUT_PORTS}
@@ -256,6 +256,10 @@ services:
       - medianet
     ports:
       - "127.0.0.1:${PORT_UI}:3000"
+    extra_hosts:
+      # Lets PLEX_URL=http://host.docker.internal:32400 reach the host's Plex
+      # on bare-metal Linux (Docker Desktop / WSL provide this hostname natively).
+      - "host.docker.internal:host-gateway"
     environment:
       - SONARR_URL=http://sonarr:8989
       - SONARR_API_KEY=${SONARR_API_KEY:-}
