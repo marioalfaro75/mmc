@@ -2,23 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { writeFileSync, mkdirSync, chmodSync } from 'fs';
 import { sanitizeError } from '@/lib/security';
 import { requireAdmin } from '@/lib/auth';
-
-function resolvePath(p: string): string {
-  if (p.startsWith('~')) return `${process.env.HOME}${p.slice(1)}`;
-  return p;
-}
-
-// Escape a string for safe embedding in a bash script (single-quote wrapping)
-function shellEscape(s: string): string {
-  // Replace single quotes with '\'' (end quote, escaped quote, start quote)
-  return `'${s.replace(/'/g, "'\\''")}'`;
-}
-
-// Validate that a path contains only safe characters for fstab/mount usage
-function isValidPath(p: string): boolean {
-  // Allow alphanumeric, slashes, dots, hyphens, underscores
-  return /^[a-zA-Z0-9/._ -]+$/.test(p) && !p.includes('..');
-}
+import { resolvePath, shellEscape, isValidPath, isValidHost } from '@/lib/shell-safe';
 
 export async function POST(request: NextRequest) {
   const denied = requireAdmin(request);
@@ -41,7 +25,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate host format
-    if (!/^[a-zA-Z0-9._-]+$/.test(host)) {
+    if (!isValidHost(host)) {
       return NextResponse.json({ success: false, error: 'Invalid host format' }, { status: 400 });
     }
 
@@ -143,23 +127,8 @@ if grep -qF "${resolvedMount}" /etc/fstab 2>/dev/null; then
 fi
 echo "${fstabLine}" >> /etc/fstab
 echo "  Added fstab entry for persistence"
-
-# Handle WSL auto-mount
-if grep -qi microsoft /proc/version 2>/dev/null; then
-    echo "  WSL detected — configuring auto-mount"
-    if [ -f /etc/wsl.conf ] && grep -q "^\\[boot\\]" /etc/wsl.conf; then
-        if grep -q "^command" /etc/wsl.conf; then
-            if ! grep -qF "mount -a" /etc/wsl.conf; then
-                sed -i "s|^command\\s*=.*|&  \\&\\& mount -a|" /etc/wsl.conf
-            fi
-        else
-            sed -i "/^\\[boot\\]/a command=mount -a" /etc/wsl.conf
-        fi
-    else
-        printf "\\n[boot]\\ncommand=mount -a\\n" >> /etc/wsl.conf
-    fi
-    echo "  WSL boot config updated"
-fi
+# systemd-fstab-generator promotes _netdev,nofail entries to proper
+# network-dependent .mount units automatically on Ubuntu — no extra work.
 
 echo ""
 echo "=== NAS mount complete ==="

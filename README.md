@@ -28,27 +28,52 @@ User → Seerr → Sonarr/Radarr → Prowlarr → Indexers
 
 ## Quick Start
 
-### One-Liner Install (WSL / Linux)
+### One-Liner Install (Ubuntu)
 
-Run this single command on a fresh WSL or Linux system — it installs Docker, Node.js, clones the repo, and deploys everything:
+Run this single command on a fresh Ubuntu host — it installs Docker, Node.js, clones the repo, and deploys everything:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/marioalfaro75/mmc/main/scripts/deploy.sh | bash -s -- --install
 ```
 
 The installer will:
-1. Detect WSL and show persistence tips
+1. Refuse to run on anything that isn't a real Linux host (no WSL, no macOS)
 2. Install Docker Engine, Node.js 20, and git (skips anything already installed)
 3. Clone the repository into an `mmc` folder in the current directory
 4. Launch the interactive setup wizard and staged deploy
 
 > **Re-running on an existing install** automatically switches to `--update` mode (pulls latest code, migrates `.env`, graceful restart — no data loss).
 
-> **WSL users:** To keep containers running after closing the terminal, add this to `C:\Users\<you>\.wslconfig`:
-> ```ini
-> [wsl2]
-> vmIdleTimeout=-1
-> ```
+### Running on a dedicated Ubuntu VM
+
+This is the recommended deployment target. A few tips for a clean setup:
+
+1. **Pin a static IP.** Without one, the VM's address can change after a DHCP lease renewal and break your bookmarks. The simplest path is a DHCP reservation on the router (bind the VM's MAC to a fixed IP). For belt-and-braces, also give the VM a static address via netplan, e.g. `/etc/netplan/01-mmc.yaml`:
+   ```yaml
+   network:
+     version: 2
+     ethernets:
+       eth0:
+         dhcp4: no
+         addresses: [192.168.1.50/24]
+         routes:
+           - to: default
+             via: 192.168.1.1
+         nameservers:
+           addresses: [1.1.1.1, 9.9.9.9]
+   ```
+   Then `sudo netplan apply`.
+
+2. **Bind services to the LAN.** Set `HOST_BIND=0.0.0.0` (or the static IP) in `.env` — see [Exposing services on the LAN](#exposing-services-on-the-lan) above.
+
+3. **Start on boot.** Install the systemd unit so the stack comes back after a reboot:
+   ```bash
+   ./scripts/install-systemd-service.sh
+   sudo systemctl start mmc       # or just reboot
+   ```
+   The installer templates the unit with the project path and your username, enables it, and prints status commands.
+
+4. **NAS shares.** Use the Migration page's *Managed Volume* mode (no `sudo`, no fstab). If you prefer host mounts, the generated script uses `_netdev,nofail` fstab entries that systemd turns into proper network-dependent mount units on Ubuntu — no further wiring needed.
 
 ### Manual Install
 
@@ -82,8 +107,8 @@ To store media on a NAS or network share, use the **Migration** page in the web 
 
 The Migration page offers two NAS modes:
 
-- **Managed Volume (recommended)** — Docker mounts the share directly via a named volume with the CIFS/NFS driver. No host mount, no `sudo`, no fstab edits, and no WSL2 shadow-mount headaches. One click writes the override file, recreates services, and the volume is live. Works identically on Linux, macOS, and WSL2.
-- **Host Mount Script (legacy)** — Generates a bash script you run with `sudo` to mount the share via fstab. Kept as a fallback; prefer the managed volume on WSL2.
+- **Managed Volume (recommended)** — Docker mounts the share directly via a named volume with the CIFS/NFS driver. No host mount, no `sudo`, no fstab edits. One click writes the override file, recreates services, and the volume is live.
+- **Host Mount Script (legacy)** — Generates a bash script you run with `sudo` to mount the share via fstab. The generated entries use `_netdev,nofail` so systemd handles them as network-dependent mount units on Ubuntu. Kept as a fallback; prefer the managed volume.
 
 Either way, the internal container path is `/mnt/nas/media`, so existing Sonarr/Radarr root folders keep working unchanged. The managed-volume mode writes a gitignored `docker-compose.nas.override.yml` and stores credentials in `.env` (`NAS_HOST`, `NAS_SHARE`, `NAS_USERNAME`, `NAS_PASSWORD`, `NAS_VERS`). The deploy script's `--nas` flag is still available for fresh installs.
 
@@ -241,6 +266,28 @@ After first deploy, go to the Guide page and click **Detect API Keys**. This rea
 
 > All ports are bound to `127.0.0.1` (localhost only) by default. Plex runs externally and is accessed via the sidebar link.
 
+### Exposing services on the LAN
+
+On a dedicated Ubuntu VM you'll usually want other devices on the network to reach the UIs. Set `HOST_BIND` in `.env`:
+
+```env
+HOST_BIND=0.0.0.0           # bind to every interface
+# or
+HOST_BIND=192.168.1.50      # bind to one LAN IP only
+```
+
+Then restart: `docker compose up -d`. Pair this with `ufw` so only your LAN can reach the ports — for example:
+
+```bash
+sudo ufw default deny incoming
+sudo ufw allow from 192.168.1.0/24 to any port 3000   # media-ui
+sudo ufw allow from 192.168.1.0/24 to any port 5055   # seerr (optional)
+sudo ufw allow 6881                                   # torrent peer port
+sudo ufw enable
+```
+
+Note: torrent port 6881 must accept connections from the public internet, so don't lock it down to your LAN.
+
 ## Security
 
 The stack includes security hardening out of the box:
@@ -260,7 +307,7 @@ Gluetun supports 60+ VPN providers. Below are common examples. For the full list
 
 > **WireGuard vs OpenVPN:** WireGuard is faster and uses less CPU. OpenVPN has broader provider support. Use WireGuard when your provider offers it.
 
-> **WireGuard MTU:** `WIREGUARD_MTU` defaults to 1280 for maximum compatibility, especially on WSL2 where the Hyper-V NAT adds encapsulation overhead. If you experience VPN connectivity issues (DNS timeouts, healthcheck failures), this default should resolve them. You can adjust the value in Settings → VPN or in `.env`.
+> **WireGuard MTU:** `WIREGUARD_MTU` defaults to 1420 — the standard value and the best throughput on a regular LAN. If you see VPN connectivity issues (DNS timeouts, healthcheck failures) on a double-NAT link or certain mobile carriers, lower it to 1280 in Settings → VPN or in `.env`.
 
 ### ProtonVPN (WireGuard)
 
@@ -377,7 +424,7 @@ The Migration page (`http://localhost:3000/migration`) lets you move your media 
 ### Destination Options
 
 - **NAS / Network Share** — SMB or NFS share on your network (e.g. Synology, TrueNAS). Two setup modes: **Managed Volume** (recommended; Docker mounts the share per-container) or **Host Mount Script** (legacy; bash script you run with sudo).
-- **Local Directory** — Another drive or path on this machine (e.g. `/mnt/d`, a second SSD, external USB). Includes a filesystem browser.
+- **Local Directory** — Another drive or path on this machine (e.g. `/srv/media`, a second SSD, external USB mounted under `/mnt`). Includes a filesystem browser.
 
 ### How It Works
 
@@ -413,7 +460,7 @@ Migration copies only the `media/` folder (completed movies and TV shows) to the
 ./scripts/deploy.sh --nas    # Interactive NAS setup (legacy host-mount mode)
 ```
 
-For new setups, prefer the Migration page Managed Volume mode — it avoids the host-mount and works on WSL2 without the docker-desktop shadow-mount issue.
+For new setups, prefer the Migration page Managed Volume mode — it avoids the host-mount step and the fstab edit entirely.
 
 ## Backup & Restore
 
@@ -467,6 +514,22 @@ crontab -e
 | Permission errors | Verify `PUID`/`PGID` match your host user (`id` command). Re-run `sudo ./scripts/init.sh`. |
 | Container keeps restarting | Check logs: `docker logs <container-name>`. Common cause: missing or invalid config. |
 | Web UI shows login page | `MMC_API_KEY` is set in `.env`. Clear it to disable auth, or enter the key to log in. |
+
+## Tests
+
+Static checks run on every push and PR via `.github/workflows/ci.yml`:
+
+| Check | Command | What it catches |
+|-------|---------|-----------------|
+| Shell syntax | `bash -n scripts/*.sh` | Typos in deploy/init/backup scripts |
+| Compose render | `docker compose config -q` | Bad YAML or unresolved `${VAR}` references |
+| TypeScript | `cd ui && npx tsc --noEmit` | Type errors in the UI |
+| Unit tests | `cd ui && npm test` | Schema integrity, shell-escape safety, mount-script input validation |
+| systemd unit | `systemd-analyze verify scripts/mmc.service` | Malformed boot unit |
+
+Run the UI tests locally with `cd ui && npm test` (or `npm run test:watch`). The test suite lives in `ui/src/**/*.test.ts`.
+
+These are static + unit checks only. Full end-to-end testing (VPN kill-switch, NAS mounts, boot survival) needs to run against a real Ubuntu VM — see the deploy guide above.
 
 ## Managing Containers
 
