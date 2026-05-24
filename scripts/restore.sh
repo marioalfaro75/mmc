@@ -70,10 +70,28 @@ echo "Stopping containers..."
 cd "$PROJECT_DIR"
 docker compose down 2>/dev/null || echo "  ⚠ docker compose down failed (containers may not be running)"
 
-# Extract backup
+# Validate the archive before extracting. A malicious tarball could contain
+# absolute paths or ../ traversal sequences ("tar slip") that would write
+# outside CONFIG_ROOT. List the archive members first; refuse to extract if
+# any look unsafe.
 echo ""
+echo "Inspecting archive..."
+if tar -tzf "$BACKUP_FILE" | awk '
+    /^\// { print "absolute path: " $0; exit 1 }
+    /\.\.\// { print "path traversal: " $0; exit 1 }
+    { next }
+'; then
+    :
+else
+    echo "ERROR: archive contains unsafe paths — refusing to extract."
+    exit 1
+fi
+
+# Extract backup. --no-same-owner avoids restoring with the archived uid/gid
+# (chown later picks up PUID/PGID). --no-absolute-names is belt-and-braces
+# against absolute-path entries that slipped past the check above.
 echo "Restoring configs..."
-tar -xzf "$BACKUP_FILE" -C "$(dirname "$CONFIG_ROOT")"
+tar --no-same-owner --no-absolute-names -xzf "$BACKUP_FILE" -C "$(dirname "$CONFIG_ROOT")"
 
 # Set ownership
 echo "Setting ownership ($PUID:$PGID)..."

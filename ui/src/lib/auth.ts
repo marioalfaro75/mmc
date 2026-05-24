@@ -1,5 +1,5 @@
 import { randomBytes, scrypt, timingSafeEqual } from 'crypto';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, chmodSync } from 'fs';
 import { dirname } from 'path';
 
 /* ------------------------------------------------------------------ */
@@ -87,7 +87,15 @@ function readAdminsFile(): AdminsFile {
 function writeAdminsFile(data: AdminsFile): void {
   const dir = dirname(ADMINS_FILE);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(ADMINS_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  // Mode 0o600: file contains scrypt password hashes. The hashes are
+  // computationally expensive to crack but no reason to leave them
+  // world-readable. chmod after write to fix legacy files too.
+  writeFileSync(ADMINS_FILE, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600 });
+  try {
+    chmodSync(ADMINS_FILE, 0o600);
+  } catch {
+    // best-effort
+  }
 }
 
 export function getAdmins(): Admin[] {
@@ -229,7 +237,8 @@ export function isPublicRoute(pathname: string): boolean {
 
 export function getAdminSession(request: Request): Session | null {
   const cookieHeader = request.headers.get('cookie') || '';
-  const match = cookieHeader.match(/mmc-session=([^;]+)/);
+  // Anchor on cookie boundary to avoid matching e.g. `other-mmc-session=evil`.
+  const match = cookieHeader.match(/(?:^|;\s*)mmc-session=([^;]+)/);
   if (!match) return null;
   return getSession(match[1]);
 }

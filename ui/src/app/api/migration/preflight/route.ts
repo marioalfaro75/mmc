@@ -8,15 +8,18 @@ import { getQueue as getRadarrQueue } from '@/lib/api/radarr';
 import { sanitizeError } from '@/lib/security';
 import { readEnv } from '@/lib/env';
 import { requireAdmin } from '@/lib/auth';
+import { isValidPath } from '@/lib/shell-safe';
 
 const execFileAsync = promisify(execFile);
 
-// Run a command on the host via a temporary Docker container
-async function runOnHost(cmd: string, mountPoint: string, timeoutMs = 15000): Promise<string> {
+// Run a tool inside an alpine container with bindPath bind-mounted. argv is
+// passed as docker arguments, never through a shell, so user-supplied paths
+// can't escape their argv slot.
+async function runOnHost(argv: string[], bindPath: string, timeoutMs = 15000): Promise<string> {
   const { stdout } = await execFileAsync('docker', [
     'run', '--rm', '--net=host',
-    '-v', `${mountPoint}:${mountPoint}`,
-    'alpine', 'sh', '-c', cmd,
+    '-v', `${bindPath}:${bindPath}`,
+    'alpine', ...argv,
   ], { timeout: timeoutMs });
   return stdout;
 }
@@ -36,6 +39,9 @@ export async function POST(request: NextRequest) {
 
     if (!destinationPath || typeof destinationPath !== 'string') {
       return NextResponse.json({ success: false, error: 'Destination path is required' }, { status: 400 });
+    }
+    if (!isValidPath(destinationPath) || !destinationPath.startsWith('/')) {
+      return NextResponse.json({ success: false, error: 'Invalid destination path' }, { status: 400 });
     }
 
     const checks: PreflightCheck[] = [];
@@ -124,18 +130,14 @@ export async function POST(request: NextRequest) {
       checks.push({ check: 'active-downloads', status: 'warn', message: 'Could not check download queues' });
     }
 
-    // Check destination mount and space — runs on the host
+    // Check destination mount and space — runs on the host. awk with -v passes
+    // destinationPath as a script variable, not as shell text.
     try {
-      const mounts = await runOnHost(`cat /proc/mounts | grep ' ${destinationPath} '`, destinationPath);
-      if (mounts.trim().length > 0) {
-        checks.push({ check: 'destination-mounted', status: 'ok', message: `${destinationPath} is mounted` });
-      } else {
-        checks.push({
-          check: 'destination-mounted',
-          status: 'error',
-          message: `${destinationPath} is not a mount point — mount the NAS first`,
-        });
-      }
+      await runOnHost(
+        ['awk', '-v', `t=${destinationPath}`, '$2 == t { found=1 } END { exit !found }', '/proc/mounts'],
+        destinationPath,
+      );
+      checks.push({ check: 'destination-mounted', status: 'ok', message: `${destinationPath} is mounted` });
     } catch {
       checks.push({
         check: 'destination-mounted',
@@ -165,17 +167,24 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const dfOutput = await runOnHost(`df -B1 ${destinationPath} | tail -1`, destinationPath, 20000);
-      const parts = dfOutput.trim().split(/\s+/);
+      const dfOutput = await runOnHost(['df', '-B1', destinationPath], destinationPath, 20000);
+      const lastDfLine = dfOutput.trim().split('\n').pop() || '';
+      const parts = lastDfLine.split(/\s+/);
       const availBytes = parseInt(parts[3], 10);
 
-      // Get source size from DATA_ROOT/media on the host
+      // Get source size from DATA_ROOT/media on the host. If the directory
+      // is missing du exits non-zero; treat that as 0 bytes. Guard against
+      // a DATA_ROOT in .env containing shell metacharacters — the path goes
+      // to docker's `-v` argument which would barf, but better to bail fast.
+      let duOut = '0\t';
+      if (isValidPath(resolvedDataRoot) && resolvedDataRoot.startsWith('/')) {
+        try {
+          duOut = await runOnHost(['du', '-sb', `${resolvedDataRoot}/media`], resolvedDataRoot, 30000);
+        } catch {
+          duOut = '0\t';
+        }
+      }
       try {
-        const duOut = await runOnHost(
-          `du -sb ${resolvedDataRoot}/media 2>/dev/null || echo "0\t"`,
-          resolvedDataRoot,
-          30000
-        );
         const sourceBytes = parseInt(duOut.split('\t')[0], 10);
 
         if (sourceBytes === 0) {

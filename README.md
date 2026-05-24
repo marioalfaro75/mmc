@@ -292,14 +292,18 @@ Note: torrent port 6881 must accept connections from the public internet, so don
 
 The stack includes security hardening out of the box:
 
-- **All ports localhost-only** — services are not exposed to the network (except torrent port 6881)
-- **Admin authentication** — create admin accounts via Settings → Admins or the first-time setup page. Admin-only pages (TV Shows, Movies, Settings, System, etc.) require login. Public pages (Dashboard, Downloads, Calendar, Requests) are accessible to anyone. Non-admins cannot pause/resume downloads or auto-configure Seerr. Sessions are persisted to `${CONFIG_ROOT}/admin-sessions.json` so you stay logged in across container restarts.
+- **All ports localhost-only** by default — services are not exposed to the network (except torrent port 6881). Set `HOST_BIND=0.0.0.0` in `.env` to expose to the LAN, pair with `ufw`.
+- **Admin authentication** — create admin accounts via Settings → Admins or the first-time setup page. Admin-only pages (TV Shows, Movies, Settings, System, etc.) require login. Public pages (Dashboard, Downloads, Calendar, Requests) are accessible to anyone. Sessions are persisted to `${CONFIG_ROOT}/admin-sessions.json` (mode 0600) so you stay logged in across container restarts.
 - **Defence-in-depth** — admin-only API routes are protected by both middleware and per-handler session validation (`requireAdmin`), so a middleware bypass cannot expose admin endpoints
-- **Optional site-wide lock** — set `MMC_API_KEY` in `.env` to require an API key for all access (applied before admin auth)
+- **Optional site-wide lock** — set `MMC_API_KEY` in `.env` to require an API key for all access. The key is checked with constant-time byte comparison so timing attacks can't leak it.
+- **HTTPS-aware** — set `HTTPS_ONLY=1` in `.env` when the UI is fronted by TLS (reverse proxy or direct cert). Adds the `Secure` flag to auth cookies and emits HSTS.
 - **VPN control auth** — Gluetun control API uses basic auth (`GLUETUN_CONTROL_PASSWORD`)
-- **Security headers** — CSP, X-Frame-Options, rate limiting (120 req/min), CSRF protection
+- **Security headers** — strict CSP (no `unsafe-eval` in production; `frame-ancestors 'none'`, `base-uri 'self'`, `form-action 'self'`), `X-Frame-Options: DENY`, rate limiting (120 req/min), same-origin CSRF check on mutating requests.
+- **Secrets at rest** — `.env`, `admins.json`, and backup archives are written with mode 0600. `init.sh` re-applies 0600 to `.env` on every run so legacy installs get auto-fixed.
+- **Backup integrity** — `restore.sh` inspects archive members for absolute paths and `../` before extracting (tar-slip guard); extraction uses `--no-same-owner --no-absolute-names`.
+- **Log redaction** — deploy logs redact 14 secret variables (VPN keys, NAS password, MMC_API_KEY, every service API key).
 - **Docker images pinned** — specific version tags, not `:latest`
-- **Secrets redacted** — deploy logs automatically redact VPN keys
+- **CI dependency audit** — `npm audit --audit-level=critical` blocks PRs that introduce a critical CVE; high-level advisories are reported but not blocking (Next.js 14 has unfixed highs that need a major upgrade to address).
 
 ## VPN Configuration
 

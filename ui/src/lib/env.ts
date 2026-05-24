@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, copyFileSync, readdirSync, unlinkSync } from 'fs';
+import { readFileSync, writeFileSync, copyFileSync, readdirSync, unlinkSync, chmodSync } from 'fs';
 import { join, dirname } from 'path';
 
 export const ENV_FILE_PATH = process.env.ENV_FILE_PATH || '.env';
@@ -75,5 +75,14 @@ export function writeEnv(vars: Record<string, string>): void {
     }
   }
 
-  writeFileSync(ENV_FILE_PATH, content, 'utf-8');
+  // Mode 0o600: the file contains VPN private keys, NAS credentials and
+  // service API keys. fs.writeFileSync's mode option only applies when the
+  // file is created; explicit chmod handles the case where it already exists
+  // with looser perms (e.g. from an older install).
+  writeFileSync(ENV_FILE_PATH, content, { encoding: 'utf-8', mode: 0o600 });
+  try {
+    chmodSync(ENV_FILE_PATH, 0o600);
+  } catch {
+    // best-effort — ignore on filesystems that don't support chmod
+  }
 }

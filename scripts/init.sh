@@ -21,6 +21,11 @@ if [ ! -f "$ENV_FILE" ]; then
     exit 1
 fi
 
+# Lock down the .env file mode. It contains VPN private keys, NAS
+# credentials and service API keys — must not be world-readable. Run
+# every time so legacy installs with mode 644 get fixed automatically.
+chmod 600 "$ENV_FILE" 2>/dev/null || echo "  ⚠ Could not chmod $ENV_FILE to 600"
+
 # Source .env (skip comments and empty lines)
 set -a
 . "$ENV_FILE"

@@ -37,8 +37,10 @@ case "$BACKUP_DIR" in
     *)  BACKUP_DIR="$PROJECT_DIR/$BACKUP_DIR" ;;
 esac
 
-# Ensure backup directory exists
+# Ensure backup directory exists and isn't world-readable. The archives
+# below contain admin password hashes and session tokens.
 mkdir -p "$BACKUP_DIR"
+chmod 700 "$BACKUP_DIR" 2>/dev/null || true
 
 # Create timestamped backup
 TIMESTAMP=$(date +"%Y-%m-%d-%H%M%S")
@@ -49,7 +51,10 @@ echo "Source:  $CONFIG_ROOT"
 echo "Target:  $BACKUP_FILE"
 echo ""
 
-tar -czf "$BACKUP_FILE" -C "$(dirname "$CONFIG_ROOT")" "$(basename "$CONFIG_ROOT")"
+# umask so the archive is created 0600 from the start (no race window where
+# another user could read it between create and chmod).
+( umask 077 && tar -czf "$BACKUP_FILE" -C "$(dirname "$CONFIG_ROOT")" "$(basename "$CONFIG_ROOT")" )
+chmod 600 "$BACKUP_FILE"
 
 BACKUP_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
 echo "✓ Backup complete: $BACKUP_FILE ($BACKUP_SIZE)"

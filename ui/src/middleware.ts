@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Constant-time string equality. Both inputs must be utf-8 strings.
+// Differing-length inputs return false early but in constant time relative
+// to the longer string — sufficient because we only ever compare the
+// configured key against an attacker-controlled candidate.
+function constantTimeEqual(a: string, b: string): boolean {
+  const aBytes = new TextEncoder().encode(a);
+  const bBytes = new TextEncoder().encode(b);
+  if (aBytes.length !== bBytes.length) return false;
+  let diff = 0;
+  for (let i = 0; i < aBytes.length; i++) diff |= aBytes[i] ^ bBytes[i];
+  return diff === 0;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Rate limiting – simple in-memory Map with lazy cleanup             */
 /* ------------------------------------------------------------------ */
@@ -46,12 +59,23 @@ function getRateLimitResult(ip: string): { allowed: boolean; retryAfter: number 
 /*  Security headers applied to every response                         */
 /* ------------------------------------------------------------------ */
 
+// HTTPS_ONLY=1 in .env tells us the stack is behind TLS (reverse proxy or
+// direct cert). When set we mark auth cookies Secure and send HSTS so the
+// browser refuses to downgrade. Off by default — the standard LAN deploy is
+// plain HTTP.
+const HTTPS_ONLY = process.env.HTTPS_ONLY === '1' || process.env.HTTPS_ONLY === 'true';
+
 function applySecurityHeaders(res: NextResponse): void {
   res.headers.set('X-Content-Type-Options', 'nosniff');
   res.headers.set('X-Frame-Options', 'DENY');
-  res.headers.set('X-XSS-Protection', '1; mode=block');
+  // X-XSS-Protection is deprecated and can cause security issues in older
+  // browsers — modern browsers ignore it. CSP frame-ancestors + XSS hardening
+  // in the app code is the real defence.
   res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (HTTPS_ONLY) {
+    res.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -215,10 +239,11 @@ export async function middleware(request: NextRequest) {
       try {
         const body = await request.json();
         const submittedKey = body?.key;
-        if (apiKey && submittedKey === apiKey) {
+        if (apiKey && typeof submittedKey === 'string' && constantTimeEqual(submittedKey, apiKey)) {
           const res = NextResponse.json({ ok: true }, { status: 200 });
           res.cookies.set('mmc-auth', apiKey, {
             httpOnly: true,
+            secure: HTTPS_ONLY,
             sameSite: 'strict',
             path: '/',
             maxAge: 60 * 60 * 24 * 30, // 30 days
@@ -251,7 +276,9 @@ export async function middleware(request: NextRequest) {
     if (!isPublic) {
       const cookieAuth = request.cookies.get('mmc-auth')?.value;
       const headerAuth = request.headers.get('x-api-key');
-      const authenticated = cookieAuth === apiKey || headerAuth === apiKey;
+      const authenticated =
+        (typeof cookieAuth === 'string' && constantTimeEqual(cookieAuth, apiKey)) ||
+        (typeof headerAuth === 'string' && constantTimeEqual(headerAuth, apiKey));
 
       if (!authenticated) {
         if (pathname.startsWith('/api/')) {

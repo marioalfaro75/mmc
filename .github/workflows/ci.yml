@@ -66,6 +66,14 @@ jobs:
         run: npx tsc --noEmit
       - name: Unit tests
         run: npm test
+      - name: Critical production CVEs (blocking)
+        # Only critical-severity prod advisories fail CI — there's currently
+        # no clean fix path for the high-level Next.js advisories without a
+        # major upgrade. Run the high-level audit separately below so the
+        # output is visible without gating every PR on it.
+        run: npm audit --omit=dev --audit-level=critical
+      - name: High production CVEs (informational)
+        run: npm audit --omit=dev --audit-level=high || true
 
   systemd:
     name: systemd unit syntax

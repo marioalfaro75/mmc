@@ -282,6 +282,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - MMC_API_KEY=${MMC_API_KEY:-}
       - GLUETUN_CONTROL_PASSWORD=${GLUETUN_CONTROL_PASSWORD:-changeme}
+      - HTTPS_ONLY=${HTTPS_ONLY:-0}
       - DATA_ROOT=${DATA_ROOT}
       - PUID=${PUID}
       - PGID=${PGID}

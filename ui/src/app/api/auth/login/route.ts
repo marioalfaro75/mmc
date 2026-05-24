@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateAdmin, createSession } from '@/lib/auth';
+import { SESSION_COOKIE_OPTIONS, HAS_ADMINS_COOKIE_OPTIONS } from '@/lib/cookies';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,17 +17,8 @@ export async function POST(request: NextRequest) {
 
     const token = createSession(admin);
     const res = NextResponse.json({ ok: true, username: admin.username });
-    res.cookies.set('mmc-session', token, {
-      httpOnly: true,
-      sameSite: 'strict',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 30,
-    });
-    res.cookies.set('mmc-has-admins', '1', {
-      sameSite: 'strict',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 365 * 10,
-    });
+    res.cookies.set('mmc-session', token, SESSION_COOKIE_OPTIONS);
+    res.cookies.set('mmc-has-admins', '1', HAS_ADMINS_COOKIE_OPTIONS);
     return res;
   } catch {
     return NextResponse.json({ error: 'Login failed' }, { status: 500 });

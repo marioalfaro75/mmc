@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, hasAdmins } from '@/lib/auth';
+import { HAS_ADMINS_COOKIE_OPTIONS } from '@/lib/cookies';
 
 export async function GET(request: NextRequest) {
   const token = request.cookies.get('mmc-session')?.value;
@@ -7,13 +8,12 @@ export async function GET(request: NextRequest) {
 
   const buildResponse = (data: Record<string, unknown>) => {
     const res = NextResponse.json(data);
-    // Sync the has-admins cookie so middleware can check without file I/O
+    // Sync the has-admins cookie so middleware can check without file I/O.
+    // This is a hint only — the real auth gate is requireAdmin() in each
+    // route, which reads from disk. Marking httpOnly stops client JS from
+    // tampering with it.
     if (adminsExist && request.cookies.get('mmc-has-admins')?.value !== '1') {
-      res.cookies.set('mmc-has-admins', '1', {
-        sameSite: 'strict',
-        path: '/',
-        maxAge: 60 * 60 * 24 * 365 * 10,
-      });
+      res.cookies.set('mmc-has-admins', '1', HAS_ADMINS_COOKIE_OPTIONS);
     }
     return res;
   };
