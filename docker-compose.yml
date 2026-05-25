@@ -14,8 +14,11 @@ services:
     container_name: gluetun
     cap_add:
       - NET_ADMIN
-    cap_drop:
-      - ALL
+    # Don't `cap_drop: ALL` — gluetun runs its main process as root (needed
+    # for WireGuard interface setup) and relies on DAC_OVERRIDE to read the
+    # bind-mounted /gluetun directory when the host dir is owned by PUID
+    # with mode 750. Dropping all caps strips DAC_OVERRIDE and the container
+    # exits at startup with "open /gluetun/servers.json: permission denied".
     devices:
       - /dev/net/tun:/dev/net/tun
     networks:
