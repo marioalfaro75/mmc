@@ -227,6 +227,14 @@ show_help() {
     exit 0
 }
 
+# Save original args (quoted) so we can pass them through a sg(1) re-exec
+# later — `$@` is consumed by the arg-parse loop below.
+_ORIGINAL_ARGS=""
+for _arg in "$@"; do
+    _quoted=$(printf "%s" "$_arg" | sed "s/'/'\\\\''/g")
+    _ORIGINAL_ARGS="$_ORIGINAL_ARGS '$_quoted'"
+done
+
 # --- Parse arguments ---
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -256,6 +264,40 @@ cleanup() {
     fi
 }
 trap cleanup EXIT INT TERM
+
+# ============================================================
+# DOCKER GROUP RE-EXEC
+# ============================================================
+# After `usermod -aG docker $USER`, the new group only takes effect in
+# fresh login sessions — the script's current shell still can't reach
+# /var/run/docker.sock. Re-exec under `sg docker` so subsequent docker
+# commands work without making the user log out and re-run the install.
+
+needs_docker_group_reexec() {
+    [ -n "$_MMC_DOCKER_REEXEC" ] && return 1
+    [ "$(id -u)" = "0" ] && return 1
+    command -v docker >/dev/null 2>&1 || return 1
+    docker info >/dev/null 2>&1 && return 1
+    _user="$(id -un)"
+    if getent group docker 2>/dev/null | grep -qw "$_user" \
+       && ! id -nG | tr ' ' '\n' | grep -qx docker; then
+        return 0
+    fi
+    return 1
+}
+
+reexec_under_docker_group() {
+    _self="$1"
+    shift
+    _args=""
+    for _arg in "$@"; do
+        _q=$(printf "%s" "$_arg" | sed "s/'/'\\\\''/g")
+        _args="$_args '$_q'"
+    done
+    info "Activating docker group membership (sg docker) for this session..."
+    export _MMC_DOCKER_REEXEC=1
+    exec sg docker -c "exec \"$_self\" $_args"
+}
 
 # ============================================================
 # SHARED FUNCTIONS
@@ -1392,22 +1434,26 @@ install_docker() {
         exit 1
     fi
 
-    # Add current user to docker group (avoids needing sudo)
+    # Add the invoking user to the docker group so we can run docker without
+    # sudo. When run via `sudo curl ... | bash`, the script itself runs as
+    # the calling user, so $USER is correct here.
     sudo usermod -aG docker "$USER"
-    pass "Docker installed and user added to docker group"
+    pass "Docker installed and $USER added to docker group"
 
-    # Start Docker daemon if not running
-    if ! docker info >/dev/null 2>&1; then
+    # Probe the daemon via sudo — the just-added group membership won't be
+    # active in this shell yet, so a plain `docker info` would falsely fail.
+    if ! sudo docker info >/dev/null 2>&1; then
         info "Starting Docker daemon..."
         sudo systemctl enable --now docker
         sleep 3
     fi
 
-    if docker info >/dev/null 2>&1; then
+    if sudo docker info >/dev/null 2>&1; then
         pass "Docker daemon is running"
+        info "Group change takes effect in new shells — we'll re-exec under sg(1) automatically."
     else
-        warn "Docker installed but daemon may need a new shell session to work without sudo"
-        info "If docker commands fail, log out and back in, or run: newgrp docker"
+        warn "Docker daemon does not appear to be running"
+        info "Try: sudo systemctl start docker"
     fi
 }
 
@@ -1531,10 +1577,16 @@ run_install() {
     if [ "$EXISTING_INSTALL" = "1" ]; then
         info "Existing install detected — handing off to update..."
         echo ""
+        if needs_docker_group_reexec; then
+            reexec_under_docker_group "$_cloned_dir/scripts/deploy.sh" --update
+        fi
         exec "$_cloned_dir/scripts/deploy.sh" --update
     else
         info "Handing off to full deploy..."
         echo ""
+        if needs_docker_group_reexec; then
+            reexec_under_docker_group "$_cloned_dir/scripts/deploy.sh"
+        fi
         exec "$_cloned_dir/scripts/deploy.sh"
     fi
 }
@@ -1544,6 +1596,18 @@ run_install() {
 # ============================================================
 
 setup_colors
+
+# For modes that need the docker socket, re-exec under sg(1) if the user
+# is in the docker group on disk but the membership isn't active in this
+# shell yet (e.g. running deploy after install before logging out).
+if [ "$INSTALL_MODE" != "1" ] && [ "$UI_ONLY" != "1" ] && [ "$NAS_MODE" != "1" ]; then
+    if needs_docker_group_reexec; then
+        info "Activating docker group membership (sg docker) for this session..."
+        export _MMC_DOCKER_REEXEC=1
+        # shellcheck disable=SC2086  # _ORIGINAL_ARGS is intentionally word-split
+        exec sg docker -c "exec \"$0\" $_ORIGINAL_ARGS"
+    fi
+fi
 
 if [ "$INSTALL_MODE" = "1" ]; then
     run_install
