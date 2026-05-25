@@ -83,7 +83,7 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'IMAGE_PROWLARR', label: 'Prowlarr Image', type: 'string', group: 'images', description: 'Docker image for Prowlarr', default: 'lscr.io/linuxserver/prowlarr:1.31.2', affectsServices: ['prowlarr'] },
   { key: 'IMAGE_QBITTORRENT', label: 'qBittorrent Image', type: 'string', group: 'images', description: 'Docker image for qBittorrent', default: 'lscr.io/linuxserver/qbittorrent:5.0.4', affectsServices: ['qbittorrent'] },
   { key: 'IMAGE_SABNZBD', label: 'SABnzbd Image', type: 'string', group: 'images', description: 'Docker image for SABnzbd', default: 'lscr.io/linuxserver/sabnzbd:4.4.1', affectsServices: ['sabnzbd'] },
-  { key: 'IMAGE_SEERR', label: 'Seerr Image', type: 'string', group: 'images', description: 'Docker image for Seerr', default: 'ghcr.io/seerr-team/seerr:2.3.0', affectsServices: ['seerr'] },
+  { key: 'IMAGE_SEERR', label: 'Seerr Image', type: 'string', group: 'images', description: 'Docker image for Seerr', default: 'ghcr.io/seerr-team/seerr:v3.2.0', affectsServices: ['seerr'] },
   { key: 'IMAGE_BAZARR', label: 'Bazarr Image', type: 'string', group: 'images', description: 'Docker image for Bazarr', default: 'lscr.io/linuxserver/bazarr:1.5.1', affectsServices: ['bazarr'] },
   { key: 'IMAGE_GLUETUN', label: 'Gluetun Image', type: 'string', group: 'images', description: 'Docker image for Gluetun', default: 'qmcgaw/gluetun:v3.40', affectsServices: ['gluetun'] },
   { key: 'IMAGE_RECYCLARR', label: 'Recyclarr Image', type: 'string', group: 'images', description: 'Docker image for Recyclarr', default: 'ghcr.io/recyclarr/recyclarr:7.4.0', affectsServices: ['recyclarr'] },

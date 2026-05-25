@@ -705,6 +705,14 @@ migrate_env() {
         return
     fi
 
+    # Repair known-broken defaults baked into older .env files. The
+    # `seerr:2.3.0` tag was never published to GHCR — pin existing installs
+    # to the current stable release so `docker compose pull` stops failing.
+    if grep -q "^IMAGE_SEERR=ghcr.io/seerr-team/seerr:2.3.0$" "$ENV_FILE"; then
+        sed -i "s|^IMAGE_SEERR=ghcr.io/seerr-team/seerr:2.3.0$|IMAGE_SEERR=ghcr.io/seerr-team/seerr:v3.2.0|" "$ENV_FILE"
+        pass "Repaired IMAGE_SEERR (2.3.0 was never published — pinned to v3.2.0)"
+    fi
+
     _added=0
     while IFS= read -r line; do
         # Skip comments and empty lines
