@@ -364,6 +364,33 @@ detect_local_subnet() {
     return 1
 }
 
+# IP of the default-route interface — used to print real LAN URLs in
+# the post-deploy summary when HOST_BIND=0.0.0.0.
+detect_local_ip() {
+    _iface=$(ip route show default 2>/dev/null | awk '{print $5; exit}')
+    if [ -n "$_iface" ]; then
+        _ip=$(ip -4 addr show "$_iface" 2>/dev/null | awk '/inet / {sub("/.*","",$2); print $2; exit}')
+        if [ -n "$_ip" ]; then
+            echo "$_ip"
+            return 0
+        fi
+    fi
+    echo "localhost"
+    return 1
+}
+
+# Hostname to use in service URLs, derived from HOST_BIND:
+#   127.0.0.1 / localhost / empty  → localhost (loopback-only deploy)
+#   0.0.0.0                        → the host's detected LAN IP
+#   anything else (a specific IP)  → that IP verbatim
+service_host() {
+    case "${HOST_BIND:-127.0.0.1}" in
+        ""|127.0.0.1|localhost) echo "localhost" ;;
+        0.0.0.0) detect_local_ip 2>/dev/null || echo "localhost" ;;
+        *) echo "$HOST_BIND" ;;
+    esac
+}
+
 # ============================================================
 # NAS MOUNT FUNCTIONS
 # ============================================================
@@ -816,6 +843,14 @@ run_setup_wizard() {
         _setup_nas=1
     fi
 
+    # LAN exposure prompt — default is loopback-only (safest); flipping
+    # to 0.0.0.0 lets other devices on the LAN reach every service UI.
+    echo ""
+    _host_bind="127.0.0.1"
+    if confirm_user "Expose service web UIs to your local network (other devices on this LAN)?" "n"; then
+        _host_bind="0.0.0.0"
+    fi
+
     echo ""
 
     # Use | as sed delimiter (WireGuard keys contain / and +)
@@ -829,6 +864,7 @@ run_setup_wizard() {
     sed -i "s|^HOST_PROJECT_DIR=.*|HOST_PROJECT_DIR=$PROJECT_DIR|" "$ENV_FILE"
     sed -i "s|^PUID=.*|PUID=$_puid|" "$ENV_FILE"
     sed -i "s|^PGID=.*|PGID=$_pgid|" "$ENV_FILE"
+    sed -i "s|^HOST_BIND=.*|HOST_BIND=$_host_bind|" "$ENV_FILE"
     [ -n "$_tmdb_key" ] && sed -i "s|^TMDB_API_KEY=.*|TMDB_API_KEY=$_tmdb_key|" "$ENV_FILE"
 
     # Auto-detect a free Docker subnet
@@ -1004,27 +1040,32 @@ print_services_summary() {
     PORT_BAZARR="${PORT_BAZARR:-6767}"
     PORT_GLUETUN_CONTROL="${PORT_GLUETUN_CONTROL:-8000}"
 
-    printf "\n  ${GREEN}${BOLD}Mars Media Centre${RESET}  ${GREEN}http://localhost:${PORT_UI}${RESET}\n"
+    _host=$(service_host)
+
+    printf "\n  ${GREEN}${BOLD}Mars Media Centre${RESET}  ${GREEN}http://${_host}:${PORT_UI}${RESET}\n"
+    if [ "$_host" != "localhost" ]; then
+        info "  (also reachable as http://localhost:${PORT_UI} on this machine)"
+    fi
     echo ""
 
     info "${BOLD}Media Management${RESET}"
-    info "  Sonarr         http://localhost:${PORT_SONARR}        TV show management"
-    info "  Radarr         http://localhost:${PORT_RADARR}        Movie management"
-    info "  Prowlarr       http://localhost:${PORT_PROWLARR}        Indexer management"
-    info "  Seerr          http://localhost:${PORT_SEERR}        Media requests"
+    info "  Sonarr         http://${_host}:${PORT_SONARR}        TV show management"
+    info "  Radarr         http://${_host}:${PORT_RADARR}        Movie management"
+    info "  Prowlarr       http://${_host}:${PORT_PROWLARR}        Indexer management"
+    info "  Seerr          http://${_host}:${PORT_SEERR}        Media requests"
     echo ""
 
     info "${BOLD}Download Clients${RESET}"
-    info "  qBittorrent    http://localhost:${PORT_QBITTORRENT}        Torrent client"
-    info "  SABnzbd        http://localhost:${PORT_SABNZBD}        Usenet client"
+    info "  qBittorrent    http://${_host}:${PORT_QBITTORRENT}        Torrent client"
+    info "  SABnzbd        http://${_host}:${PORT_SABNZBD}        Usenet client"
     echo ""
 
     info "${BOLD}Media Companions${RESET}"
-    info "  Bazarr         http://localhost:${PORT_BAZARR}        Subtitle management"
+    info "  Bazarr         http://${_host}:${PORT_BAZARR}        Subtitle management"
     echo ""
 
     info "${BOLD}Operations${RESET}"
-    info "  Gluetun        http://localhost:${PORT_GLUETUN_CONTROL}        VPN status"
+    info "  Gluetun        http://${_host}:${PORT_GLUETUN_CONTROL}        VPN status"
     info "  Recyclarr      (runs on schedule)      Quality profile sync"
     info "  Watchtower      (runs on schedule)      Container auto-update"
     echo ""
@@ -1381,10 +1422,12 @@ print_summary() {
 
     _missing_vars=$(check_missing_required_vars)
 
+    _host=$(service_host)
+
     if [ "$_ui_up" = "1" ] && [ -z "$_missing_vars" ] && [ "$FAIL_COUNT" -eq 0 ]; then
         # Everything working
         printf "  ${GREEN}${BOLD}✓ DEPLOY COMPLETE${RESET}\n"
-        info "Mars Media Centre is ready at http://localhost:${PORT_UI}"
+        info "Mars Media Centre is ready at http://${_host}:${PORT_UI}"
     elif [ "$_ui_up" = "1" ] && { [ -n "$_missing_vars" ] || [ "$FAIL_COUNT" -gt 0 ]; }; then
         # UI running but services need attention
         printf "  ${YELLOW}${BOLD}⚠ DEPLOY INCOMPLETE — configuration needed${RESET}\n"
@@ -1392,7 +1435,7 @@ print_summary() {
         echo ""
         info "${BOLD}Next steps:${RESET}"
         _step=1
-        info "  ${_step}. Open http://localhost:${PORT_UI}/settings to configure missing settings"
+        info "  ${_step}. Open http://${_host}:${PORT_UI}/settings to configure missing settings"
         _step=$((_step + 1))
         if [ -n "$_missing_vars" ]; then
             info "  ${_step}. Required fields still empty:${_missing_vars}"
@@ -1674,7 +1717,8 @@ elif [ "$UI_DOCKER" = "1" ]; then
     fi
 
     section "Installed Services"
-    printf "\n  ${GREEN}${BOLD}Mars Media Centre${RESET}  ${GREEN}http://localhost:${PORT_UI}${RESET}\n\n"
+    _host=$(service_host)
+    printf "\n  ${GREEN}${BOLD}Mars Media Centre${RESET}  ${GREEN}http://${_host}:${PORT_UI}${RESET}\n\n"
 
     info "${BOLD}Quick Reference${RESET}"
     info "  Stop:       docker stop media-ui"
