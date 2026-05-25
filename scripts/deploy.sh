@@ -966,7 +966,6 @@ check_ui_api_routes() {
 /api/calendar
 /api/movies
 /api/series
-/api/recently-added
 /api/requests
 /api/movies/lookup?term=test
 /api/series/lookup?term=test
@@ -1305,7 +1304,10 @@ check_service_ports() {
         "media-ui:$PORT_UI"; do
         _svc="${_svc_port%%:*}"
         _port="${_svc_port##*:}"
-        if curl -s -o /dev/null -m 3 "http://localhost:${_port}" 2>/dev/null; then
+        # Poll up to 30s — LinuxServer.io images (qbittorrent, sabnzbd)
+        # do s6 init + permission fixing on every restart and routinely
+        # need 10–20s before their web UI binds.
+        if wait_for_port "$_port" 30; then
             pass "$_svc on port $_port"
         else
             fail "$_svc not responding on port $_port"
@@ -1325,7 +1327,6 @@ check_ui_api_routes_live() {
 /api/calendar
 /api/movies
 /api/series
-/api/recently-added
 /api/requests
 /api/movies/lookup?term=test
 /api/series/lookup?term=test
@@ -1390,11 +1391,14 @@ print_summary() {
         info "The web UI is running but some services failed to start."
         echo ""
         info "${BOLD}Next steps:${RESET}"
-        info "  1. Open http://localhost:${PORT_UI}/settings to configure missing settings"
+        _step=1
+        info "  ${_step}. Open http://localhost:${PORT_UI}/settings to configure missing settings"
+        _step=$((_step + 1))
         if [ -n "$_missing_vars" ]; then
-            info "  2. Required fields still empty:${_missing_vars}"
+            info "  ${_step}. Required fields still empty:${_missing_vars}"
+            _step=$((_step + 1))
         fi
-        info "  3. After updating settings, restart services from the web UI"
+        info "  ${_step}. After updating settings, restart services from the web UI"
         info "     Service Control tab, or re-run: ./scripts/deploy.sh"
     else
         # UI didn't come up
