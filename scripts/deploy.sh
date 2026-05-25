@@ -1707,8 +1707,21 @@ elif [ "$UPDATE_MODE" = "1" ]; then
     cd "$PROJECT_DIR"
     cleanup_stale_containers "gluetun qbittorrent sabnzbd prowlarr sonarr radarr unpackerr bazarr seerr recyclarr watchtower media-ui"
     info "Running docker compose up -d --build..."
+    # Tolerate partial failures (e.g. VPN healthcheck) so the validation
+    # section below still runs and the user gets a useful summary instead
+    # of a bare compose error.
+    set +e
     docker compose up -d --build
-    pass "docker compose up -d --build completed"
+    _compose_rc=$?
+    set -e
+    if [ "$_compose_rc" -eq 0 ]; then
+        pass "docker compose up -d --build completed"
+    else
+        warn "docker compose up -d --build exited $_compose_rc — one or more services failed to start"
+        info "Most often this is the VPN healthcheck. To diagnose:"
+        info "  docker logs gluetun"
+        info "Then fix VPN credentials in $PROJECT_DIR/.env and re-run ./scripts/deploy.sh"
+    fi
 
     section "Post-Update Validation"
     check_all_containers
