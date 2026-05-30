@@ -7,6 +7,7 @@ import { getVersion as getSabnzbdVersion } from '@/lib/api/sabnzbd';
 import { getVpnStatus } from '@/lib/api/gluetun';
 import { getStatus as getSeerrStatus } from '@/lib/api/seerr';
 import { getSystemStatus as getBazarrStatus } from '@/lib/api/bazarr';
+import { isAuthRequiredError } from '@/lib/api/errors';
 import type { ServiceHealth } from '@/lib/types/common';
 
 async function checkService(
@@ -17,7 +18,17 @@ async function checkService(
   try {
     const version = await checker();
     return { name, status: 'online', version, url };
-  } catch {
+  } catch (err) {
+    if (isAuthRequiredError(err)) {
+      return {
+        name,
+        status: 'auth_required',
+        version: null,
+        url,
+        reason: err.hint || err.message,
+        envVar: err.envVar,
+      };
+    }
     return { name, status: 'offline', version: null, url };
   }
 }

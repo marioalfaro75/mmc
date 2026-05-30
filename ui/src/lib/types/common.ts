@@ -49,9 +49,13 @@ export interface DashboardStats {
 
 export interface ServiceHealth {
   name: string;
-  status: 'online' | 'offline' | 'degraded';
+  status: 'online' | 'offline' | 'degraded' | 'auth_required';
   version: string | null;
   url: string;
+  /** Optional reason for non-online status; shown in tooltips / banners. */
+  reason?: string;
+  /** Env var the user needs to set when status === 'auth_required'. */
+  envVar?: string;
 }
 
 export type VpnConnectionStatus = 'connected' | 'connecting' | 'error' | 'disconnected';

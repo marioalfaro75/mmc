@@ -1,7 +1,16 @@
+import { AuthRequiredError } from './errors';
+
 const BASE_URL = process.env.SABNZBD_URL || 'http://gluetun:8081';
 const API_KEY = process.env.SABNZBD_API_KEY || '';
 
 async function sabnzbdFetch<T>(params: Record<string, string>): Promise<T> {
+  if (!API_KEY) {
+    throw new AuthRequiredError(
+      'SABnzbd',
+      'SABNZBD_API_KEY',
+      'use Settings → Services → Auto-Detect API Keys',
+    );
+  }
   const searchParams = new URLSearchParams({
     apikey: API_KEY,
     output: 'json',
@@ -11,7 +20,23 @@ async function sabnzbdFetch<T>(params: Record<string, string>): Promise<T> {
   if (!res.ok) {
     throw new Error(`SABnzbd API error: ${res.status} ${res.statusText}`);
   }
-  return res.json();
+  const data = (await res.json()) as T & { status?: false; error?: string };
+  // SABnzbd returns 200 even on bad API key — the failure is signalled
+  // inside the JSON body: { status: false, error: "API Key Incorrect" }.
+  if (
+    data &&
+    typeof data === 'object' &&
+    'status' in data &&
+    (data as { status?: unknown }).status === false &&
+    /api key/i.test(((data as { error?: string }).error) || '')
+  ) {
+    throw new AuthRequiredError(
+      'SABnzbd',
+      'SABNZBD_API_KEY',
+      (data as { error?: string }).error || 'wrong API key',
+    );
+  }
+  return data;
 }
 
 export interface SabnzbdSlot {

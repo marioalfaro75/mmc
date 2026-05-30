@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Settings, Sliders, Shield, Network, Server, Archive, Download, Loader2, Save, SlidersHorizontal, Users, ArrowUpCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { SettingsTabs, type TabDef } from '@/components/settings/SettingsTabs';
@@ -29,7 +30,14 @@ const TABS: TabDef[] = [
 ];
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState('general');
+  // Honour ?tab=<id> so other pages can deep-link to a specific tab
+  // (e.g. the dashboard's auth-required chips → ?tab=services).
+  const searchParams = useSearchParams();
+  const initialTab = (() => {
+    const requested = searchParams.get('tab');
+    return requested && TABS.some((t) => t.id === requested) ? requested : 'general';
+  })();
+  const [activeTab, setActiveTab] = useState(initialTab);
   const env = useEnvSettings();
   const [restartModalOpen, setRestartModalOpen] = useState(false);
   const [affectedServices, setAffectedServices] = useState<string[]>([]);

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { BookOpen, ChevronDown, Terminal, ExternalLink, Loader2, Zap, ShieldCheck, Key } from 'lucide-react';
+import Link from 'next/link';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
 import { useBrowserHost } from '@/lib/useBrowserHost';
 import { toast } from 'sonner';
@@ -416,6 +417,43 @@ export default function GuidePage() {
         Work through the phases in order — each builds on the previous one.
       </p>
 
+      {/* Credentials callout — flagged early so users don't get stuck on
+          the dashboard's "Auth required" state for qBittorrent / SABnzbd. */}
+      <Card className="border-warning/30 bg-warning/5">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-warning">
+            <Key className="h-4 w-4" />
+            Credentials the dashboard needs
+          </CardTitle>
+        </CardHeader>
+        <div className="space-y-2 text-sm">
+          <p>
+            The dashboard reads <Code>QBITTORRENT_PASSWORD</Code> and{' '}
+            <Code>SABNZBD_API_KEY</Code> (plus the *arr API keys) out of{' '}
+            <Code>.env</Code>. Until those match the actual values inside each
+            service, the System Health card on the dashboard will show those
+            services as{' '}
+            <span className="rounded bg-warning/20 px-1.5 py-0.5 font-mono text-xs text-warning">
+              Auth required
+            </span>
+            .
+          </p>
+          <p>
+            Fastest path:{' '}
+            <Link
+              href="/settings?tab=services"
+              className="font-medium text-warning hover:underline"
+            >
+              Settings → Services → Auto-Detect API Keys
+            </Link>{' '}
+            scrapes the *arrs, Seerr, Bazarr, and SABnzbd's keys directly from
+            their config files. qBittorrent is the only one you still have to
+            set by hand (Step 2 below) — its WebUI password isn't in a config
+            file we can read.
+          </p>
+        </div>
+      </Card>
+
       {/* Quick Reference */}
       <Card>
         <CardHeader>
@@ -535,7 +573,18 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
             </Step>
             <Step n={2}>
               <p><strong>Change the default password</strong> immediately: Options → Web UI → Authentication.</p>
-              <p className="text-xs text-muted-foreground">Then set the same password in this web UI under Settings → <Code>QBITTORRENT_PASSWORD</Code> and restart the stack so the dashboard can connect.</p>
+              <div className="mt-2 rounded-md border border-warning/30 bg-warning/5 p-2 text-xs text-warning">
+                <p className="font-medium">Required for the dashboard chip to turn green:</p>
+                <p className="mt-1 text-warning/90">
+                  Paste the same password into{' '}
+                  <Link href="/settings?tab=services" className="underline">
+                    Settings → Services → <Code>QBITTORRENT_PASSWORD</Code>
+                  </Link>
+                  , then save (the page will offer to restart the affected
+                  services for you). Until this is done, the System Health
+                  chip will show qBittorrent as <em>Auth required</em>.
+                </p>
+              </div>
             </Step>
             <Step n={3}>
               <p>Set default save path: Options → Downloads → Default Save Path → <Code>/data/torrents</Code></p>
@@ -585,9 +634,26 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
                 <li><Code>tv</Code> → Folder/Path: <Code>/data/usenet/tv</Code></li>
               </ul>
             </Step>
-            <Tip>
-              Your SABnzbd API key is at Config → General → API Key. You will need it for Sonarr/Radarr.
-            </Tip>
+            <Step n={5}>
+              <p>
+                <strong>Wire SABnzbd's API key into the dashboard.</strong>{' '}
+                The key is at Config → General → API Key.
+              </p>
+              <div className="mt-2 rounded-md border border-warning/30 bg-warning/5 p-2 text-xs text-warning">
+                <p className="font-medium">Required for the dashboard chip to turn green:</p>
+                <p className="mt-1 text-warning/90">
+                  Use{' '}
+                  <Link href="/settings?tab=services" className="underline">
+                    Settings → Services → Auto-Detect API Keys
+                  </Link>
+                  {' '}to grab it automatically, or paste it into{' '}
+                  <Code>SABNZBD_API_KEY</Code> by hand. Until this is done the
+                  System Health chip will show SABnzbd as <em>Auth required</em>{' '}
+                  (and Sonarr/Radarr won't be able to send anything to it
+                  either).
+                </p>
+              </div>
+            </Step>
           </AccordionSection>
         </div>
       </div>

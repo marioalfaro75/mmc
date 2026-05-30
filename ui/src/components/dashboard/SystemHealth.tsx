@@ -1,7 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, Shield, ShieldAlert, ShieldCheck, Loader2 } from 'lucide-react';
+import { Activity, Lock, ShieldAlert, ShieldCheck, Loader2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Skeleton } from '@/components/common/Skeleton';
@@ -69,24 +70,57 @@ export function SystemHealth() {
             </div>
           ))
         ) : (
-          healthData?.services?.map((service) => (
-            <div
-              key={service.name}
-              className="flex items-center gap-2 rounded-md bg-muted/50 p-2"
-            >
+          healthData?.services?.map((service) => {
+            const dotColor =
+              service.status === 'online'
+                ? 'bg-success'
+                : service.status === 'auth_required'
+                  ? 'bg-warning'
+                  : 'bg-danger';
+
+            const inner = (
+              <>
+                <div className={`h-2.5 w-2.5 rounded-full ${dotColor}`} />
+                <span className="text-xs">{service.name}</span>
+                {service.status === 'auth_required' ? (
+                  <Badge
+                    variant="outline"
+                    className="ml-auto inline-flex items-center gap-1 border-warning/40 text-[10px] text-warning"
+                  >
+                    <Lock className="h-2.5 w-2.5" />
+                    Auth required
+                  </Badge>
+                ) : service.version ? (
+                  <Badge variant="outline" className="ml-auto text-[10px]">
+                    {service.version}
+                  </Badge>
+                ) : null}
+              </>
+            );
+
+            const tooltip =
+              service.status === 'auth_required'
+                ? `${service.reason || 'Authentication required'} — click to fix in Settings → Services`
+                : undefined;
+
+            return service.status === 'auth_required' ? (
+              <Link
+                key={service.name}
+                href="/settings?tab=services"
+                title={tooltip}
+                className="flex items-center gap-2 rounded-md bg-muted/50 p-2 transition-colors hover:bg-warning/10"
+              >
+                {inner}
+              </Link>
+            ) : (
               <div
-                className={`h-2.5 w-2.5 rounded-full ${
-                  service.status === 'online' ? 'bg-success' : 'bg-danger'
-                }`}
-              />
-              <span className="text-xs">{service.name}</span>
-              {service.version && (
-                <Badge variant="outline" className="ml-auto text-[10px]">
-                  {service.version}
-                </Badge>
-              )}
-            </div>
-          ))
+                key={service.name}
+                className="flex items-center gap-2 rounded-md bg-muted/50 p-2"
+              >
+                {inner}
+              </div>
+            );
+          })
         )}
       </div>
     </Card>
