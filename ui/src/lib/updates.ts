@@ -28,7 +28,17 @@ export function parseRepoUrl(url: string): { owner: string; repo: string } | nul
 }
 
 async function git(args: string[]): Promise<string> {
-  const { stdout } = await execFileP('git', ['-C', HOST_PROJECT_DIR, ...args]);
+  // The host repo is typically owned by PUID/PGID (e.g. 1000) but this
+  // process runs as root inside the container — git's "dubious ownership"
+  // guard would otherwise refuse every command. Tell it to trust this one
+  // path, per-invocation, instead of polluting global config.
+  const { stdout } = await execFileP('git', [
+    '-c',
+    `safe.directory=${HOST_PROJECT_DIR}`,
+    '-C',
+    HOST_PROJECT_DIR,
+    ...args,
+  ]);
   return stdout.trim();
 }
 
