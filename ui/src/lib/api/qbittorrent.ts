@@ -18,7 +18,7 @@ async function login(): Promise<string> {
   return cookie.split(';')[0];
 }
 
-async function qbtFetch<T>(path: string, init?: RequestInit): Promise<T> {
+async function qbtFetchRaw(path: string, init?: RequestInit): Promise<Response> {
   if (!sessionCookie) {
     sessionCookie = await login();
   }
@@ -32,7 +32,7 @@ async function qbtFetch<T>(path: string, init?: RequestInit): Promise<T> {
     cache: 'no-store',
   });
 
-  // Re-authenticate on 403
+  // Re-authenticate on 403 (session expired or never established)
   if (res.status === 403) {
     sessionCookie = await login();
     res = await fetch(`${BASE_URL}${path}`, {
@@ -45,6 +45,11 @@ async function qbtFetch<T>(path: string, init?: RequestInit): Promise<T> {
     });
   }
 
+  return res;
+}
+
+async function qbtFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await qbtFetchRaw(path, init);
   if (!res.ok) {
     throw new Error(`qBittorrent API error: ${res.status} ${res.statusText}`);
   }
@@ -156,8 +161,11 @@ export async function createCategory(category: string, savePath: string): Promis
 }
 
 export async function getVersion(): Promise<string> {
-  const res = await fetch(`${BASE_URL}/api/v2/app/version`, {
-    headers: sessionCookie ? { Cookie: sessionCookie } : {},
-  });
-  return res.text();
+  // Go through the auth helper so a 403 triggers a fresh login and we
+  // don't surface "Forbidden" as the version string in the dashboard.
+  const res = await qbtFetchRaw('/api/v2/app/version');
+  if (!res.ok) {
+    throw new Error(`qBittorrent /app/version: ${res.status} ${res.statusText}`);
+  }
+  return (await res.text()).trim();
 }
