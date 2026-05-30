@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Settings, Sliders, Shield, Network, Server, Archive, Download, Loader2, Save, SlidersHorizontal, Users } from 'lucide-react';
+import { Settings, Sliders, Shield, Network, Server, Archive, Download, Loader2, Save, SlidersHorizontal, Users, ArrowUpCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { SettingsTabs, type TabDef } from '@/components/settings/SettingsTabs';
 import { GeneralTab } from '@/components/settings/GeneralTab';
@@ -12,6 +12,7 @@ import { BackupsTab } from '@/components/settings/BackupsTab';
 import { DownloadsTab } from '@/components/settings/DownloadsTab';
 import { QualityTab } from '@/components/settings/QualityTab';
 import { AdminsTab } from '@/components/settings/AdminsTab';
+import { UpdatesTab } from '@/components/settings/UpdatesTab';
 import { RestartConfirmModal } from '@/components/settings/RestartConfirmModal';
 import { useEnvSettings } from '@/hooks/useEnvSettings';
 
@@ -24,6 +25,7 @@ const TABS: TabDef[] = [
   { id: 'services', label: 'Services', icon: Server },
   { id: 'backups', label: 'Backups', icon: Archive },
   { id: 'admins', label: 'Admins', icon: Users },
+  { id: 'updates', label: 'Updates', icon: ArrowUpCircle },
 ];
 
 export default function SettingsPage() {
@@ -139,6 +141,7 @@ export default function SettingsPage() {
             {activeTab === 'services' && <ServicesTab env={env} />}
             {activeTab === 'backups' && <BackupsTab />}
             {activeTab === 'admins' && <AdminsTab />}
+            {activeTab === 'updates' && <UpdatesTab />}
           </>
         )}
       </div>
