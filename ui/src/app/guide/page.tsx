@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { BookOpen, ChevronDown, Terminal, ExternalLink, Loader2, Zap, ShieldCheck, Key } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
+import { useBrowserHost } from '@/lib/useBrowserHost';
 import { toast } from 'sonner';
 
 interface AccordionSectionProps {
@@ -169,6 +170,7 @@ function QuickSetupButton({ label, description, endpoint, successMessage }: {
 function QuickSetupSeerr() {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const host = useBrowserHost();
 
   const run = async () => {
     setLoading(true);
@@ -189,7 +191,7 @@ function QuickSetupSeerr() {
         toast.error('No services could be configured — check API keys in Settings');
       }
     } catch {
-      toast.error('Could not reach Seerr — is it running? Have you signed in at localhost:5055?');
+      toast.error(`Could not reach Seerr — is it running? Have you signed in at ${host}:5055?`);
     } finally {
       setLoading(false);
     }
@@ -401,6 +403,7 @@ function QuickSetupTmdb() {
 }
 
 export default function GuidePage() {
+  const host = useBrowserHost();
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -446,7 +449,7 @@ docker compose pull && docker compose up -d       # Update images
         <div className="space-y-3">
           <AccordionSection
             title="Gluetun (VPN)"
-            port="localhost:8000"
+            port={`${host}:8000`}
             description="VPN gateway — all download traffic is routed through this container"
           >
             <p>Gluetun supports 60+ VPN providers. Set your credentials in <Code>.env</Code> during deploy, or edit it manually.</p>
@@ -523,7 +526,7 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
 
           <AccordionSection
             title="qBittorrent"
-            port="localhost:8080"
+            port={`${host}:8080`}
             description="Torrent download client — runs behind Gluetun VPN"
           >
             <Step n={1}>
@@ -559,7 +562,7 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
 
           <AccordionSection
             title="SABnzbd"
-            port="localhost:8081"
+            port={`${host}:8081`}
             description="Usenet download client — runs behind Gluetun VPN"
           >
             <Step n={1}>
@@ -596,7 +599,7 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
           <DetectApiKeys />
           <AccordionSection
             title="Prowlarr"
-            port="localhost:9696"
+            port={`${host}:9696`}
             description="Indexer manager — centralises tracker/indexer config for Sonarr and Radarr"
           >
             <Step n={1}>
@@ -625,7 +628,7 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
 
           <AccordionSection
             title="Sonarr"
-            port="localhost:8989"
+            port={`${host}:8989`}
             description="TV show management — monitors, downloads, and organises TV series"
           >
             <Step n={1}>
@@ -656,7 +659,7 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
 
           <AccordionSection
             title="Radarr"
-            port="localhost:7878"
+            port={`${host}:7878`}
             description="Movie management — monitors, downloads, and organises movies"
           >
             <Step n={1}>
@@ -760,7 +763,7 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
         <div className="space-y-3">
           <AccordionSection
             title="Bazarr"
-            port="localhost:6767"
+            port={`${host}:6767`}
             description="Subtitle management — automatically downloads subtitles for your media"
           >
             <QuickSetupButton
@@ -881,11 +884,11 @@ sudo bash ~/.mmc/scripts/mount-nas.sh`}</Pre>
         <div className="space-y-3">
           <AccordionSection
             title="Seerr"
-            port="localhost:5055"
+            port={`${host}:5055`}
             description="Media request management — lets users request movies and TV shows"
           >
             <Step n={1}>
-              <p>Open Seerr at <Code>localhost:5055</Code> and sign in with your Plex account. This creates the admin user and connects Seerr to your Plex library.</p>
+              <p>Open Seerr at <Code>{`${host}:5055`}</Code> and sign in with your Plex account. This creates the admin user and connects Seerr to your Plex library.</p>
             </Step>
             <Step n={2}>
               <p>Connect Sonarr and Radarr — use Quick Setup below or configure manually in Seerr → Settings → Services:</p>
