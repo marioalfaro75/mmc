@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MessageSquare, Check, X, Loader2, Search, Film, Tv, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useBrowserHost } from '@/lib/useBrowserHost';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Skeleton } from '@/components/common/Skeleton';
@@ -48,6 +49,7 @@ function getMediaStatus(item: SeerrSearchResult): 'available' | 'requested' | 'n
 export default function RequestsPage() {
   const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
+  const host = useBrowserHost();
   const [searchTerm, setSearchTerm] = useState('');
 
   const { data, isLoading, isError, error } = useQuery<RequestData>({
@@ -157,7 +159,7 @@ export default function RequestsPage() {
             {error instanceof ApiError && error.reason === 'no_api_key'
               ? 'Seerr API key not configured. Add it in Settings → Services to enable media requests.'
               : error instanceof ApiError && error.reason === 'setup_required'
-              ? 'Seerr setup not complete. Open Seerr at localhost:5055 and sign in with your Plex account to finish setup.'
+              ? `Seerr setup not complete. Open Seerr at ${host}:5055 and sign in with your Plex account to finish setup.`
               : 'Seerr is unavailable. Check that the Seerr container is running.'}
           </p>
           {error instanceof ApiError && error.reason === 'setup_required' && (
