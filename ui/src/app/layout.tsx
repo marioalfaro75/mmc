@@ -7,6 +7,7 @@ import { MobileNav } from '@/components/layout/MobileNav';
 import { Providers } from '@/components/Providers';
 import { Toaster } from 'sonner';
 import { ServiceStatusBar } from '@/components/layout/ServiceStatusBar';
+import { UpdateBanner } from '@/components/layout/UpdateBanner';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -32,6 +33,7 @@ export default function RootLayout({
               <Header />
               <main className="flex-1 overflow-y-auto p-4 md:p-6">
                 <ServiceStatusBar />
+                <UpdateBanner />
                 {children}
               </main>
             </div>

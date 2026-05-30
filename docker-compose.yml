@@ -290,6 +290,9 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
+      # Host path of ~/.mmc/logs — used by /api/updates/apply so the
+      # updater sidecar writes logs visible to both the host and media-ui.
+      - MMC_HOST_LOGS_DIR=${HOME}/.mmc/logs
     volumes:
       - ./:${HOST_PROJECT_DIR}
       - /var/run/docker.sock:/var/run/docker.sock
