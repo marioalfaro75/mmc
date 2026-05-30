@@ -568,16 +568,165 @@ docker compose up -d --build media-ui # Rebuild and start the UI
 
 ## Uninstalling
 
+Mars Media Centre ships with `scripts/uninstall.sh` — a surgical, opt-in teardown tool that removes everything the installer adds without touching anything else on the host. It's safe to run on a multi-purpose VM that also has unrelated Docker containers, Node projects, or NFS/CIFS mounts.
+
+### TL;DR
+
 ```bash
-# 1. Stop and remove containers, networks
-docker compose down
+cd ~/mmc
 
-# 2. Remove container configs (DESTRUCTIVE)
-rm -rf ~/.mmc/config
+# 1. Preview what would be removed (NOTHING is changed)
+./scripts/uninstall.sh
 
-# 3. Remove media data (DESTRUCTIVE — your media library!)
-# rm -rf ~/.mmc/data
-
-# 4. Remove Docker images
-docker compose down --rmi all
+# 2. Apply the plan you just previewed
+./scripts/uninstall.sh --yes
 ```
+
+The default invocation is always a dry-run. Pass `--yes` (with the same flags) to actually do it.
+
+### How it works
+
+The script has three concentric layers. **Tier 1** is unconditional — it removes only stuff that's unambiguously MMC's. The deeper tiers are opt-in flags you add as needed.
+
+#### Tier 1 (always runs with `--yes`)
+
+| Step | What's removed |
+|---|---|
+| Containers | The 12 MMC containers: `gluetun`, `qbittorrent`, `sabnzbd`, `prowlarr`, `sonarr`, `radarr`, `unpackerr`, `bazarr`, `seerr`, `recyclarr`, `watchtower`, `media-ui` |
+| Networks | `mmc_medianet`, `mmc_default` (created by Compose) |
+| Locally-built image | `mmc-media-ui:latest` (the Next.js dashboard image; nothing else can use it) |
+| Config | `~/.mmc/config/` (Sonarr, Radarr, etc. settings databases) |
+| Logs | `~/.mmc/logs/` (deploy logs) |
+| Markers | `~/.mmc/install-path`, `~/.mmc/.nas-credentials` (SMB) |
+| Repo | `~/mmc/` (cloned source tree, **including `.env` with your WireGuard private key**) |
+| systemd unit | `/etc/systemd/system/mmc.service` if installed |
+| NAS mount | `umount` and remove the exact `/etc/fstab` line if `DATA_ROOT` is a network mount |
+
+Things in Tier 1 that are **never** touched: your media library (`DATA_ROOT`), backups (`BACKUP_DIR`), Docker itself, Node.js, system packages.
+
+#### Tier 2 (opt-in flags)
+
+| Flag | What it adds |
+|---|---|
+| `--remove-images` | Pulled vendor images — `qmcgaw/gluetun`, `lscr.io/linuxserver/sonarr`, etc. Each `rmi` is best-effort: Docker refuses if another container on the host still uses it, which is the safe behavior. |
+| `--purge-data` | `rm -rf` of `DATA_ROOT` (your media library). Requires you to type `DELETE` at a confirmation prompt. **Refuses to run if `DATA_ROOT` is a mount point** (so it can't accidentally delete the contents of your NAS). |
+| `--purge-backups` | `rm -rf` of `BACKUP_DIR`. Same typed-`DELETE` prompt, same mount-point refusal. |
+| `--remove-docker` | `apt remove` Docker + `containerd` + the buildx / compose / rootless / model plugins, deletes `/etc/apt/sources.list.d/docker.list` and `/etc/apt/keyrings/docker.asc`, and runs `gpasswd -d $USER docker`. Refuses if other (non-MMC) containers or images exist on the host — override with `--force`. |
+| `--wipe-docker-data` | `rm -rf /var/lib/docker /var/lib/containerd`. **Requires `--remove-docker`** — the script errors out if you pass this alone. This is the only step that removes data shared by all Docker users; double-think before passing it. |
+| `--remove-node` | `apt remove nodejs`, plus `/etc/apt/sources.list.d/nodesource.list` and the NodeSource keyring. |
+| `--remove-nas-packages` | `apt remove nfs-common cifs-utils smbclient`, **only if no other NFS/CIFS entries remain in `/etc/fstab`** (it greps to check). `rsync` is never removed — too widely used by other tools. |
+| `--force` | Skips the "other Docker artifacts exist on this host" safety guard for `--remove-docker`. Use when you really do want to nuke a Dockerised setup that has unrelated containers. |
+| `--yes` | Required to apply any of the above. Without it the script is a dry-run. |
+
+### Safety mechanisms
+
+These are baked into the script — no flags needed.
+
+- **Dry-run by default.** The first invocation always prints the plan ("would remove…") with size estimates and exits without changing anything. The suggested rerun command at the bottom echoes the exact flags you passed, so you can review then re-run with `--yes` appended.
+- **Self-copy to `/tmp` before doing anything.** Tier 1 deletes `~/mmc/` — including `scripts/uninstall.sh` itself. Before parsing arguments the script copies itself to `/tmp/mmc-uninstall-$$.sh`, re-execs from there, and an `EXIT` trap removes the `/tmp` copy when it finishes. You can't accidentally pull the rug out mid-run.
+- **Typed `DELETE` confirmation** for `--purge-data` and `--purge-backups`. The script reads from `/dev/tty` and proceeds only if you type exactly `DELETE` — `y`, `yes`, `Y`, etc. all cancel. Designed so it survives careless piping (`yes | …` won't bypass it).
+- **Mount-point detection.** Before any `rm -rf` of `DATA_ROOT` or `BACKUP_DIR`, the script calls `mountpoint -q`. If the path is currently a mount point, the purge is refused and prints a message — it never recurses into a NAS.
+- **fstab cleanup by exact field-2 match.** When removing the NAS line, the script matches the `_mount_point` in the 2nd column of `/etc/fstab` (surrounded by whitespace), not a loose substring. Other entries can't get caught up in the deletion.
+- **"Other Docker users" guard.** `--remove-docker` runs `docker ps -a` and refuses if any non-MMC containers exist on the host. It lists the affected containers before exiting. Override with `--force` if that's genuinely your intent.
+- **System essentials are off-limits.** `rsync`, `git`, `curl`, `ca-certificates`, and `apt-transport-https` are never removed by any flag combination.
+- **Logging.** Every run is mirrored to `/tmp/mmc-uninstall-YYYYMMDD-HHMMSS.log` so you can review what happened, even if Tier 1 deletes `~/.mmc/logs/` along the way.
+
+### Common scenarios
+
+**Stop using MMC but keep my media library.**
+```bash
+./scripts/uninstall.sh             # preview
+./scripts/uninstall.sh --yes       # apply
+```
+Removes the stack and configs; leaves `DATA_ROOT` (the media library) and `BACKUP_DIR` intact, plus Docker and Node so you can install something else.
+
+**Reclaim disk by removing the pulled vendor images too.**
+```bash
+./scripts/uninstall.sh --remove-images
+./scripts/uninstall.sh --remove-images --yes
+```
+
+**Completely remove media library and backups.**
+```bash
+./scripts/uninstall.sh --purge-data --purge-backups
+./scripts/uninstall.sh --purge-data --purge-backups --yes
+```
+You'll be prompted to type `DELETE` once for each. Refuses if `DATA_ROOT` is a NAS mount — see "NAS-backed installs" below.
+
+**Decommission the VM entirely.**
+```bash
+./scripts/uninstall.sh \
+    --remove-images \
+    --purge-data \
+    --purge-backups \
+    --remove-docker \
+    --wipe-docker-data \
+    --remove-node \
+    --remove-nas-packages
+
+./scripts/uninstall.sh \
+    --yes \
+    --remove-images \
+    --purge-data \
+    --purge-backups \
+    --remove-docker \
+    --wipe-docker-data \
+    --remove-node \
+    --remove-nas-packages
+```
+After this run the only thing MMC will have left behind is your user account membership records — no files, no packages, no daemons. Re-running the install one-liner on a fresh OS would be no different from the first time.
+
+**Multi-purpose host: I run other Docker containers too.**
+```bash
+# Default Tier 1 is already safe — it only touches MMC's containers and networks.
+./scripts/uninstall.sh --yes
+```
+Do **not** pass `--remove-docker`. If you do anyway, the script will refuse (and list the other containers) unless you also pass `--force`.
+
+### NAS-backed installs
+
+If you set up the NAS option during install, `DATA_ROOT` was changed to the mount point (e.g. `/mnt/nas/media`). The uninstaller will:
+
+1. Unmount it (`sudo umount $DATA_ROOT`)
+2. Remove the matching line from `/etc/fstab`
+3. **Refuse `--purge-data`** even with the typed-`DELETE` confirmation, because the path is a mount target. You delete the contents on the NAS side, not from the VM. Once you've cleaned up there, you can `rmdir` the mount point dir manually.
+
+### What's left intact afterwards
+
+After a default `--yes` run with no opt-in flags, this is still present on the host:
+
+- `DATA_ROOT` — your media library (often many TB)
+- `BACKUP_DIR` — your backup archives
+- Docker engine + the pulled images (so `docker images` still shows the LinuxServer images, etc.)
+- Node.js
+- Any apt packages MMC installed for NAS (`nfs-common`, `cifs-utils`, `smbclient`)
+- `/etc/apt/keyrings/docker.asc`, `/etc/apt/sources.list.d/docker.list`, `/etc/apt/sources.list.d/nodesource.list`
+- Your user's `docker` group membership (only removed by `--remove-docker`)
+
+The uninstaller prints a summary at the end listing exactly what's left, so you can decide whether to make a second pass with the appropriate flags.
+
+### Manual cleanup (if you'd rather not use the script)
+
+The same operations by hand:
+
+```bash
+# Stop and remove containers + networks
+cd ~/mmc && docker compose down --remove-orphans
+docker network rm mmc_medianet mmc_default
+docker rmi mmc-media-ui:latest
+
+# Remove configs and the repo (leaves media + backups + Docker alone)
+rm -rf ~/.mmc/config ~/.mmc/logs ~/.mmc/install-path ~/.mmc/.nas-credentials
+rm -rf ~/mmc
+
+# Remove the systemd unit if you installed it
+sudo systemctl disable --now mmc.service
+sudo rm -f /etc/systemd/system/mmc.service
+sudo systemctl daemon-reload
+
+# Optional: media library and backups
+rm -rf ~/.mmc/data ~/.mmc/backups
+```
+
+For removing Docker, Node, or the apt repos by hand, see the equivalent commands the script runs — they're documented inline in `scripts/uninstall.sh`.
+
