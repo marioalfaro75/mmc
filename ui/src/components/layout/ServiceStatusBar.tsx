@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useEffect } from 'react';
+import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
@@ -56,6 +57,7 @@ export function ServiceStatusBar() {
 
   const DOWNLOAD_CLIENTS = ['qBittorrent', 'SABnzbd'];
   const allOffline = data.services.filter(s => s.status === 'offline');
+  const authRequired = data.services.filter(s => s.status === 'auth_required');
 
   // Only report download clients if BOTH are down
   const bothDownloadClientsDown = DOWNLOAD_CLIENTS.every(
@@ -68,16 +70,33 @@ export function ServiceStatusBar() {
     })
     .map(s => s.name);
 
-  if (offlineNames.length === 0) return null;
+  if (offlineNames.length === 0 && authRequired.length === 0) return null;
 
   return (
-    <div className="mb-4 flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-2.5 text-sm text-warning">
-      <AlertTriangle className="h-4 w-4 shrink-0" />
-      <span>
-        <span className="font-medium">Offline: </span>
-        {offlineNames.join(', ')}
-        <span className="text-warning/70"> — some features may be unavailable</span>
-      </span>
+    <div className="mb-4 space-y-2">
+      {offlineNames.length > 0 && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-2.5 text-sm text-warning">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>
+            <span className="font-medium">Offline: </span>
+            {offlineNames.join(', ')}
+            <span className="text-warning/70"> — some features may be unavailable</span>
+          </span>
+        </div>
+      )}
+      {authRequired.length > 0 && (
+        <Link
+          href="/settings?tab=services"
+          className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-2.5 text-sm text-warning transition-colors hover:bg-warning/20"
+        >
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>
+            <span className="font-medium">Auth required: </span>
+            {authRequired.map(s => s.name).join(', ')}
+            <span className="text-warning/70"> — click to set the missing credential</span>
+          </span>
+        </Link>
+      )}
     </div>
   );
 }

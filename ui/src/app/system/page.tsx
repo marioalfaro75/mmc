@@ -65,9 +65,21 @@ function getDockerBadge(svc: DockerServiceStatus) {
 
 function getApiBadge(health: ServiceHealth | undefined) {
   if (!health) return null;
-  return health.status === 'online'
-    ? <Badge variant="outline" className="text-success border-success/30">Online</Badge>
-    : <Badge variant="outline" className="text-danger border-danger/30">Offline</Badge>;
+  if (health.status === 'online') {
+    return <Badge variant="outline" className="text-success border-success/30">Online</Badge>;
+  }
+  if (health.status === 'auth_required') {
+    return (
+      <Badge
+        variant="outline"
+        className="text-warning border-warning/30"
+        title={health.reason}
+      >
+        Auth required
+      </Badge>
+    );
+  }
+  return <Badge variant="outline" className="text-danger border-danger/30">Offline</Badge>;
 }
 
 export default function SystemPage() {

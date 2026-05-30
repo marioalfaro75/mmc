@@ -2,9 +2,18 @@ const BASE_URL = process.env.QBITTORRENT_URL || 'http://gluetun:8080';
 const USERNAME = process.env.QBITTORRENT_USERNAME || 'admin';
 const PASSWORD = process.env.QBITTORRENT_PASSWORD || '';
 
+import { AuthRequiredError } from './errors';
+
 let sessionCookie: string | null = null;
 
 async function login(): Promise<string> {
+  if (!PASSWORD) {
+    throw new AuthRequiredError(
+      'qBittorrent',
+      'QBITTORRENT_PASSWORD',
+      'set it in Settings → Services',
+    );
+  }
   const res = await fetch(`${BASE_URL}/api/v2/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -13,7 +22,11 @@ async function login(): Promise<string> {
   });
   const cookie = res.headers.get('set-cookie');
   if (!cookie || !(await res.text()).includes('Ok')) {
-    throw new Error('qBittorrent login failed');
+    throw new AuthRequiredError(
+      'qBittorrent',
+      'QBITTORRENT_PASSWORD',
+      'the configured password was rejected',
+    );
   }
   return cookie.split(';')[0];
 }
