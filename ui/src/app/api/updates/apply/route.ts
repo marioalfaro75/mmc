@@ -68,8 +68,13 @@ export async function POST(request: Request) {
   // The sidecar reuses mmc-media-ui:latest (already on disk, has docker-cli,
   // git, bash from the recently-updated Dockerfile). When deploy.sh recreates
   // media-ui, the sidecar is unaffected — different container.
+  //
+  // We pre-trust the project dir before invoking deploy.sh so the script's
+  // own `git pull` doesn't trip the "dubious ownership" guard (the host
+  // repo is owned by PUID, the sidecar runs as root).
   const sidecarName = `mmc-updater-${ts}`;
   const innerCmd =
+    `git config --global --add safe.directory ${projectDir} && ` +
     `./scripts/deploy.sh --update >> ${hostLogPath} 2>&1; rc=$?; ` +
     `rm -f ${hostLockPath}; exit $rc`;
 
