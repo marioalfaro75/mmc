@@ -233,30 +233,44 @@ detect_other_docker() {
 # ============================================================
 # The script itself self-copies to /tmp so it can survive deleting its
 # own repo, but the *user's shell* keeps its CWD. If that CWD is inside
-# anything we're about to nuke (the repo dir or ~/.mmc), the shell ends
+# anything we'll be deleting (the repo dir or ~/.mmc), the shell ends
 # up in an orphaned directory after the run — `pwd` looks broken, `ls`
 # shows nothing — until they cd somewhere real. Refuse with a clear
-# message instead. Dry-run is allowed from anywhere (it deletes nothing).
-if [ "$DRY_RUN" = "0" ]; then
-    _real_pwd="$(readlink -f "$PWD" 2>/dev/null || echo "$PWD")"
-    _real_repo="$(readlink -f "$REPO_DIR" 2>/dev/null || echo "$REPO_DIR")"
-    _real_mmc="$(readlink -f "$HOME/.mmc" 2>/dev/null || echo "$HOME/.mmc")"
+# message instead. This fires for dry-run too, so users learn the right
+# invocation pattern up front instead of only finding out at --yes time.
+_real_pwd="$(readlink -f "$PWD" 2>/dev/null || echo "$PWD")"
+_real_repo="$(readlink -f "$REPO_DIR" 2>/dev/null || echo "$REPO_DIR")"
+_real_mmc="$(readlink -f "$HOME/.mmc" 2>/dev/null || echo "$HOME/.mmc")"
 
-    _inside=""
-    case "$_real_pwd" in
-        "$_real_repo"|"$_real_repo"/*) _inside="$_real_repo (the repo dir)" ;;
-        "$_real_mmc"|"$_real_mmc"/*)   _inside="$_real_mmc (runtime state)" ;;
-    esac
+_inside=""
+case "$_real_pwd" in
+    "$_real_repo"|"$_real_repo"/*) _inside="$_real_repo (the repo dir)" ;;
+    "$_real_mmc"|"$_real_mmc"/*)   _inside="$_real_mmc (runtime state)" ;;
+esac
 
-    if [ -n "$_inside" ]; then
-        printf "\n${RED}${BOLD}✗ Refusing to run from inside ${_inside}${RESET}\n\n"
-        printf "  Your current directory (${BOLD}%s${RESET}) would be deleted\n" "$_real_pwd"
-        printf "  mid-run, leaving your shell in an orphaned state.\n\n"
-        printf "  ${BOLD}Fix${RESET}: move out first, then re-run from anywhere:\n\n"
-        printf "    cd ~\n"
-        printf "    %s <same flags as before>\n\n" "${_MMC_UNINSTALL_ORIG_SELF:-$0}"
-        exit 1
-    fi
+if [ -n "$_inside" ]; then
+    # Reconstruct the user's invocation as an absolute, copy-pasteable
+    # command they can run from anywhere outside the doomed dirs.
+    _suggest_flags=""
+    [ "$DRY_RUN" = "0" ]              && _suggest_flags="$_suggest_flags --yes"
+    [ "$REMOVE_IMAGES" = "1" ]        && _suggest_flags="$_suggest_flags --remove-images"
+    [ "$PURGE_DATA" = "1" ]           && _suggest_flags="$_suggest_flags --purge-data"
+    [ "$PURGE_BACKUPS" = "1" ]        && _suggest_flags="$_suggest_flags --purge-backups"
+    [ "$REMOVE_DOCKER" = "1" ]        && _suggest_flags="$_suggest_flags --remove-docker"
+    [ "$WIPE_DOCKER_DATA" = "1" ]     && _suggest_flags="$_suggest_flags --wipe-docker-data"
+    [ "$REMOVE_NODE" = "1" ]          && _suggest_flags="$_suggest_flags --remove-node"
+    [ "$REMOVE_NAS_PACKAGES" = "1" ]  && _suggest_flags="$_suggest_flags --remove-nas-packages"
+    [ "$FORCE" = "1" ]                && _suggest_flags="$_suggest_flags --force"
+
+    printf "\n${RED}${BOLD}✗ Refusing to run from inside ${_inside}${RESET}\n\n"
+    printf "  Your current directory (${BOLD}%s${RESET}) would be deleted\n" "$_real_pwd"
+    printf "  mid-run, leaving your shell in an orphaned state. Even a\n"
+    printf "  dry-run is refused so you get used to the right invocation\n"
+    printf "  pattern up front.\n\n"
+    printf "  ${BOLD}Fix${RESET}: move out first, then re-run from anywhere:\n\n"
+    printf "    cd ~\n"
+    printf "    %s/scripts/uninstall.sh%s\n\n" "$_real_repo" "$_suggest_flags"
+    exit 1
 fi
 
 # ============================================================
