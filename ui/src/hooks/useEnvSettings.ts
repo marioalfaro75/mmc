@@ -108,13 +108,13 @@ export function useEnvSettings() {
       // container restart needed), invalidate their queries so the new
       // value shows up immediately rather than waiting for window focus.
       const savedKeys = Object.keys(dirtyVars);
-      const queriesToInvalidate = new Set<string>();
+      const queriesToInvalidate: Record<string, true> = {};
       for (const k of savedKeys) {
         for (const q of LIVE_REFETCH_ON_CHANGE[k] ?? []) {
-          queriesToInvalidate.add(q);
+          queriesToInvalidate[q] = true;
         }
       }
-      for (const q of queriesToInvalidate) {
+      for (const q of Object.keys(queriesToInvalidate)) {
         queryClient.invalidateQueries({ queryKey: [q] });
       }
       return { success: true, affectedServices: json.affectedServices };
