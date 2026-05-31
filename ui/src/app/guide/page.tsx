@@ -439,17 +439,26 @@ export default function GuidePage() {
             .
           </p>
           <p>
-            Fastest path:{' '}
-            <Link
-              href="/settings?tab=services"
-              className="font-medium text-warning hover:underline"
-            >
-              Settings → Services → Auto-Detect API Keys
-            </Link>{' '}
-            scrapes the *arrs, Seerr, Bazarr, and SABnzbd's keys directly from
-            their config files. qBittorrent is the only one you still have to
-            set by hand (Step 2 below) — its WebUI password isn't in a config
-            file we can read.
+            On a fresh install both of these are handled for you:
+            <span className="mt-1 block pl-3">
+              • <strong>qBittorrent</strong>'s WebUI password is auto-rotated
+              by <Code>deploy.sh</Code> and written to <Code>.env</Code>
+              before the dashboard ever starts (pass{' '}
+              <Code>--skip-qbt-autoseed</Code> to opt out).<br />
+              • <strong>SABnzbd</strong> + the *arrs + Seerr + Bazarr keys
+              come from{' '}
+              <Link href="/settings?tab=services" className="font-medium underline">
+                Settings → Services → Auto-Detect API Keys
+              </Link>
+              , which scrapes their config files directly.
+            </span>
+          </p>
+          <p className="text-xs text-warning/80">
+            If you ever see an <em>Auth required</em> chip after that, it
+            means the credential in <Code>.env</Code> drifted from the one
+            inside the service — usually because someone rotated it in the
+            native WebUI. Re-run the auto-detect (or paste manually) and the
+            chip turns green.
           </p>
         </div>
       </Card>
