@@ -224,6 +224,37 @@ detect_other_docker() {
 }
 
 # ============================================================
+# Pre-flight: refuse to run from inside a doomed directory
+# ============================================================
+# The script itself self-copies to /tmp so it can survive deleting its
+# own repo, but the *user's shell* keeps its CWD. If that CWD is inside
+# anything we're about to nuke (the repo dir or ~/.mmc), the shell ends
+# up in an orphaned directory after the run — `pwd` looks broken, `ls`
+# shows nothing — until they cd somewhere real. Refuse with a clear
+# message instead. Dry-run is allowed from anywhere (it deletes nothing).
+if [ "$DRY_RUN" = "0" ]; then
+    _real_pwd="$(readlink -f "$PWD" 2>/dev/null || echo "$PWD")"
+    _real_repo="$(readlink -f "$REPO_DIR" 2>/dev/null || echo "$REPO_DIR")"
+    _real_mmc="$(readlink -f "$HOME/.mmc" 2>/dev/null || echo "$HOME/.mmc")"
+
+    _inside=""
+    case "$_real_pwd" in
+        "$_real_repo"|"$_real_repo"/*) _inside="$_real_repo (the repo dir)" ;;
+        "$_real_mmc"|"$_real_mmc"/*)   _inside="$_real_mmc (runtime state)" ;;
+    esac
+
+    if [ -n "$_inside" ]; then
+        printf "\n${RED}${BOLD}✗ Refusing to run from inside ${_inside}${RESET}\n\n"
+        printf "  Your current directory (${BOLD}%s${RESET}) would be deleted\n" "$_real_pwd"
+        printf "  mid-run, leaving your shell in an orphaned state.\n\n"
+        printf "  ${BOLD}Fix${RESET}: move out first, then re-run from anywhere:\n\n"
+        printf "    cd ~\n"
+        printf "    %s <same flags as before>\n\n" "${_MMC_UNINSTALL_ORIG_SELF:-$0}"
+        exit 1
+    fi
+fi
+
+# ============================================================
 # Plan & execute
 # ============================================================
 
