@@ -155,13 +155,28 @@ export default function RequestsPage() {
 
       {isError && (
         <Card className="p-6 text-center space-y-3">
-          <p className="text-muted-foreground">
-            {error instanceof ApiError && error.reason === 'no_api_key'
-              ? 'Seerr API key not configured. Add it in Settings → Services to enable media requests.'
-              : error instanceof ApiError && error.reason === 'setup_required'
-              ? `Seerr setup not complete. Open Seerr at ${host}:5055 and sign in with your Plex account to finish setup.`
-              : 'Seerr is unavailable. Check that the Seerr container is running.'}
-          </p>
+          {error instanceof ApiError && error.reason === 'no_api_key' ? (
+            <p className="text-muted-foreground">
+              Seerr API key not configured. Add it in Settings → Services to enable media requests.
+            </p>
+          ) : error instanceof ApiError && error.reason === 'setup_required' ? (
+            <p className="text-muted-foreground">
+              Seerr setup not complete. Open Seerr at{' '}
+              <a
+                href={`http://${host}:5055`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-primary underline decoration-dotted underline-offset-2 hover:decoration-solid"
+              >
+                {host}:5055
+              </a>{' '}
+              and sign in with your Plex account to finish setup.
+            </p>
+          ) : (
+            <p className="text-muted-foreground">
+              Seerr is unavailable. Check that the Seerr container is running.
+            </p>
+          )}
           {error instanceof ApiError && error.reason === 'setup_required' && (
             <p className="text-xs text-muted-foreground">
               After signing in, return here and click the button below to connect Sonarr and Radarr automatically.
