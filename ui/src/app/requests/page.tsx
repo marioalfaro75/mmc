@@ -8,6 +8,7 @@ import { useBrowserHost } from '@/lib/useBrowserHost';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
 import { Skeleton } from '@/components/common/Skeleton';
+import { IndexerWarning } from '@/components/common/IndexerWarning';
 import { SearchBar } from '@/components/media/SearchBar';
 import { POLLING } from '@/lib/utils/polling';
 import { fetchApi, ApiError } from '@/lib/utils/fetchApi';
@@ -152,6 +153,8 @@ export default function RequestsPage() {
           </button>
         )}
       </div>
+
+      <IndexerWarning />
 
       {isError && (
         <Card className="p-6 text-center space-y-3">

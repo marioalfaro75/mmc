@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { BookOpen, ChevronDown, Terminal, ExternalLink, Loader2, Zap, ShieldCheck, Key } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
+import { IndexerWarning } from '@/components/common/IndexerWarning';
 import { useBrowserHost } from '@/lib/useBrowserHost';
 import { toast } from 'sonner';
 
@@ -712,6 +713,7 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
         <h2 className="mb-3 text-lg font-semibold">Phase 2: Indexers & Media Managers</h2>
         <div className="space-y-3">
           <DetectApiKeys />
+          <IndexerWarning />
           <AccordionSection
             title="Prowlarr"
             port={`${host}:9696`}
