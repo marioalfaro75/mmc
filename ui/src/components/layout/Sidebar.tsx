@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   Film,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { fetchApi } from '@/lib/utils/fetchApi';
 
 interface NavItem {
   href: string;
@@ -43,18 +45,29 @@ const navItems: NavItem[] = [
   { href: '/guide', label: 'Guide', icon: BookOpen, requiresAdmin: true },
 ];
 
-interface SidebarProps {
-  plexUrl?: string;
-}
-
-export function Sidebar({ plexUrl }: SidebarProps) {
+export function Sidebar() {
   const pathname = usePathname();
   const { isAdmin, hasAdmins } = useAuth();
 
-  // Convert internal Docker URL to localhost for browser access
-  const plexWebUrl = plexUrl && plexUrl !== 'http://localhost:32400'
-    ? `${plexUrl}/web`
-    : plexUrl ? `${plexUrl}/web` : null;
+  // Fetch PLEX_URL from .env on disk (not process.env baked in at
+  // container start). After the user changes it in Settings → Services,
+  // the save flow invalidates this query, so the link updates without
+  // needing a media-ui restart.
+  const { data: plexData } = useQuery<{ plexUrl: string | null }>({
+    queryKey: ['plex-url'],
+    queryFn: () => fetchApi<{ plexUrl: string | null }>('/api/settings/plex-url'),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: true,
+  });
+  const plexUrl = plexData?.plexUrl ?? undefined;
+
+  // Convert internal Docker URL to localhost for browser access. Treat
+  // the wizard's placeholder default as "not configured" so the link
+  // doesn't appear at all until the user enters a real URL.
+  const plexWebUrl =
+    plexUrl && plexUrl !== 'http://localhost:32400' && plexUrl !== 'http://host.docker.internal:32400'
+      ? `${plexUrl}/web`
+      : null;
 
   // Show all items if no admins configured yet (backwards compatible)
   const visibleItems = hasAdmins
