@@ -71,6 +71,7 @@ UI_ONLY=0
 UI_DOCKER=0
 INSTALL_MODE=0
 NAS_MODE=0
+SKIP_QBT_AUTOSEED=0
 PASS_COUNT=0
 WARN_COUNT=0
 FAIL_COUNT=0
@@ -206,8 +207,9 @@ show_help() {
     echo "  (default)    Full staged deploy with post-deploy checks"
     echo ""
     echo "Options:"
-    echo "  --skip-ui   Skip npm install and build steps"
-    echo "  --help      Show this help message"
+    echo "  --skip-ui              Skip npm install and build steps"
+    echo "  --skip-qbt-autoseed    Don't auto-rotate qBittorrent's first-run password"
+    echo "  --help                 Show this help message"
     echo ""
     echo "Dry-run checks:"
     echo "  - Prerequisites (docker, curl, node, npm)"
@@ -245,6 +247,7 @@ while [ $# -gt 0 ]; do
         --ui-docker) UI_DOCKER=1 ;;
         --install)  INSTALL_MODE=1 ;;
         --nas)      NAS_MODE=1 ;;
+        --skip-qbt-autoseed) SKIP_QBT_AUTOSEED=1 ;;
         --help|-h)  show_help ;;
         *)
             echo "ERROR: Unknown option: $1" >&2
@@ -1188,6 +1191,118 @@ stage_download_clients() {
     fi
 }
 
+# Auto-rotate the LinuxServer qBittorrent image's first-run temporary
+# password into a strong random value we persist to .env, so the user
+# doesn't have to read container logs, change the password, and paste
+# it back in by hand. Runs once on first deploy only; skipped (with a
+# friendly message) if there's already a password in .env or the
+# qBittorrent config has been touched. See QBT_AUTOSEED in the README.
+seed_qbittorrent_password() {
+    section "qBittorrent Password Seeding"
+
+    if [ "$SKIP_QBT_AUTOSEED" = "1" ]; then
+        info "Skipping (--skip-qbt-autoseed)"
+        return
+    fi
+
+    ENV_FILE="$PROJECT_DIR/.env"
+    if [ ! -f "$ENV_FILE" ]; then
+        warn "Skipping — .env not found at $ENV_FILE"
+        return
+    fi
+
+    # Skip 1: an existing non-empty password in .env wins.
+    _existing=$(grep -E '^QBITTORRENT_PASSWORD=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+    if [ -n "$_existing" ]; then
+        pass "QBITTORRENT_PASSWORD already set in .env — leaving it alone"
+        return
+    fi
+
+    # Skip 2: qBittorrent's own config already has a WebUI password —
+    # likely a previous install or a manual run. Don't overwrite it.
+    _conf_root="${CONFIG_ROOT:-$HOME/.mmc/config}"
+    case "$_conf_root" in "~"*) _conf_root="$HOME${_conf_root#"~"}" ;; esac
+    _qbt_conf="$_conf_root/qbittorrent/qBittorrent.conf"
+    if [ -f "$_qbt_conf" ] && grep -qE '^WebUI\\Password' "$_qbt_conf"; then
+        warn "qBittorrent.conf already has a WebUI password — set QBITTORRENT_PASSWORD in .env to match it manually"
+        return
+    fi
+
+    # Find the temp password the LSIO image prints to logs on first boot.
+    info "Looking for qBittorrent's initial temporary password in container logs..."
+    _temp_pw=""
+    _waited=0
+    while [ "$_waited" -lt 30 ]; do
+        _temp_pw=$(docker logs qbittorrent 2>&1 \
+            | grep -oE 'temporary password is provided for this session:[[:space:]]*\S+' \
+            | tail -1 \
+            | awk '{print $NF}')
+        [ -n "$_temp_pw" ] && break
+        sleep 2
+        _waited=$((_waited + 2))
+    done
+
+    if [ -z "$_temp_pw" ]; then
+        warn "Couldn't find a temp password in qBittorrent logs after ${_waited}s"
+        info "Falling back to manual setup — see Setup Guide → qBittorrent"
+        return
+    fi
+
+    # 28 chars, [A-Za-z0-9!@#%^_-] only — no backslash, quotes, or sed/
+    # JSON metacharacters that would need escaping when we interpolate.
+    _new_pw=$(LC_ALL=C tr -dc 'A-Za-z0-9!@#%^_-' < /dev/urandom 2>/dev/null | head -c 28)
+    if [ "${#_new_pw}" -lt 28 ]; then
+        warn "Could not generate a random password (tr failed?)"
+        return
+    fi
+
+    PORT_QBITTORRENT="${PORT_QBITTORRENT:-8080}"
+    _qbt_url="http://localhost:${PORT_QBITTORRENT}"
+
+    # Log in to obtain the session cookie. qBittorrent requires Referer to
+    # match the WebUI URL or it rejects the request as CSRF.
+    _cookie=$(curl -s -i -m 10 -X POST "${_qbt_url}/api/v2/auth/login" \
+        --data-urlencode "username=admin" \
+        --data-urlencode "password=$_temp_pw" \
+        -H "Referer: ${_qbt_url}" 2>/dev/null \
+        | grep -i '^set-cookie:' | head -1 \
+        | sed -e 's/^[Ss]et-[Cc]ookie:[[:space:]]*//' -e 's/;.*//' \
+        | tr -d '\r\n')
+
+    if [ -z "$_cookie" ]; then
+        warn "Couldn't log into qBittorrent with the temp password (already rotated?)"
+        return
+    fi
+
+    # qBittorrent ≥4.1 accepts plain text — it hashes server-side when
+    # writing qBittorrent.conf. The character set above keeps the JSON
+    # body safe to interpolate without escaping.
+    _resp_code=$(curl -s -o /dev/null -m 10 -w '%{http_code}' \
+        -X POST "${_qbt_url}/api/v2/app/setPreferences" \
+        -H "Cookie: $_cookie" \
+        -H "Referer: ${_qbt_url}" \
+        --data-urlencode "json={\"web_ui_password\":\"$_new_pw\"}" 2>/dev/null)
+
+    if [ "$_resp_code" != "200" ]; then
+        warn "qBittorrent setPreferences returned HTTP $_resp_code — leaving config untouched"
+        return
+    fi
+
+    sed -i "s|^QBITTORRENT_PASSWORD=.*|QBITTORRENT_PASSWORD=$_new_pw|" "$ENV_FILE"
+
+    # Best-effort logout so the temp session doesn't sit around.
+    curl -s -o /dev/null -m 5 -X POST "${_qbt_url}/api/v2/auth/logout" \
+        -H "Cookie: $_cookie" -H "Referer: ${_qbt_url}" 2>/dev/null || true
+
+    # Defence in depth: scrub the password out of the deploy log even
+    # though we never echoed it. Same redaction style the wizard uses.
+    if [ -n "$_MMC_LOGGED" ] && [ -f "$_MMC_LOGGED" ]; then
+        sed -i "s/QBITTORRENT_PASSWORD=.*/QBITTORRENT_PASSWORD=[REDACTED]/g" "$_MMC_LOGGED" 2>/dev/null || true
+    fi
+
+    pass "qBittorrent WebUI password seeded into .env — dashboard chip will be green at Stage 6"
+}
+
 stage_arr_stack() {
     section "Stage 3: Arr Stack"
     cd "$PROJECT_DIR"
@@ -1810,6 +1925,7 @@ else
         set +e
         stage_vpn
         stage_download_clients
+        seed_qbittorrent_password
         stage_arr_stack
         stage_media_server
         stage_operations

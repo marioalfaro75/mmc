@@ -185,12 +185,12 @@ After first deploy, go to the Guide page and click **Detect API Keys**. This rea
    Confirm the output shows a VPN IP, not your real IP. If it fails, check `docker logs gluetun` for connection errors.
 
 2. **qBittorrent** (`localhost:8080`):
-   - Default login: username `admin` — find the temporary password in container logs:
+   - **Password is auto-rotated on first deploy.** Before Stage 3, `deploy.sh` scrapes qBittorrent's one-time temporary password from container logs, swaps it for a strong random password via the WebUI API, and writes that value to `.env` as `QBITTORRENT_PASSWORD`. The dashboard chip is green from first boot — no manual log-grep + password-paste dance.
+   - The generated password is only ever stored in `.env` (mode `600`). View it under Settings → Services (masked like any other secret), or just inspect the file. Pass `--skip-qbt-autoseed` to `deploy.sh` if you'd rather handle it yourself; if you do, the temp password is at:
      ```bash
      docker logs qbittorrent 2>&1 | grep "temporary password"
      ```
-   - **Change the default password** immediately: Options → Web UI → Authentication
-   - Use Quick Setup in the Guide page to auto-configure save paths, categories, VPN binding, and seeding limits
+   - Use Quick Setup in the Guide page to auto-configure save paths, categories, VPN binding, and seeding limits.
 
 3. **SABnzbd** (`localhost:8081`):
    - Run through the setup wizard on first access
