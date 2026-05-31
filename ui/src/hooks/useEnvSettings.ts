@@ -1,7 +1,16 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { EnvVarDef } from '@/lib/env-schema';
+
+// Map of env-var key → react-query keys to invalidate after a save.
+// Lets us live-update consumers that fetch their value from .env on
+// disk (rather than reading process.env at container start), without
+// blanket-invalidating every query in the app.
+const LIVE_REFETCH_ON_CHANGE: Record<string, string[]> = {
+  PLEX_URL: ['plex-url'],
+};
 
 interface EnvSettingsData {
   vars: Record<string, string>;
@@ -9,6 +18,7 @@ interface EnvSettingsData {
 }
 
 export function useEnvSettings() {
+  const queryClient = useQueryClient();
   const [data, setData] = useState<EnvSettingsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +104,19 @@ export function useEnvSettings() {
       }
       // Reload to get fresh values
       await load();
+      // For env vars whose consumers fetch from .env on disk live (no
+      // container restart needed), invalidate their queries so the new
+      // value shows up immediately rather than waiting for window focus.
+      const savedKeys = Object.keys(dirtyVars);
+      const queriesToInvalidate = new Set<string>();
+      for (const k of savedKeys) {
+        for (const q of LIVE_REFETCH_ON_CHANGE[k] ?? []) {
+          queriesToInvalidate.add(q);
+        }
+      }
+      for (const q of queriesToInvalidate) {
+        queryClient.invalidateQueries({ queryKey: [q] });
+      }
       return { success: true, affectedServices: json.affectedServices };
     } catch {
       return { success: false, affectedServices: [] };
