@@ -4,12 +4,21 @@ import {
   getDownloadClients, addDownloadClient,
   getNaming, updateNaming,
 } from '@/lib/api/sonarr';
+import { downloadClientFlags } from '@/lib/api/download-clients';
 import { requireAdmin } from '@/lib/auth';
+
+type StepResult = {
+  step: string;
+  status: 'ok' | 'skipped' | 'error';
+  reason?: 'disabled' | 'already_configured' | 'no_api_key';
+  error?: string;
+};
 
 export async function POST(request: Request) {
   const denied = requireAdmin(request);
   if (denied) return denied;
-  const results: { step: string; status: 'ok' | 'skipped' | 'error'; error?: string }[] = [];
+  const results: StepResult[] = [];
+  const { useQbittorrent, useSabnzbd } = downloadClientFlags();
 
   // Root folder
   try {
@@ -25,41 +34,49 @@ export async function POST(request: Request) {
   }
 
   // qBittorrent download client
-  const qbtPassword = process.env.QBITTORRENT_PASSWORD || '';
-  try {
-    const clients = await getDownloadClients();
-    if (clients.some((c) => c.implementation === 'QBittorrent')) {
-      results.push({ step: 'qbittorrent-client', status: 'skipped' });
-    } else {
-      await addDownloadClient({
-        enable: true,
-        protocol: 'torrent',
-        priority: 1,
-        name: 'qBittorrent',
-        implementation: 'QBittorrent',
-        configContract: 'QBittorrentSettings',
-        fields: [
-          { name: 'host', value: 'gluetun' },
-          { name: 'port', value: 8080 },
-          { name: 'username', value: 'admin' },
-          { name: 'password', value: qbtPassword },
-          { name: 'category', value: 'sonarr' },
-          { name: 'useSsl', value: false },
-        ],
-      });
-      results.push({ step: 'qbittorrent-client', status: 'ok' });
+  if (!useQbittorrent) {
+    results.push({ step: 'qbittorrent-client', status: 'skipped', reason: 'disabled' });
+  } else {
+    const qbtPassword = process.env.QBITTORRENT_PASSWORD || '';
+    try {
+      const clients = await getDownloadClients();
+      if (clients.some((c) => c.implementation === 'QBittorrent')) {
+        results.push({ step: 'qbittorrent-client', status: 'skipped', reason: 'already_configured' });
+      } else {
+        await addDownloadClient({
+          enable: true,
+          protocol: 'torrent',
+          priority: 1,
+          name: 'qBittorrent',
+          implementation: 'QBittorrent',
+          configContract: 'QBittorrentSettings',
+          fields: [
+            { name: 'host', value: 'gluetun' },
+            { name: 'port', value: 8080 },
+            { name: 'username', value: 'admin' },
+            { name: 'password', value: qbtPassword },
+            { name: 'category', value: 'sonarr' },
+            { name: 'useSsl', value: false },
+          ],
+        });
+        results.push({ step: 'qbittorrent-client', status: 'ok' });
+      }
+    } catch (error) {
+      results.push({ step: 'qbittorrent-client', status: 'error', error: String(error) });
     }
-  } catch (error) {
-    results.push({ step: 'qbittorrent-client', status: 'error', error: String(error) });
   }
 
   // SABnzbd download client
-  const sabnzbdKey = process.env.SABNZBD_API_KEY;
-  if (sabnzbdKey) {
+  if (!useSabnzbd) {
+    results.push({ step: 'sabnzbd-client', status: 'skipped', reason: 'disabled' });
+  } else if (!process.env.SABNZBD_API_KEY) {
+    results.push({ step: 'sabnzbd-client', status: 'skipped', reason: 'no_api_key' });
+  } else {
+    const sabnzbdKey = process.env.SABNZBD_API_KEY;
     try {
       const clients = await getDownloadClients();
       if (clients.some((c) => c.implementation === 'Sabnzbd')) {
-        results.push({ step: 'sabnzbd-client', status: 'skipped' });
+        results.push({ step: 'sabnzbd-client', status: 'skipped', reason: 'already_configured' });
       } else {
         await addDownloadClient({
           enable: true,
@@ -81,8 +98,6 @@ export async function POST(request: Request) {
     } catch (error) {
       results.push({ step: 'sabnzbd-client', status: 'error', error: String(error) });
     }
-  } else {
-    results.push({ step: 'sabnzbd-client', status: 'skipped' });
   }
 
   // Naming

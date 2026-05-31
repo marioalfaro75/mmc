@@ -49,7 +49,7 @@ export interface DashboardStats {
 
 export interface ServiceHealth {
   name: string;
-  status: 'online' | 'offline' | 'degraded' | 'auth_required';
+  status: 'online' | 'offline' | 'degraded' | 'auth_required' | 'disabled';
   version: string | null;
   url: string;
   /** Optional reason for non-online status; shown in tooltips / banners. */
