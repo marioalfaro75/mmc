@@ -446,11 +446,10 @@ export default function GuidePage() {
               before the dashboard ever starts (pass{' '}
               <Code>--skip-qbt-autoseed</Code> to opt out).<br />
               • <strong>SABnzbd</strong> + the *arrs + Seerr + Bazarr keys
-              come from{' '}
-              <Link href="/settings?tab=services" className="font-medium underline">
-                Settings → Services → Auto-Detect API Keys
-              </Link>
-              , which scrapes their config files directly.
+              come from the{' '}
+              <strong>Auto-detect API Keys</strong>{' '}
+              button in <strong>Phase 2: Indexers &amp; Media Managers</strong>{' '}
+              just below — it scrapes their config files directly.
             </span>
           </p>
           <p className="text-xs text-warning/80">
@@ -651,11 +650,9 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
               <div className="mt-2 rounded-md border border-warning/30 bg-warning/5 p-2 text-xs text-warning">
                 <p className="font-medium">Required for the dashboard chip to turn green:</p>
                 <p className="mt-1 text-warning/90">
-                  Use{' '}
-                  <Link href="/settings?tab=services" className="underline">
-                    Settings → Services → Auto-Detect API Keys
-                  </Link>
-                  {' '}to grab it automatically, or paste it into{' '}
+                  Use the <strong>Auto-detect API Keys</strong> button at the
+                  top of <strong>Phase 2: Indexers &amp; Media Managers</strong>{' '}
+                  below to grab it automatically, or paste it into{' '}
                   <Code>SABNZBD_API_KEY</Code> by hand. Until this is done the
                   System Health chip will show SABnzbd as <em>Auth required</em>{' '}
                   (and Sonarr/Radarr won't be able to send anything to it

@@ -8,7 +8,7 @@ async function sabnzbdFetch<T>(params: Record<string, string>): Promise<T> {
     throw new AuthRequiredError(
       'SABnzbd',
       'SABNZBD_API_KEY',
-      'use Settings → Services → Auto-Detect API Keys',
+      'use the Auto-detect API Keys button on the Setup Guide (Phase 2)',
     );
   }
   const searchParams = new URLSearchParams({
