@@ -115,9 +115,14 @@ if [ "$WIPE_DOCKER_DATA" = "1" ] && [ "$REMOVE_DOCKER" = "0" ]; then
 fi
 
 # --- Colours and output helpers --------------------------------------------
+# Store actual ESC bytes (not the literal string '\033') so the codes
+# render correctly when interpolated via `printf %s "$VAR"` too — not
+# just when they're inside the format string. Otherwise `info "${BOLD}…"`
+# prints '\033[1m…' verbatim instead of bolding.
 if [ -t 1 ]; then
-    GREEN='\033[0;32m'; YELLOW='\033[0;33m'; RED='\033[0;31m'
-    BOLD='\033[1m'; RESET='\033[0m'
+    _esc=$(printf '\033')
+    GREEN="${_esc}[0;32m"; YELLOW="${_esc}[0;33m"; RED="${_esc}[0;31m"
+    BOLD="${_esc}[1m"; RESET="${_esc}[0m"
 else
     GREEN=''; YELLOW=''; RED=''; BOLD=''; RESET=''
 fi

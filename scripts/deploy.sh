@@ -101,13 +101,18 @@ if [ -z "$_MMC_LOGGED" ] && [ -f "$0" ]; then
 fi
 
 # --- Colour output ---
+# Store actual ESC bytes (not the literal string '\033') so the codes
+# render correctly when interpolated via `printf %s "$VAR"` as well as
+# via the format string. Mixing the two patterns is too easy a bug to
+# fall into otherwise — info "${BOLD}…" would print '\033[1m…' verbatim.
 setup_colors() {
     if [ -t 1 ]; then
-        GREEN='\033[0;32m'
-        YELLOW='\033[0;33m'
-        RED='\033[0;31m'
-        BOLD='\033[1m'
-        RESET='\033[0m'
+        _esc=$(printf '\033')
+        GREEN="${_esc}[0;32m"
+        YELLOW="${_esc}[0;33m"
+        RED="${_esc}[0;31m"
+        BOLD="${_esc}[1m"
+        RESET="${_esc}[0m"
     else
         GREEN=''
         YELLOW=''
