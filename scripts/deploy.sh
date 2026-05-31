@@ -72,6 +72,7 @@ UI_DOCKER=0
 INSTALL_MODE=0
 NAS_MODE=0
 SKIP_QBT_AUTOSEED=0
+SKIP_API_KEY_AUTOSEED=0
 PASS_COUNT=0
 WARN_COUNT=0
 FAIL_COUNT=0
@@ -212,9 +213,10 @@ show_help() {
     echo "  (default)    Full staged deploy with post-deploy checks"
     echo ""
     echo "Options:"
-    echo "  --skip-ui              Skip npm install and build steps"
-    echo "  --skip-qbt-autoseed    Don't auto-rotate qBittorrent's first-run password"
-    echo "  --help                 Show this help message"
+    echo "  --skip-ui                  Skip npm install and build steps"
+    echo "  --skip-qbt-autoseed        Don't auto-rotate qBittorrent's first-run password"
+    echo "  --skip-api-key-autoseed    Don't auto-detect the *arr / SABnzbd / Seerr API keys"
+    echo "  --help                     Show this help message"
     echo ""
     echo "Dry-run checks:"
     echo "  - Prerequisites (docker, curl, node, npm)"
@@ -253,6 +255,7 @@ while [ $# -gt 0 ]; do
         --install)  INSTALL_MODE=1 ;;
         --nas)      NAS_MODE=1 ;;
         --skip-qbt-autoseed) SKIP_QBT_AUTOSEED=1 ;;
+        --skip-api-key-autoseed) SKIP_API_KEY_AUTOSEED=1 ;;
         --help|-h)  show_help ;;
         *)
             echo "ERROR: Unknown option: $1" >&2
@@ -1326,6 +1329,166 @@ seed_qbittorrent_password() {
     fi
 }
 
+# Single-key extractors — each takes a file path and prints the key to
+# stdout, or nothing if the file isn't there / doesn't have one yet.
+_xml_api_key() {
+    [ -f "$1" ] || return 0
+    grep -oE '<ApiKey>[^<]+</ApiKey>' "$1" 2>/dev/null \
+        | head -1 | sed -e 's|<ApiKey>||' -e 's|</ApiKey>||'
+}
+
+_bazarr_api_key() {
+    # YAML: under `auth:` block, the line `apikey: <value>` (with quotes
+    # possibly). awk because regex across lines is awkward in grep.
+    [ -f "$1" ] || return 0
+    awk '
+        /^auth:/ { in_auth=1; next }
+        in_auth && /^[^[:space:]]/ { in_auth=0 }
+        in_auth && /apikey[[:space:]]*:/ {
+            sub(/.*apikey[[:space:]]*:[[:space:]]*/, "")
+            gsub(/["'\'']/, "")
+            sub(/[[:space:]].*$/, "")
+            print; exit
+        }' "$1" 2>/dev/null
+}
+
+_seerr_api_key() {
+    [ -f "$1" ] || return 0
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c "
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    print(d.get('main', {}).get('apiKey') or d.get('apiKey') or '')
+except Exception:
+    pass" "$1" 2>/dev/null
+    else
+        # Regex fallback. Greedy enough to handle whitespace variations.
+        grep -oE '"apiKey"[[:space:]]*:[[:space:]]*"[^"]+"' "$1" 2>/dev/null \
+            | head -1 | sed -E 's/.*"apiKey"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/'
+    fi
+}
+
+_sabnzbd_api_key() {
+    # INI under [misc]: api_key = <hex>
+    [ -f "$1" ] || return 0
+    grep -oE '^api_key[[:space:]]*=[[:space:]]*[a-fA-F0-9]+' "$1" 2>/dev/null \
+        | head -1 | sed -E 's/^api_key[[:space:]]*=[[:space:]]*//'
+}
+
+# Wait up to N seconds for a file to appear. Used by the seeder when an
+# arr is still writing its first-run config.
+_wait_for_file() {
+    _file="$1"
+    _max="${2:-15}"
+    _waited=0
+    while [ "$_waited" -lt "$_max" ] && [ ! -f "$_file" ]; do
+        sleep 1
+        _waited=$((_waited + 1))
+    done
+    [ -f "$_file" ]
+}
+
+# Auto-detect the API key each *arr / Bazarr / Seerr / SABnzbd writes
+# into its own config file on first start. Mirrors the Setup Guide's
+# "Detect API Keys" button, but runs at deploy time so the dashboard
+# chips are green from first paint without a manual click.
+#
+# Per-key flow: skip if .env already has a value (user's choice wins),
+# wait briefly for the config file (services have already been up since
+# their respective stages — usually instant), parse the key, sed into
+# .env, export to shell so compose at Stage 6 sees it.
+_seed_one_key() {
+    _name="$1"
+    _envkey="$2"
+    _file="$3"
+    _fn="$4"
+
+    _existing=$(grep -E "^${_envkey}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-)
+    if [ -n "$_existing" ]; then
+        info "$_envkey already set — leaving it alone"
+        return
+    fi
+
+    if ! _wait_for_file "$_file" 15; then
+        warn "$_name: $_file not found yet — falling back to manual detection"
+        return
+    fi
+
+    _key=$("$_fn" "$_file")
+    if [ -z "$_key" ]; then
+        warn "$_name: config present but key not extractable (format may have changed)"
+        return
+    fi
+
+    sed -i "s|^${_envkey}=.*|${_envkey}=$_key|" "$ENV_FILE"
+    # Re-export so compose at Stage 6 picks it up — same gotcha qBittorrent
+    # password seeding ran into: shell-env wins over .env in compose's lookup.
+    export "$_envkey=$_key"
+    pass "Seeded $_envkey from $_name"
+    _SEEDED_COUNT=$((_SEEDED_COUNT + 1))
+}
+
+seed_arr_api_keys() {
+    section "API Key Auto-detection"
+
+    if [ "$SKIP_API_KEY_AUTOSEED" = "1" ]; then
+        info "Skipping (--skip-api-key-autoseed)"
+        return
+    fi
+
+    ENV_FILE="$PROJECT_DIR/.env"
+    if [ ! -f "$ENV_FILE" ]; then
+        warn "Skipping — .env not found at $ENV_FILE"
+        return
+    fi
+
+    _conf_root="${CONFIG_ROOT:-$HOME/.mmc/config}"
+    case "$_conf_root" in "~"*) _conf_root="$HOME${_conf_root#"~"}" ;; esac
+
+    _SEEDED_COUNT=0
+
+    _seed_one_key sonarr   SONARR_API_KEY   "$_conf_root/sonarr/config.xml"          _xml_api_key
+    _seed_one_key radarr   RADARR_API_KEY   "$_conf_root/radarr/config.xml"          _xml_api_key
+    _seed_one_key prowlarr PROWLARR_API_KEY "$_conf_root/prowlarr/config.xml"        _xml_api_key
+    _seed_one_key bazarr   BAZARR_API_KEY   "$_conf_root/bazarr/config/config.yaml"  _bazarr_api_key
+    _seed_one_key seerr    SEERR_API_KEY    "$_conf_root/seerr/settings.json"        _seerr_api_key
+    _seed_one_key sabnzbd  SABNZBD_API_KEY  "$_conf_root/sabnzbd/sabnzbd.ini"        _sabnzbd_api_key
+
+    # Unpackerr cribs its keys from Sonarr/Radarr — propagate when we
+    # just seeded them. (If they were already set, the existing values
+    # for UN_*_API_KEY are presumed correct too.)
+    if [ -n "$SONARR_API_KEY" ] \
+       && ! grep -qE "^UN_SONARR_0_API_KEY=." "$ENV_FILE"; then
+        sed -i "s|^UN_SONARR_0_API_KEY=.*|UN_SONARR_0_API_KEY=$SONARR_API_KEY|" "$ENV_FILE"
+        export UN_SONARR_0_API_KEY="$SONARR_API_KEY"
+        pass "Seeded UN_SONARR_0_API_KEY (from Sonarr)"
+    fi
+    if [ -n "$RADARR_API_KEY" ] \
+       && ! grep -qE "^UN_RADARR_0_API_KEY=." "$ENV_FILE"; then
+        sed -i "s|^UN_RADARR_0_API_KEY=.*|UN_RADARR_0_API_KEY=$RADARR_API_KEY|" "$ENV_FILE"
+        export UN_RADARR_0_API_KEY="$RADARR_API_KEY"
+        pass "Seeded UN_RADARR_0_API_KEY (from Radarr)"
+    fi
+
+    # Redact from deploy log (defense in depth — we never echoed the
+    # raw keys, but the wizard's redaction list doesn't run for output
+    # produced this late in the run).
+    if [ -n "$_MMC_LOGGED" ] && [ -f "$_MMC_LOGGED" ]; then
+        for _k in SONARR_API_KEY RADARR_API_KEY PROWLARR_API_KEY BAZARR_API_KEY \
+                  SEERR_API_KEY SABNZBD_API_KEY \
+                  UN_SONARR_0_API_KEY UN_RADARR_0_API_KEY; do
+            sed -i "s/${_k}=[^[:space:]]*/${_k}=[REDACTED]/g" "$_MMC_LOGGED" 2>/dev/null || true
+        done
+    fi
+
+    if [ "$_SEEDED_COUNT" -eq 0 ]; then
+        info "No new keys to seed (everything already configured or unavailable)"
+    else
+        pass "Seeded $_SEEDED_COUNT API key(s) — dashboard chips will be green from first paint"
+    fi
+}
+
 stage_arr_stack() {
     section "Stage 3: Arr Stack"
     cd "$PROJECT_DIR"
@@ -1545,6 +1708,65 @@ check_missing_required_vars() {
         fi
     done
     echo "$_missing"
+}
+
+# Print a short "what's left to configure" checklist after deploy.
+# Only shown when the UI is up — there's no point pointing a user at
+# /guide if the dashboard didn't come online. Each item is conditional
+# on whether it actually needs attention.
+print_post_install_checklist() {
+    _host=$(service_host)
+    PORT_UI="${PORT_UI:-3000}"
+    section "What's left to configure"
+
+    info "${BOLD}Auto-detected during this deploy${RESET} (no action needed):"
+    info "  • qBittorrent WebUI password"
+    info "  • Sonarr / Radarr / Prowlarr API keys"
+    info "  • Bazarr / Seerr / SABnzbd API keys"
+    info "  • Unpackerr's per-arr keys (cribbed from Sonarr + Radarr)"
+    echo ""
+
+    info "${BOLD}Needs your input${RESET}:"
+
+    # Always: indexer configuration. Prowlarr ships with zero indexers
+    # because indexer choices are personal.
+    info "  ${BOLD}1.${RESET} Add at least one indexer in Prowlarr → Settings → Indexers"
+    info "     (or use the Quick Setup buttons in http://${_host}:${PORT_UI}/guide)"
+
+    # qBittorrent in-app: save paths, categories, VPN binding.
+    info "  ${BOLD}2.${RESET} Finish qBittorrent in-app setup (save paths, categories,"
+    info "     bind to VPN interface). Phase 1 of http://${_host}:${PORT_UI}/guide"
+    info "     has a one-click Quick Setup."
+
+    # SABnzbd: usenet server credentials (no way for us to know these).
+    info "  ${BOLD}3.${RESET} If you'll use usenet: SABnzbd → Config → Servers → Add Server."
+    info "     Then run Quick Setup in the Guide to wire SABnzbd into the *arrs."
+
+    # TMDB: optional but useful — only nag if not set.
+    if [ -z "$TMDB_API_KEY" ]; then
+        info "  ${BOLD}4.${RESET} (optional) TMDB API key — enables actor search in the UI."
+        info "     Get one free at themoviedb.org/settings/api, then paste into"
+        info "     http://${_host}:${PORT_UI}/settings → General → TMDB_API_KEY"
+    fi
+
+    # Plex: optional and external. Nag if empty or still the placeholder.
+    case "$PLEX_URL" in
+        ""|"http://localhost:32400"|"http://host.docker.internal:32400")
+            info "  ${BOLD}5.${RESET} (optional) Plex server URL — needed for Seerr to read your"
+            info "     library and Tautulli-style stats. Set PLEX_URL at"
+            info "     http://${_host}:${PORT_UI}/settings → Services"
+            ;;
+    esac
+
+    # Seerr: the user has to log in once with Plex / Jellyfin / etc. We
+    # can't automate this — auth is OAuth-flavoured.
+    info "  ${BOLD}6.${RESET} Sign into Seerr once at http://${_host}:5055 to bind it"
+    info "     to your Plex/Jellyfin account, then the Guide's Quick Setup"
+    info "     can connect Sonarr/Radarr/Bazarr to it automatically."
+
+    echo ""
+    info "All of the above are walked through step-by-step in the Setup Guide:"
+    info "  http://${_host}:${PORT_UI}/guide"
 }
 
 print_summary() {
@@ -1917,6 +2139,7 @@ elif [ "$UPDATE_MODE" = "1" ]; then
     check_service_ports
     check_ui_api_routes_live
     print_services_summary
+    print_post_install_checklist
     print_summary
 elif [ "$DRY_RUN" = "1" ]; then
     section "Mars Media Centre — Dry Run"
@@ -1955,6 +2178,7 @@ else
         stage_arr_stack
         stage_media_server
         stage_operations
+        seed_arr_api_keys
         set -e
 
         # Always deploy the web UI so users can access settings
@@ -1969,6 +2193,7 @@ else
     check_service_ports
     check_ui_api_routes_live
     print_services_summary
+    print_post_install_checklist
     print_summary
 fi
 

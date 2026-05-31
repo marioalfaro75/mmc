@@ -282,7 +282,7 @@ function DetectApiKeys() {
     <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
       <p className="text-sm font-medium">Auto-detect API Keys</p>
       <p className="mt-1 text-xs text-muted-foreground">
-        Reads API keys directly from Sonarr, Radarr, Prowlarr, Seerr, and Bazarr config files and saves them to Settings.
+        Reads API keys directly from Sonarr, Radarr, Prowlarr, Bazarr, Seerr, and SABnzbd config files and saves them to Settings.
         Also populates Unpackerr keys automatically. Automatically restarts services to apply.
       </p>
       <button

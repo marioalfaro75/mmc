@@ -39,6 +39,20 @@ function extractSeerrApiKey(configRoot: string): string | null {
   return null;
 }
 
+function extractSabnzbdApiKey(configRoot: string): string | null {
+  try {
+    const configPath = join(configRoot, 'sabnzbd', 'sabnzbd.ini');
+    const content = readFileSync(configPath, 'utf-8');
+    // INI format — the key lives under [misc] as `api_key = <value>`.
+    // Take the first match; SABnzbd doesn't repeat the line.
+    const match = content.match(/^api_key\s*=\s*([a-fA-F0-9]+)\s*$/m);
+    if (match && match[1].length > 0) {
+      return match[1];
+    }
+  } catch { /* not available */ }
+  return null;
+}
+
 export function readApiKeysFromConfig(configRoot: string): {
   detected: Record<string, string>;
   missing: string[];
@@ -75,6 +89,14 @@ export function readApiKeysFromConfig(configRoot: string): {
     detected.BAZARR_API_KEY = bazarrKey;
   } else {
     missing.push('bazarr');
+  }
+
+  // SABnzbd stores its key in sabnzbd.ini under [misc]
+  const sabnzbdKey = extractSabnzbdApiKey(configRoot);
+  if (sabnzbdKey) {
+    detected.SABNZBD_API_KEY = sabnzbdKey;
+  } else {
+    missing.push('sabnzbd');
   }
 
   return { detected, missing };
