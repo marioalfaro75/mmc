@@ -15,9 +15,11 @@ import { toast } from 'sonner';
 type TabKey = 'active' | 'completed' | 'failed';
 type SortMode = 'default' | 'name' | 'progress-asc' | 'progress-desc';
 
+type ClientStatus = 'online' | 'offline' | 'disabled';
+
 interface DownloadsResponse {
   items: DownloadItem[];
-  clients: { torrent: boolean; usenet: boolean };
+  clients: { torrent: ClientStatus; usenet: ClientStatus };
 }
 
 export default function DownloadsPage() {
@@ -133,12 +135,22 @@ export default function DownloadsPage() {
         </div>
       )}
 
-      {clients && !clients.torrent && !clients.usenet && (
-        <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
-          <Download className="h-4 w-4 shrink-0" />
-          Both download clients are unreachable. qBittorrent and SABnzbd may be offline.
-        </div>
-      )}
+      {clients && (() => {
+        // Only complain about clients the user has actually enabled.
+        const enabledOffline = [
+          clients.torrent === 'offline' ? 'qBittorrent' : null,
+          clients.usenet === 'offline' ? 'SABnzbd' : null,
+        ].filter(Boolean);
+        if (enabledOffline.length === 0) return null;
+        return (
+          <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+            <Download className="h-4 w-4 shrink-0" />
+            {enabledOffline.length === 2
+              ? 'Both download clients are unreachable. qBittorrent and SABnzbd may be offline.'
+              : `${enabledOffline[0]} is unreachable — check the System page.`}
+          </div>
+        );
+      })()}
 
       {/* Tabs and sort */}
       <div className="flex items-center gap-2">

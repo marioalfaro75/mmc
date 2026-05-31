@@ -8,7 +8,10 @@ import { getVpnStatus } from '@/lib/api/gluetun';
 import { getStatus as getSeerrStatus } from '@/lib/api/seerr';
 import { getSystemStatus as getBazarrStatus } from '@/lib/api/bazarr';
 import { isAuthRequiredError } from '@/lib/api/errors';
+import { downloadClientFlags } from '@/lib/api/download-clients';
 import type { ServiceHealth } from '@/lib/types/common';
+
+export const dynamic = 'force-dynamic';
 
 async function checkService(
   name: string,
@@ -34,6 +37,10 @@ async function checkService(
 }
 
 export async function GET() {
+  const { useQbittorrent, useSabnzbd } = downloadClientFlags();
+  const disabled = (name: string, url: string): ServiceHealth =>
+    ({ name, status: 'disabled', version: null, url });
+
   const services = await Promise.all([
     checkService('Sonarr', '/sonarr', async () => {
       const s = await getSonarrStatus();
@@ -47,12 +54,12 @@ export async function GET() {
       const s = await getProwlarrStatus();
       return s.version;
     }),
-    checkService('qBittorrent', '/qbittorrent', async () => {
-      return await getQbtVersion();
-    }),
-    checkService('SABnzbd', '/sabnzbd', async () => {
-      return await getSabnzbdVersion();
-    }),
+    useQbittorrent
+      ? checkService('qBittorrent', '/qbittorrent', async () => await getQbtVersion())
+      : Promise.resolve(disabled('qBittorrent', '/qbittorrent')),
+    useSabnzbd
+      ? checkService('SABnzbd', '/sabnzbd', async () => await getSabnzbdVersion())
+      : Promise.resolve(disabled('SABnzbd', '/sabnzbd')),
     checkService('Gluetun', '/gluetun', async () => {
       const s = await getVpnStatus();
       return s.status;

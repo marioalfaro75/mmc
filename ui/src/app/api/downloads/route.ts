@@ -3,7 +3,10 @@ import { getTorrents } from '@/lib/api/qbittorrent';
 import { getQueue as getSabnzbdQueue } from '@/lib/api/sabnzbd';
 import { getQueue as getSonarrQueue } from '@/lib/api/sonarr';
 import { getQueue as getRadarrQueue } from '@/lib/api/radarr';
+import { downloadClientFlags } from '@/lib/api/download-clients';
 import type { DownloadItem } from '@/lib/types/common';
+
+export const dynamic = 'force-dynamic';
 
 interface ArrQueueRecord {
   id: number;
@@ -41,9 +44,15 @@ function mapCategory(cat: string): DownloadItem['category'] {
 
 export async function GET() {
   try {
+    const { useQbittorrent, useSabnzbd } = downloadClientFlags();
+
+    // Skip the actual fetch for disabled clients so we don't bake a fake
+    // "fulfilled with empty data" lie into the response — the `clients`
+    // section explicitly reports `disabled` so the UI can render that
+    // state instead of a connection-failed warning.
     const [torrentsResult, sabnzbdResult, sonarrQueueResult, radarrQueueResult] = await Promise.allSettled([
-      getTorrents(),
-      getSabnzbdQueue(),
+      useQbittorrent ? getTorrents() : Promise.reject(new Error('disabled')),
+      useSabnzbd ? getSabnzbdQueue() : Promise.reject(new Error('disabled')),
       getSonarrQueue(),
       getRadarrQueue(),
     ]);
@@ -149,8 +158,12 @@ export async function GET() {
     return NextResponse.json({
       items,
       clients: {
-        torrent: torrentsResult.status === 'fulfilled',
-        usenet: sabnzbdResult.status === 'fulfilled',
+        torrent: useQbittorrent
+          ? (torrentsResult.status === 'fulfilled' ? 'online' : 'offline')
+          : 'disabled',
+        usenet: useSabnzbd
+          ? (sabnzbdResult.status === 'fulfilled' ? 'online' : 'offline')
+          : 'disabled',
       },
     });
   } catch (error) {

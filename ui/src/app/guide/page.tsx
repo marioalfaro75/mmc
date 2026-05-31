@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BookOpen, ChevronDown, Terminal, ExternalLink, Loader2, Zap, ShieldCheck, Key } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
@@ -118,30 +118,63 @@ function QuickSetupQbt() {
   );
 }
 
-function QuickSetupButton({ label, description, endpoint, successMessage }: {
+type StepResult = {
+  step: string;
+  status: 'ok' | 'skipped' | 'error';
+  reason?: 'disabled' | 'already_configured' | 'no_api_key';
+  error?: string;
+};
+
+function prettyStep(step: string): string {
+  return step
+    .replace(/-client$/, '')
+    .replace('qbittorrent', 'qBittorrent')
+    .replace('sabnzbd', 'SABnzbd')
+    .replace(/-/g, ' ');
+}
+
+function QuickSetupButton({ label, description, endpoint, successMessage, showDownloadClientPreview }: {
   label: string;
   description: string;
   endpoint: string;
   successMessage: string;
+  showDownloadClientPreview?: boolean;
 }) {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [preview, setPreview] = useState<{ useQbittorrent: boolean; useSabnzbd: boolean } | null>(null);
+
+  useEffect(() => {
+    if (!showDownloadClientPreview) return;
+    fetch('/api/download-clients').then((r) => r.ok ? r.json() : null).then(setPreview).catch(() => {});
+  }, [showDownloadClientPreview]);
 
   const run = async () => {
     setLoading(true);
     try {
       const res = await fetch(endpoint, { method: 'POST' });
       const data = await res.json();
-      if (data.success) {
-        toast.success(successMessage);
-        setDone(true);
-      } else if (data.error) {
+      if (data.error) {
         toast.error(data.error);
-      } else {
-        const failed = data.results?.filter((r: { status: string }) => r.status === 'error') || [];
-        const details = failed.map((r: { step: string; error?: string }) => r.error ? `${r.step}: ${r.error}` : r.step).join('; ');
-        toast.error(`Some settings failed: ${details}`);
+        return;
       }
+      const results: StepResult[] = data.results || [];
+      const failed = results.filter((r) => r.status === 'error');
+      const disabled = results.filter((r) => r.status === 'skipped' && r.reason === 'disabled');
+
+      if (failed.length > 0) {
+        const details = failed.map((r) => r.error ? `${prettyStep(r.step)}: ${r.error}` : prettyStep(r.step)).join('; ');
+        toast.error(`Some settings failed: ${details}`);
+        return;
+      }
+
+      let msg = successMessage;
+      if (disabled.length > 0) {
+        const names = disabled.map((r) => prettyStep(r.step)).join(', ');
+        msg += ` · Skipped: ${names} (disabled in Settings)`;
+      }
+      toast.success(msg);
+      setDone(true);
     } catch {
       toast.error(`Could not reach ${label} — is it running?`);
     } finally {
@@ -152,6 +185,16 @@ function QuickSetupButton({ label, description, endpoint, successMessage }: {
   return (
     <div className="mt-3 rounded-md border border-border bg-muted/30 p-3">
       <p className="text-xs text-muted-foreground">{description}</p>
+      {preview && (
+        <div className="mt-2 flex flex-wrap gap-1.5 text-[10px]">
+          <span className={`rounded-full border px-2 py-0.5 ${preview.useQbittorrent ? 'border-success/40 text-success' : 'border-muted-foreground/30 text-muted-foreground'}`}>
+            qBittorrent: {preview.useQbittorrent ? 'on' : 'off'}
+          </span>
+          <span className={`rounded-full border px-2 py-0.5 ${preview.useSabnzbd ? 'border-success/40 text-success' : 'border-muted-foreground/30 text-muted-foreground'}`}>
+            SABnzbd: {preview.useSabnzbd ? 'on' : 'off'}
+          </span>
+        </div>
+      )}
       <button
         onClick={run}
         disabled={loading || done}
@@ -724,8 +767,9 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
             <QuickSetupButton
               label="Sonarr"
               endpoint="/api/sonarr/configure"
-              description="Auto-configure steps 1-3: root folder, download clients (qBittorrent + SABnzbd if key is set), and episode renaming format."
+              description="Auto-configure steps 1-3: root folder, download clients (controlled by the toggles in Settings → Services), and episode renaming format."
               successMessage="Sonarr configured — root folder, download clients, and naming format applied"
+              showDownloadClientPreview
             />
           </AccordionSection>
 
@@ -755,8 +799,9 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
             <QuickSetupButton
               label="Radarr"
               endpoint="/api/radarr/configure"
-              description="Auto-configure steps 1-3: root folder, download clients (qBittorrent + SABnzbd if key is set), and movie renaming format."
+              description="Auto-configure steps 1-3: root folder, download clients (controlled by the toggles in Settings → Services), and movie renaming format."
               successMessage="Radarr configured — root folder, download clients, and naming format applied"
+              showDownloadClientPreview
             />
           </AccordionSection>
 

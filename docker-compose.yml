@@ -271,8 +271,10 @@ services:
       - QBITTORRENT_URL=http://gluetun:8080
       - QBITTORRENT_USERNAME=admin
       - QBITTORRENT_PASSWORD=${QBITTORRENT_PASSWORD:-}
+      - USE_QBITTORRENT=${USE_QBITTORRENT:-on}
       - SABNZBD_URL=http://gluetun:8081
       - SABNZBD_API_KEY=${SABNZBD_API_KEY:-}
+      - USE_SABNZBD=${USE_SABNZBD:-off}
       - PLEX_URL=${PLEX_URL:-http://host.docker.internal:32400}
       - SEERR_URL=http://seerr:5055
       - SEERR_API_KEY=${SEERR_API_KEY:-}

@@ -68,6 +68,17 @@ function getApiBadge(health: ServiceHealth | undefined) {
   if (health.status === 'online') {
     return <Badge variant="outline" className="text-success border-success/30">Online</Badge>;
   }
+  if (health.status === 'disabled') {
+    return (
+      <Badge
+        variant="outline"
+        className="text-muted-foreground border-muted-foreground/30"
+        title="Disabled in Settings → Services"
+      >
+        Disabled
+      </Badge>
+    );
+  }
   if (health.status === 'auth_required') {
     return (
       <Badge
