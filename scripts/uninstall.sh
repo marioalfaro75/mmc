@@ -164,6 +164,23 @@ is_mount() { mountpoint -q "$1" 2>/dev/null; }
 
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
+# rm -rf with a sudo fallback. Past `git pull`s run from inside the
+# media-ui container land objects in .git/ owned by root on the host;
+# user-level rm fails on those, but we don't want to swallow it —
+# retry once via sudo so the cleanup actually completes.
+safe_rm() {
+    _target="$1"
+    [ -e "$_target" ] || return 0
+    if rm -rf "$_target" 2>/dev/null && [ ! -e "$_target" ]; then
+        return 0
+    fi
+    if [ -e "$_target" ]; then
+        warn "Some files in $_target are root-owned (likely from sidecar git pulls). Retrying with sudo…"
+        sudo rm -rf "$_target"
+    fi
+    [ ! -e "$_target" ]
+}
+
 # Run a command. In dry-run, just print it. Otherwise execute.
 run() {
     if [ "$DRY_RUN" = "1" ]; then
@@ -323,8 +340,11 @@ for _p in "$CONFIG_ROOT" "$HOME/.mmc/logs" "$INSTALL_MARKER"; do
         _sz=$(size_of "$_p")
         plan "Remove $_p ($_sz)"
         if [ "$DRY_RUN" = "0" ]; then
-            rm -rf "$_p"
-            ok "Removed"
+            if safe_rm "$_p"; then
+                ok "Removed"
+            else
+                fail "Could not fully remove $_p"
+            fi
         fi
     fi
 done
@@ -333,8 +353,11 @@ if [ -d "$REPO_DIR" ]; then
     _sz=$(size_of "$REPO_DIR")
     plan "Remove $REPO_DIR ($_sz, includes .env with VPN key)"
     if [ "$DRY_RUN" = "0" ]; then
-        rm -rf "$REPO_DIR"
-        ok "Removed"
+        if safe_rm "$REPO_DIR"; then
+            ok "Removed"
+        else
+            fail "Could not fully remove $REPO_DIR"
+        fi
     fi
 fi
 
@@ -367,8 +390,11 @@ if [ "$PURGE_DATA" = "1" ]; then
         plan "Remove $DATA_ROOT ($_sz)"
         if [ "$DRY_RUN" = "0" ]; then
             if confirm_delete "your media library" "$DATA_ROOT" "$_sz"; then
-                rm -rf "$DATA_ROOT"
-                ok "Removed"
+                if safe_rm "$DATA_ROOT"; then
+                    ok "Removed"
+                else
+                    fail "Could not fully remove $DATA_ROOT"
+                fi
             else
                 warn "Cancelled — $DATA_ROOT left intact"
             fi
@@ -394,8 +420,11 @@ if [ "$PURGE_BACKUPS" = "1" ]; then
         plan "Remove $BACKUP_DIR ($_sz)"
         if [ "$DRY_RUN" = "0" ]; then
             if confirm_delete "your backups" "$BACKUP_DIR" "$_sz"; then
-                rm -rf "$BACKUP_DIR"
-                ok "Removed"
+                if safe_rm "$BACKUP_DIR"; then
+                    ok "Removed"
+                else
+                    fail "Could not fully remove $BACKUP_DIR"
+                fi
             else
                 warn "Cancelled — $BACKUP_DIR left intact"
             fi
