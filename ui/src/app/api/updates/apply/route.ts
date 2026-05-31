@@ -72,10 +72,19 @@ export async function POST(request: Request) {
   // We pre-trust the project dir before invoking deploy.sh so the script's
   // own `git pull` doesn't trip the "dubious ownership" guard (the host
   // repo is owned by PUID, the sidecar runs as root).
+  //
+  // After the update we chown .git back to PUID:PGID — the sidecar runs as
+  // root, so git pull lands new pack files in .git/objects owned by root.
+  // Without this fixup, `rm -rf ~/mmc` from the user later fails on those
+  // files, and the user-side `git pull` we suggest after install starts
+  // hitting permission errors too.
   const sidecarName = `mmc-updater-${ts}`;
+  const puid = process.env.PUID || '1000';
+  const pgid = process.env.PGID || '1000';
   const innerCmd =
     `git config --global --add safe.directory ${projectDir} && ` +
     `./scripts/deploy.sh --update >> ${hostLogPath} 2>&1; rc=$?; ` +
+    `chown -R ${puid}:${pgid} ${projectDir}/.git >> ${hostLogPath} 2>&1 || true; ` +
     `rm -f ${hostLockPath}; exit $rc`;
 
   const args = [
