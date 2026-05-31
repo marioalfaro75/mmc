@@ -1175,9 +1175,75 @@ stage_vpn() {
     warn "Continuing deploy — VPN-dependent services may not work until VPN is configured"
 }
 
+# SABnzbd shares gluetun's network namespace with qBittorrent. qBittorrent
+# is pinned to 8080 (WEBUI_PORT), so SAB has to bind a different port or
+# both EADDRINUSE inside the netns and nothing answers on PORT_SABNZBD.
+# The LSIO image has no env var for the WebUI port — it's read from
+# /config/sabnzbd.ini. Seed the file with `host = 0.0.0.0` and the right
+# port before SAB ever starts; if it already exists with the wrong port,
+# fix it in place and bounce the container.
+seed_sabnzbd_port() {
+    _port="${PORT_SABNZBD:-8081}"
+    _conf_root="${CONFIG_ROOT:-$HOME/.mmc/config}"
+    case "$_conf_root" in "~"*) _conf_root="$HOME${_conf_root#"~"}" ;; esac
+    _sab_ini="$_conf_root/sabnzbd/sabnzbd.ini"
+    _puid="${PUID:-$(id -u)}"
+    _pgid="${PGID:-$(id -g)}"
+
+    mkdir -p "$(dirname "$_sab_ini")"
+    chown "$_puid:$_pgid" "$(dirname "$_sab_ini")" 2>/dev/null || true
+
+    if [ ! -f "$_sab_ini" ]; then
+        # SAB rewrites this on first start, preserving the keys we set.
+        cat > "$_sab_ini" <<EOF
+[misc]
+host = 0.0.0.0
+port = $_port
+EOF
+        chown "$_puid:$_pgid" "$_sab_ini" 2>/dev/null || true
+        chmod 600 "$_sab_ini" 2>/dev/null || true
+        pass "Seeded sabnzbd.ini with port $_port"
+        return
+    fi
+
+    _current=$(grep -E '^[[:space:]]*port[[:space:]]*=' "$_sab_ini" \
+        | head -1 | sed -E 's/^[[:space:]]*port[[:space:]]*=[[:space:]]*//' | tr -d ' ')
+
+    if [ "$_current" = "$_port" ]; then
+        info "sabnzbd.ini already on port $_port"
+        return
+    fi
+
+    if [ -n "$_current" ]; then
+        sed -i -E "s|^[[:space:]]*port[[:space:]]*=.*|port = $_port|" "$_sab_ini"
+        pass "Updated sabnzbd.ini port: $_current → $_port"
+    elif grep -qE '^\[misc\]' "$_sab_ini"; then
+        sed -i "/^\[misc\]/a port = $_port" "$_sab_ini"
+        pass "Inserted port = $_port under [misc]"
+    else
+        printf '\n[misc]\nport = %s\n' "$_port" >> "$_sab_ini"
+        pass "Appended [misc] port = $_port"
+    fi
+
+    # Also pin the bind host so SAB listens on the shared netns interface.
+    if ! grep -qE '^[[:space:]]*host[[:space:]]*=' "$_sab_ini"; then
+        sed -i "/^\[misc\]/a host = 0.0.0.0" "$_sab_ini"
+    fi
+
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^sabnzbd$'; then
+        info "Restarting sabnzbd to apply new port..."
+        if docker restart sabnzbd >/dev/null 2>&1; then
+            pass "sabnzbd restarted"
+        else
+            warn "Could not restart sabnzbd — bring it up manually"
+        fi
+    fi
+}
+
 stage_download_clients() {
     section "Stage 2: Download Clients"
     cd "$PROJECT_DIR"
+    seed_sabnzbd_port
     info "Starting qbittorrent and sabnzbd..."
     docker compose up -d qbittorrent sabnzbd
 
@@ -1578,6 +1644,7 @@ stage_media_ui() {
 quick_deploy() {
     section "Quick Deploy"
     cd "$PROJECT_DIR"
+    seed_sabnzbd_port
     info "Containers already exist — running docker compose up -d --build..."
     docker compose up -d --build
     pass "docker compose up -d --build completed"
