@@ -1301,6 +1301,16 @@ seed_qbittorrent_password() {
     fi
 
     pass "qBittorrent WebUI password seeded into .env — dashboard chip will be green at Stage 6"
+
+    # If media-ui is already running (unexpected during first-run flow,
+    # but possible if seed is invoked again later), force a recreate so
+    # it picks up the new env var. Docker captures env at container-
+    # start time — .env changes don't propagate to a running container.
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q '^media-ui$'; then
+        info "media-ui is already running — recreating to pick up the new password..."
+        (cd "$PROJECT_DIR" && docker compose up -d --force-recreate media-ui >/dev/null 2>&1) \
+            || warn "media-ui recreate failed — restart it manually if the dashboard chip stays yellow"
+    fi
 }
 
 stage_arr_stack() {
@@ -1376,7 +1386,10 @@ stage_media_ui() {
     section "Stage 6: Media UI"
     cd "$PROJECT_DIR"
     info "Building and starting media-ui..."
-    docker compose up -d --build media-ui
+    # --force-recreate so env vars are read from the *current* .env, not
+    # whatever was in scope when an earlier container instance was created.
+    # Matters if the seed step has just updated QBITTORRENT_PASSWORD.
+    docker compose up -d --build --force-recreate media-ui
 
     PORT_UI="${PORT_UI:-3000}"
     if wait_for_port "$PORT_UI" 30; then
