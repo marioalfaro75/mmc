@@ -1290,6 +1290,14 @@ seed_qbittorrent_password() {
 
     sed -i "s|^QBITTORRENT_PASSWORD=.*|QBITTORRENT_PASSWORD=$_new_pw|" "$ENV_FILE"
 
+    # Compose reads variable values from the *shell environment* first
+    # and falls back to .env only if the var isn't there. check_env_file
+    # earlier in this run already exported QBITTORRENT_PASSWORD= (empty),
+    # so without this re-export stage_media_ui's compose call would
+    # substitute the empty value and the container would come up with
+    # no password — even though .env on disk is correct.
+    export QBITTORRENT_PASSWORD="$_new_pw"
+
     # Best-effort logout so the temp session doesn't sit around.
     curl -s -o /dev/null -m 5 -X POST "${_qbt_url}/api/v2/auth/logout" \
         -H "Cookie: $_cookie" -H "Referer: ${_qbt_url}" 2>/dev/null || true
