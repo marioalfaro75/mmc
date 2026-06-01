@@ -77,7 +77,7 @@ export function Sidebar() {
   return (
     <aside className="hidden md:flex w-64 flex-col border-r border-border bg-surface">
       <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-        <Film className="h-6 w-6 text-primary" />
+        <img src="/icon.svg" alt="" className="h-7 w-7" />
         <span className="text-lg font-semibold">Mars Media Centre</span>
       </div>
       <nav className="flex-1 space-y-1 p-3">

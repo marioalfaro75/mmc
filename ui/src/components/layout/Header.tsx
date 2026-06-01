@@ -1,6 +1,6 @@
 'use client';
 
-import { Film, Moon, Sun, LogIn, LogOut, Loader2 } from 'lucide-react';
+import { Moon, Sun, LogIn, LogOut, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
@@ -23,7 +23,7 @@ export function Header() {
   return (
     <header className="flex h-14 items-center justify-between border-b border-border bg-surface px-4">
       <div className="flex items-center gap-2 md:hidden">
-        <Film className="h-5 w-5 text-primary" />
+        <img src="/icon.svg" alt="" className="h-6 w-6" />
         <span className="font-semibold">Mars Media Centre</span>
       </div>
       <div className="hidden md:block" />
