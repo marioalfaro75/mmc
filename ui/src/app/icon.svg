@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- B — Monochromatic indigo: three tones from the brand colour, on-trend SaaS minimalism (Linear / Vercel feel) -->
+  <defs>
+    <linearGradient id="bgB" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d0d18"/>
+      <stop offset="100%" stop-color="#0a0a14"/>
+    </linearGradient>
+    <linearGradient id="t1B" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3b3a8a"/>
+      <stop offset="100%" stop-color="#252360"/>
+    </linearGradient>
+    <linearGradient id="t2B" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7c7af0"/>
+      <stop offset="100%" stop-color="#4f46e5"/>
+    </linearGradient>
+    <linearGradient id="t3B" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5552c8"/>
+      <stop offset="100%" stop-color="#363397"/>
+    </linearGradient>
+    <filter id="glowB" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bgB)"/>
+  <rect x="100" y="62" width="56" height="134" rx="14" fill="#7c7af0" opacity="0.4" filter="url(#glowB)"/>
+  <rect x="38"  y="78" width="56" height="108" rx="14" fill="url(#t1B)"/>
+  <rect x="100" y="62" width="56" height="134" rx="14" fill="url(#t2B)"/>
+  <rect x="162" y="78" width="56" height="108" rx="14" fill="url(#t3B)"/>
+  <path d="M122 104 L150 129 L122 154 Z" fill="#ffffff" opacity="0.96"/>
+</svg>
