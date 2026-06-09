@@ -4,6 +4,7 @@ import { useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2, ShieldCheck, ShieldX, ShieldAlert, Globe, ArrowDownUp, Lock } from 'lucide-react';
 import { NetworkTopology } from '@/components/network/NetworkTopology';
+import { RoutingEvidence } from '@/components/network/RoutingEvidence';
 import { Badge } from '@/components/common/Badge';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
 import { fetchApi } from '@/lib/utils/fetchApi';
@@ -183,6 +184,9 @@ export default function NetworkPage() {
 
       {/* Network topology */}
       <NetworkTopology data={data} tunnelRate={rateRef.current} />
+
+      {/* Live routing evidence */}
+      <RoutingEvidence networkData={data} />
 
       {/* VPN Kill-Switch explainer */}
       <div className="rounded-xl border border-border bg-card p-5">
