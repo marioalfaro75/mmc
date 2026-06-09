@@ -149,6 +149,51 @@ info() {
     printf "  %s\n" "$1"
 }
 
+# Parse KEY=VALUE pairs from $1 and export them, the same effect as
+#   set -a; . "$file"; set +a
+# but WITHOUT executing the file's contents as shell commands. Resilient
+# to values that contain unquoted special characters (spaces, semicolons,
+# pipes, backticks, $(…), `!@#%`, etc.) — exactly the kinds of strings
+# that otherwise get parsed as `KEY=word othercommand args` and emit
+# `othercommand: not found` errors when bash sources the file.
+#
+# Rules:
+#   - Lines starting with `#` and blank lines are skipped.
+#   - Optional `export ` keyword is tolerated.
+#   - Key must match [A-Za-z_][A-Za-z0-9_]* — invalid keys skipped.
+#   - Value is everything after the first `=` literally; optional
+#     matching single OR double quotes around the whole value are
+#     stripped (matching docker-compose's env_file rules).
+#   - CRLF line endings are tolerated.
+load_env() {
+    _file="$1"
+    [ -f "$_file" ] || return 1
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        _line="${_line%$'\r'}"
+        case "$_line" in
+            ''|'#'*) continue ;;
+            *'='*) ;;
+            *) continue ;;
+        esac
+        _key="${_line%%=*}"
+        _value="${_line#*=}"
+        _key="${_key#export }"
+        # Trim whitespace around the key (POSIX-portable via parameter expansion)
+        while :; do case "$_key" in ' '*|$'\t'*) _key="${_key#?}" ;; *) break ;; esac; done
+        while :; do case "$_key" in *' '|*$'\t') _key="${_key%?}" ;; *) break ;; esac; done
+        # Validate key
+        case "$_key" in
+            ''|[0-9]*|*[!A-Za-z0-9_]*) continue ;;
+        esac
+        # Strip matching surrounding quotes (single or double)
+        case "$_value" in
+            \"*\")  _value="${_value#\"}"; _value="${_value%\"}" ;;
+            \'*\')  _value="${_value#\'}"; _value="${_value%\'}" ;;
+        esac
+        export "$_key=$_value"
+    done < "$_file"
+}
+
 # --- Interactive input (works when piped via curl | bash) ---
 prompt_user() {
     _prompt="$1"
@@ -413,9 +458,7 @@ check_nas_mount() {
         return
     fi
 
-    set -a
-    . "$ENV_FILE"
-    set +a
+    load_env "$ENV_FILE"
 
     _data_root="${DATA_ROOT:-$HOME/.mmc/data}"
     # Expand ~ to $HOME
@@ -467,9 +510,7 @@ setup_nas() {
     # Check if already configured
     ENV_FILE="$PROJECT_DIR/.env"
     if [ -f "$ENV_FILE" ]; then
-        set -a
-        . "$ENV_FILE"
-        set +a
+        load_env "$ENV_FILE"
     fi
 
     _data_root="${DATA_ROOT:-$HOME/.mmc/data}"
@@ -676,9 +717,7 @@ check_env_file() {
     ENV_FILE="$PROJECT_DIR/.env"
     if [ -f "$ENV_FILE" ]; then
         pass ".env file found"
-        set -a
-        . "$ENV_FILE"
-        set +a
+        load_env "$ENV_FILE"
     else
         if [ "$DRY_RUN" = "1" ]; then
             fail ".env file not found at $ENV_FILE"
@@ -688,9 +727,7 @@ check_env_file() {
             warn ".env file not found — launching setup wizard"
             run_setup_wizard
             # Source the newly created .env
-            set -a
-            . "$ENV_FILE"
-            set +a
+            load_env "$ENV_FILE"
         fi
     fi
 
@@ -1765,9 +1802,7 @@ check_missing_required_vars() {
         echo "VPN_SERVICE_PROVIDER VPN_TYPE WIREGUARD_PRIVATE_KEY WIREGUARD_ADDRESSES DATA_ROOT CONFIG_ROOT BACKUP_DIR"
         return
     fi
-    set -a
-    . "$ENV_FILE"
-    set +a
+    load_env "$ENV_FILE"
     for var in VPN_SERVICE_PROVIDER VPN_TYPE WIREGUARD_PRIVATE_KEY WIREGUARD_ADDRESSES DATA_ROOT CONFIG_ROOT BACKUP_DIR; do
         eval _val="\$$var"
         if [ -z "$_val" ]; then
@@ -2173,9 +2208,7 @@ elif [ "$UPDATE_MODE" = "1" ]; then
     check_env_file
     migrate_env
     # Re-source .env after migration
-    set -a
-    . "$PROJECT_DIR/.env"
-    set +a
+    load_env "$PROJECT_DIR/.env"
     validate_env
     check_nas_mount
     validate_compose_syntax
