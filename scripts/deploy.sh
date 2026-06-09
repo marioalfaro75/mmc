@@ -744,8 +744,21 @@ check_env_file() {
 
     # Validate DOCKER_SUBNET doesn't conflict with existing networks
     if [ -f "$ENV_FILE" ] && [ -n "$DOCKER_SUBNET" ] && command -v docker >/dev/null 2>&1; then
-        _used=$(docker network ls -q | xargs -r docker network inspect \
-            --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null)
+        # Inspect every existing docker network, but EXCLUDE the project's own
+        # networks (mmc_*) — without this exclusion every redeploy detects the
+        # project's existing network as a "conflict" with itself, switches the
+        # subnet to a different free range, and forces a full network +
+        # container recreation on every update.
+        _used=""
+        for _net_id in $(docker network ls -q); do
+            _net_name=$(docker network inspect --format '{{.Name}}' "$_net_id" 2>/dev/null)
+            case "$_net_name" in
+                mmc_*|''|bridge|host|none) continue ;;
+            esac
+            _net_subnet=$(docker network inspect \
+                --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' "$_net_id" 2>/dev/null)
+            [ -n "$_net_subnet" ] && _used="$_used $_net_subnet"
+        done
         _current_prefix="${DOCKER_SUBNET%.*.*}"
         _has_conflict=0
         for _existing in $_used; do
@@ -1176,9 +1189,16 @@ cleanup_stale_containers() {
 wait_for_port() {
     _port="$1"
     _timeout="$2"
+    # Pick where to probe published ports. When the script runs on the host
+    # (typical CLI use), localhost is fine. When it runs inside the updater
+    # sidecar (the in-UI Apply update path), localhost is the sidecar's own
+    # loopback — the project's published ports live on the HOST, reachable
+    # via the bridge gateway. The apply route sets MMC_PORT_CHECK_HOST so
+    # we don't have to sniff /.dockerenv here.
+    _host="${MMC_PORT_CHECK_HOST:-localhost}"
     _waited=0
     while [ "$_waited" -lt "$_timeout" ]; do
-        if curl -s -o /dev/null -m 2 "http://localhost:${_port}" 2>/dev/null; then
+        if curl -s -o /dev/null -m 2 "http://${_host}:${_port}" 2>/dev/null; then
             return 0
         fi
         sleep 1
@@ -2216,7 +2236,12 @@ elif [ "$UPDATE_MODE" = "1" ]; then
 
     section "Rebuild & Restart"
     cd "$PROJECT_DIR"
-    cleanup_stale_containers "gluetun qbittorrent sabnzbd prowlarr sonarr radarr unpackerr bazarr seerr recyclarr watchtower media-ui"
+    # No cleanup_stale_containers in update mode — compose's `up -d --build`
+    # already reconciles state: containers whose config or image hash hasn't
+    # changed are left running, the changed ones (typically just media-ui
+    # after a code-only update) are rebuilt and recreated. Wiping the whole
+    # stack every update tore down qBit/SAB/etc unnecessarily and was the
+    # main cause of "Apply update takes a long time".
     info "Running docker compose up -d --build..."
     # Tolerate partial failures (e.g. VPN healthcheck) so the validation
     # section below still runs and the user gets a useful summary instead
