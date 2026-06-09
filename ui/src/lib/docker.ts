@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { existsSync } from 'fs';
+import { formatRouteRow } from './proc-route';
 
 const execFileAsync = promisify(execFile);
 
@@ -331,6 +332,123 @@ export async function getContainerNetworkStats(containers: string[]): Promise<Co
   } catch { /* container might not be running */ }
   return results;
 }
+
+// --- Routing-evidence probes -------------------------------------------------
+// These let the Network page prove (rather than claim) that qBit/SAB traffic
+// actually exits through gluetun's VPN tunnel.
+
+// Linux assigns each network namespace a kernel-managed inode. Containers
+// that share `network_mode: service:gluetun` MUST report the same inode for
+// /proc/1/ns/net. If they ever diverge, gluetun's netns is not in effect.
+export async function getNetworkNamespaceInode(container: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      'docker', ['exec', container, 'readlink', '/proc/1/ns/net'],
+      { timeout: 5000 }
+    );
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+// What public IP the traffic appears as when it leaves the container. The
+// container hits a known echo endpoint; the response is the IP its packets
+// emerged from. For containers in gluetun's netns this MUST equal gluetun's
+// own public IP — otherwise there's a leak path.
+//
+// Uses api.ipify.org (small response, low chance of rate-limiting at 60s
+// cache intervals). Falls back through alternates because the IP-echo
+// services rate-limit and rotate.
+const PUBLIC_IP_ENDPOINTS = [
+  'https://api.ipify.org',
+  'https://ifconfig.me/ip',
+  'https://icanhazip.com',
+];
+
+async function fetchEchoIp(execArgs: string[]): Promise<string | null> {
+  for (const url of PUBLIC_IP_ENDPOINTS) {
+    try {
+      const { stdout } = await execFileAsync(
+        execArgs[0], [...execArgs.slice(1), url],
+        { timeout: 6000 }
+      );
+      const ip = stdout.trim().split('\n').pop()?.trim() || '';
+      if (/^[0-9a-f.:]+$/i.test(ip) && ip.includes('.')) return ip;
+    } catch {
+      // try next endpoint
+    }
+  }
+  return null;
+}
+
+export async function getPublicIpFromContainer(container: string): Promise<string | null> {
+  // Prefer wget over curl: present on both LSIO (Alpine + busybox wget) and
+  // most other images. -q quiet, -O- write to stdout, -T 5 timeout 5s.
+  return fetchEchoIp(['docker', 'exec', container, 'wget', '-qO-', '-T', '5']);
+}
+
+// The HOST's real public IP — the one trackers would see if there were no
+// VPN. media-ui is on the `medianet` bridge (not in gluetun's netns), so a
+// fetch from this Node process exits via Docker's default NAT → the host's
+// default route → the host's ISP. Same path qBit/SAB would take if their
+// network_mode wasn't pinned to gluetun.
+export async function getHostPublicIp(): Promise<string | null> {
+  for (const url of PUBLIC_IP_ENDPOINTS) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+      if (!res.ok) continue;
+      const ip = (await res.text()).trim();
+      if (/^[0-9a-f.:]+$/i.test(ip) && ip.includes('.')) return ip;
+    } catch {
+      // try next
+    }
+  }
+  return null;
+}
+
+// `ip route` would be cleanest but isn't guaranteed in every base image
+// (busybox iproute2 quirks). /proc/net/route is universal: kernel-level,
+// hex-encoded. proc-route.ts handles the byte-twiddling.
+export async function getRoutes(container: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync(
+      'docker', ['exec', container, 'cat', '/proc/net/route'],
+      { timeout: 5000 }
+    );
+    const lines = stdout.trim().split('\n');
+    if (lines.length < 2) return [];
+    const out: string[] = [];
+    for (const raw of lines.slice(1)) {
+      const formatted = formatRouteRow(raw);
+      if (formatted) out.push(formatted);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+// Returns the resolver(s) the container will use for DNS. For VPN safety,
+// this should be a private/tunneled address (10.x or VPN-provided), NOT a
+// host-network or ISP resolver like 192.168.x.x.
+export async function getDnsResolvers(container: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync(
+      'docker', ['exec', container, 'cat', '/etc/resolv.conf'],
+      { timeout: 5000 }
+    );
+    const out: string[] = [];
+    for (const line of stdout.split('\n')) {
+      const m = line.match(/^\s*nameserver\s+(\S+)/);
+      if (m) out.push(m[1]);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 
 export async function restartServicesStaged(services: string[]): Promise<void> {
   // If media-ui is being restarted, do it last and fire-and-forget (it kills itself)
