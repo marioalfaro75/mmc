@@ -100,12 +100,42 @@ export default function RequestsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mediaType: item.mediaType, mediaId: item.id }),
       }),
-    onSuccess: (_data, item) => {
-      queryClient.invalidateQueries({ queryKey: ['requests'] });
-      toast.success(`Requested "${item.title || item.name}"`);
-      setSearchTerm('');
+    // Optimistic update: flip the card to "Requested" the moment the user
+    // clicks, before the server replies. The search results stay on screen
+    // (was previously cleared via setSearchTerm — that's the bug that
+    // forced the user to navigate away/back). Other cards remain clickable.
+    onMutate: async (item) => {
+      const searchKey = ['requests', 'search', searchTerm];
+      await queryClient.cancelQueries({ queryKey: searchKey });
+      const previous = queryClient.getQueryData<{ results: SeerrSearchResult[] }>(searchKey);
+      if (previous) {
+        queryClient.setQueryData<{ results: SeerrSearchResult[] }>(searchKey, {
+          ...previous,
+          results: previous.results.map((r) =>
+            r.mediaType === item.mediaType && r.id === item.id
+              ? { ...r, mediaInfo: { status: 2, status4k: r.mediaInfo?.status4k ?? 1 } }
+              : r,
+          ),
+        });
+      }
+      return { previous, searchKey };
     },
-    onError: (_err, item) => toast.error(`Failed to request "${item.title || item.name}"`),
+    onError: (_err, item, ctx) => {
+      // Roll the optimistic flip back so the user can retry.
+      if (ctx?.previous && ctx.searchKey) {
+        queryClient.setQueryData(ctx.searchKey, ctx.previous);
+      }
+      toast.error(`Failed to request "${item.title || item.name}"`);
+    },
+    onSuccess: (_data, item) => {
+      toast.success(`Requested "${item.title || item.name}"`);
+    },
+    onSettled: () => {
+      // Reconcile both the bottom Requests list and the search cards with
+      // whatever Seerr actually now thinks.
+      queryClient.invalidateQueries({ queryKey: ['requests'] });
+      queryClient.invalidateQueries({ queryKey: ['requests', 'search'] });
+    },
   });
 
   const { data: seerrStatus } = useQuery<{ radarr: number; sonarr: number }>({
@@ -256,8 +286,7 @@ export default function RequestsPage() {
                           {mediaStatus === 'none' && (
                             <button
                               onClick={() => requestMutation.mutate(item)}
-                              disabled={requestMutation.isPending}
-                              className="mt-1.5 flex w-full items-center justify-center gap-1 rounded bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                              className="mt-1.5 flex w-full items-center justify-center gap-1 rounded bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
                             >
                               <Plus className="h-3 w-3" />
                               Request
