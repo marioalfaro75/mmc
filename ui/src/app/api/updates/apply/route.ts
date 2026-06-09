@@ -91,11 +91,17 @@ export async function POST(request: Request) {
     'run',
     '--rm', '-d',
     '--name', sidecarName,
+    // host.docker.internal → host gateway so deploy.sh's wait_for_port
+    // probes (curl http://$MMC_PORT_CHECK_HOST:PORT) actually reach the
+    // ports the project publishes on the host. Without this they'd
+    // probe the sidecar's own loopback and every port check would fail.
+    '--add-host', 'host.docker.internal:host-gateway',
     '-v', '/var/run/docker.sock:/var/run/docker.sock',
     '-v', `${projectDir}:${projectDir}`,
     '-v', `${hostLogsDir}:${hostLogsDir}`,
     '-w', projectDir,
     '-e', `HOST_PROJECT_DIR=${projectDir}`,
+    '-e', 'MMC_PORT_CHECK_HOST=host.docker.internal',
     '--entrypoint', 'sh',
     'mmc-media-ui:latest',
     '-c', innerCmd,
