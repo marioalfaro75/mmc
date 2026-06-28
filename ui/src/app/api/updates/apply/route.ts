@@ -87,21 +87,45 @@ export async function POST(request: Request) {
     `chown -R ${puid}:${pgid} ${projectDir}/.git >> ${hostLogPath} 2>&1 || true; ` +
     `rm -f ${hostLockPath}; exit $rc`;
 
+  // Discover the compose `medianet` network attached to *this* container
+  // (media-ui). Names vary by project (e.g. `mmc_medianet`), so derive it
+  // instead of hardcoding. Attaching the sidecar to medianet lets
+  // deploy.sh's wait_for_port hit service containers directly by their
+  // compose service name — sidestepping the HOST_BIND=127.0.0.1 default
+  // that made every host-port probe from the bridge interface fail.
+  let medianetName: string | null = null;
+  try {
+    const out = await new Promise<string>((resolve, reject) => {
+      execFile(
+        'docker',
+        ['inspect', 'media-ui', '--format', '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'],
+        (err, stdout) => (err ? reject(err) : resolve(stdout.trim())),
+      );
+    });
+    const nets = out.split(/\s+/).filter(Boolean);
+    medianetName = nets.find((n) => n.endsWith('_medianet')) ?? nets[0] ?? null;
+  } catch {
+    // Best effort. Without medianet the probes fall back to the old
+    // host-gateway path and will warn on every service — same as today.
+  }
+
   const args = [
     'run',
     '--rm', '-d',
     '--name', sidecarName,
-    // host.docker.internal → host gateway so deploy.sh's wait_for_port
-    // probes (curl http://$MMC_PORT_CHECK_HOST:PORT) actually reach the
-    // ports the project publishes on the host. Without this they'd
-    // probe the sidecar's own loopback and every port check would fail.
-    '--add-host', 'host.docker.internal:host-gateway',
+    ...(medianetName ? ['--network', medianetName] : ['--add-host', 'host.docker.internal:host-gateway']),
     '-v', '/var/run/docker.sock:/var/run/docker.sock',
     '-v', `${projectDir}:${projectDir}`,
     '-v', `${hostLogsDir}:${hostLogsDir}`,
     '-w', projectDir,
     '-e', `HOST_PROJECT_DIR=${projectDir}`,
-    '-e', 'MMC_PORT_CHECK_HOST=host.docker.internal',
+    ...(medianetName
+      // docker-net mode: probe service containers directly on their
+      // internal port over the compose network.
+      ? ['-e', 'MMC_PORT_CHECK_MODE=docker-net']
+      // Fallback: legacy host-gateway probe (broken when HOST_BIND=127.0.0.1
+      // but kept for the unlikely case where network discovery failed).
+      : ['-e', 'MMC_PORT_CHECK_HOST=host.docker.internal']),
     '--entrypoint', 'sh',
     'mmc-media-ui:latest',
     '-c', innerCmd,
