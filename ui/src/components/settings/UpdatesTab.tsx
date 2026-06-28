@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowUpCircle,
   CheckCircle2,
   ExternalLink,
   Loader2,
+  Package,
   RefreshCw,
   Terminal,
 } from 'lucide-react';
@@ -15,6 +16,7 @@ import { Card } from '@/components/common/Card';
 import { fetchApi } from '@/lib/utils/fetchApi';
 import { useApplyUpdate } from '@/hooks/useApplyUpdate';
 import type { UpdateCheckPayload } from '@/lib/updates';
+import type { AppUpdatesPayload, AppVersionInfo } from '@/lib/app-updates';
 
 export function UpdatesTab() {
   const queryClient = useQueryClient();
@@ -26,9 +28,51 @@ export function UpdatesTab() {
     staleTime: 60 * 60 * 1000, // 1 h, matches the API-side cache
   });
 
+  const apps = useQuery<AppUpdatesPayload>({
+    queryKey: ['updates', 'apps'],
+    queryFn: () => fetchApi<AppUpdatesPayload>('/api/updates/apps'),
+    staleTime: 60 * 60 * 1000,
+  });
+
   const { apply, applying, running, status } = useApplyUpdate(
     check.data?.updateAvailable ?? false,
   );
+
+  // Per-app apply. Doesn't reload the page (sibling containers, not media-ui)
+  // — just kicks off the sidecar and re-fetches the apps list when the
+  // shared status lock releases.
+  const applyAppMutation = useMutation<unknown, Error, AppVersionInfo>({
+    mutationFn: async (app) => {
+      const res = await fetch('/api/updates/apps/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: app.key, tag: app.latestTag }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      return res.json();
+    },
+    onSuccess: (_data, app) => {
+      toast.success(`Updating ${app.label} → ${app.latestTag}`);
+      queryClient.invalidateQueries({ queryKey: ['updates', 'status'] });
+    },
+    onError: (err) => toast.error(err.message || 'Apply failed'),
+  });
+
+  // When the shared status lock releases AND we were applying an app, re-fetch
+  // the apps list so the row's current tag updates.
+  const wasRunningForApp = useRef(false);
+  useEffect(() => {
+    if (applyAppMutation.isPending || (status?.running && applyAppMutation.isSuccess)) {
+      wasRunningForApp.current = true;
+    }
+    if (wasRunningForApp.current && status?.running === false && !applyAppMutation.isPending) {
+      wasRunningForApp.current = false;
+      queryClient.invalidateQueries({ queryKey: ['updates', 'apps'] });
+    }
+  }, [status?.running, applyAppMutation.isPending, applyAppMutation.isSuccess, queryClient]);
 
   // Auto-scroll the log pane as new bytes arrive.
   useEffect(() => {
@@ -38,8 +82,12 @@ export function UpdatesTab() {
   }, [status?.logBytes]);
 
   const forceCheck = useCallback(async () => {
-    await fetchApi<UpdateCheckPayload>('/api/updates/check?force=1').catch(() => null);
+    await Promise.all([
+      fetchApi<UpdateCheckPayload>('/api/updates/check?force=1').catch(() => null),
+      fetchApi<AppUpdatesPayload>('/api/updates/apps?force=1').catch(() => null),
+    ]);
     queryClient.invalidateQueries({ queryKey: ['updates', 'check'] });
+    queryClient.invalidateQueries({ queryKey: ['updates', 'apps'] });
     toast.success('Checked');
   }, [queryClient]);
 
@@ -142,6 +190,86 @@ export function UpdatesTab() {
             <CheckCircle2 className="h-3 w-3" />
             You're on the latest commit.
           </p>
+        )}
+      </Card>
+
+      <Card className="space-y-3 p-4">
+        <div className="flex items-center gap-2">
+          <Package className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold">Apps</h2>
+          {apps.isFetching && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Each app is pinned to a specific image tag in <code className="rounded bg-muted px-1 py-0.5">.env</code>.
+          When a newer upstream release lands, bump the pin and recreate the container.
+        </p>
+
+        {apps.isLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        ) : (
+          <div className="divide-y divide-border/60 rounded-md border border-border/60">
+            {(apps.data?.apps ?? []).map((app) => {
+              const isBusy =
+                running && status?.jobId && status.jobId.includes(`-${app.service}-`);
+              const isApplyingThis =
+                applyAppMutation.isPending && applyAppMutation.variables?.key === app.key;
+              return (
+                <div key={app.key} className="flex flex-wrap items-center justify-between gap-3 p-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{app.label}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      <code className="rounded bg-muted px-1 py-0.5">{app.currentTag}</code>
+                      {app.latestTag && (
+                        <>
+                          {' → '}
+                          <code className={`rounded px-1 py-0.5 ${app.updateAvailable ? 'bg-blue-500/20 text-blue-300' : 'bg-muted'}`}>
+                            {app.latestTag}
+                          </code>
+                        </>
+                      )}
+                      {app.releaseUrl && (
+                        <a
+                          href={app.releaseUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="ml-2 inline-flex items-center gap-1 text-blue-400 hover:underline"
+                        >
+                          Notes
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </p>
+                    {app.error && <p className="mt-0.5 text-xs text-yellow-400">{app.error}</p>}
+                  </div>
+                  {app.updateAvailable && app.latestTag && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(`Update ${app.label} from ${app.currentTag} to ${app.latestTag}? The ${app.service} container will briefly restart.`)) {
+                          applyAppMutation.mutate(app);
+                        }
+                      }}
+                      disabled={isApplyingThis || isBusy || (running && !isBusy)}
+                      className="inline-flex shrink-0 items-center gap-2 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                    >
+                      {isApplyingThis || isBusy ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <ArrowUpCircle className="h-3 w-3" />
+                      )}
+                      {isBusy ? 'Updating…' : `Apply ${app.latestTag}`}
+                    </button>
+                  )}
+                  {!app.updateAvailable && !app.error && (
+                    <span className="inline-flex shrink-0 items-center gap-1 text-xs text-green-400">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Up to date
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </Card>
 
