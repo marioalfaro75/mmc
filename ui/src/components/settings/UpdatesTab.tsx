@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowUpCircle,
@@ -41,6 +41,20 @@ export function UpdatesTab() {
   // Per-app apply. Doesn't reload the page (sibling containers, not media-ui)
   // — just kicks off the sidecar and re-fetches the apps list when the
   // shared status lock releases.
+  //
+  // Per-app apply lifecycle. The naive "watch status.running flip back to
+  // false → finished" check has a race: status.running starts at undefined
+  // (not yet polled) or false (last poll showed no job), so the moment the
+  // POST returns success we'd fire cleanup before the status query has
+  // even noticed the sidecar exists. Explicit phases keep the button
+  // showing progress through the whole run.
+  //   idle → waiting (POST returned) → running (status.running=true seen) → idle
+  type ApplyPhase = 'idle' | 'waiting' | 'running';
+  const [appPhase, setAppPhase] = useState<ApplyPhase>('idle');
+  const appPhaseKey = useRef<string | null>(null);
+  const appPhaseLabel = useRef<string | null>(null);
+  const appPhaseTag = useRef<string | null>(null);
+
   const applyAppMutation = useMutation<unknown, Error, AppVersionInfo>({
     mutationFn: async (app) => {
       const res = await fetch('/api/updates/apps/apply', {
@@ -55,42 +69,52 @@ export function UpdatesTab() {
       return res.json();
     },
     onSuccess: (_data, app) => {
+      appPhaseKey.current = app.key;
+      appPhaseLabel.current = app.label;
+      appPhaseTag.current = app.latestTag;
+      setAppPhase('waiting');
       toast.success(`Updating ${app.label} → ${app.latestTag}`);
       queryClient.invalidateQueries({ queryKey: ['updates', 'status'] });
     },
     onError: (err) => toast.error(err.message || 'Apply failed'),
   });
 
-  // When the shared status lock releases AND we were applying an app, parse
-  // the sidecar's log tail to decide success vs failure, then force-refresh
-  // the apps endpoint (just invalidating would re-serve the 1h server-side
-  // cache from before the apply).
-  const wasRunningForApp = useRef(false);
   useEffect(() => {
-    if (applyAppMutation.isPending || (status?.running && applyAppMutation.isSuccess)) {
-      wasRunningForApp.current = true;
+    // waiting → running: the status poll has now caught the sidecar.
+    if (appPhase === 'waiting' && status?.running) {
+      setAppPhase('running');
+      return;
     }
-    if (wasRunningForApp.current && status?.running === false && !applyAppMutation.isPending) {
-      wasRunningForApp.current = false;
+    // running → idle: sidecar finished. Parse the log tail to decide
+    // success vs failure, then force-refresh the apps endpoint (just
+    // invalidating would re-serve the 1h server-side cache from before
+    // the apply).
+    if (appPhase === 'running' && status?.running === false) {
       const tail = status?.logTail ?? '';
       const exitMatch = tail.match(/Done \(exit (\d+)\)/);
       const exitCode = exitMatch ? Number(exitMatch[1]) : null;
       const pullFailed = /Pull failed/.test(tail);
+      const label = appPhaseLabel.current ?? 'App';
+      const tag = appPhaseTag.current;
       if (pullFailed || (exitCode !== null && exitCode !== 0)) {
         const reason = pullFailed
           ? 'Image tag not found in the registry — .env was rolled back.'
           : `Updater exited with code ${exitCode}. Check the log below.`;
-        toast.error(`Update failed. ${reason}`);
+        toast.error(`${label} update failed. ${reason}`);
       } else {
-        toast.success('App updated.');
+        toast.success(tag ? `${label} updated to ${tag}.` : `${label} updated.`);
       }
+      setAppPhase('idle');
+      appPhaseKey.current = null;
+      appPhaseLabel.current = null;
+      appPhaseTag.current = null;
       // ?force=1 bypasses the 1h server-side cache so the row re-renders
       // with the new currentTag (or, on failure, the rolled-back one).
       fetchApi<AppUpdatesPayload>('/api/updates/apps?force=1')
         .catch(() => null)
         .finally(() => queryClient.invalidateQueries({ queryKey: ['updates', 'apps'] }));
     }
-  }, [status?.running, status?.logTail, applyAppMutation.isPending, applyAppMutation.isSuccess, queryClient]);
+  }, [appPhase, status?.running, status?.logTail, queryClient]);
 
   // Auto-scroll the log pane as new bytes arrive.
   useEffect(() => {
@@ -227,10 +251,34 @@ export function UpdatesTab() {
         ) : (
           <div className="divide-y divide-border/60 rounded-md border border-border/60">
             {(apps.data?.apps ?? []).map((app) => {
-              const isBusy =
-                running && status?.jobId && status.jobId.includes(`-${app.service}-`);
               const isApplyingThis =
                 applyAppMutation.isPending && applyAppMutation.variables?.key === app.key;
+              // Stay "busy" for this row through the entire lifecycle —
+              // POST in flight, waiting for status to catch the sidecar,
+              // and the sidecar running. Without this the row would
+              // briefly flip to "Up to date" between the POST returning
+              // and the status poll noticing the new job, and again
+              // before the apps endpoint re-fetches.
+              const isPhaseBusyForThisApp =
+                appPhase !== 'idle' && appPhaseKey.current === app.key;
+              // Also catch the case where another tab/session started the
+              // sidecar — the job ID encodes the service name.
+              const isExternalBusy =
+                running && !!status?.jobId && status.jobId.includes(`-${app.service}-`);
+              const showSpinner = isApplyingThis || isPhaseBusyForThisApp || isExternalBusy;
+              const showButton =
+                (app.updateAvailable && !!app.latestTag) || showSpinner;
+              const showUpToDate =
+                !showButton && !app.updateAvailable && !app.error;
+              const buttonLabel = showSpinner
+                ? appPhase === 'waiting'
+                  ? 'Starting…'
+                  : 'Updating…'
+                : `Apply ${app.latestTag}`;
+              // Lock out applies on every row while ANY apply is running
+              // (the lock file is shared, the server would 409 anyway).
+              const lockedByOtherApp =
+                !showSpinner && (running || appPhase !== 'idle');
               return (
                 <div key={app.key} className="flex flex-wrap items-center justify-between gap-3 p-3">
                   <div className="min-w-0 flex-1">
@@ -259,7 +307,7 @@ export function UpdatesTab() {
                     </p>
                     {app.error && <p className="mt-0.5 text-xs text-yellow-400">{app.error}</p>}
                   </div>
-                  {app.updateAvailable && app.latestTag && (
+                  {showButton && (
                     <button
                       type="button"
                       onClick={() => {
@@ -267,18 +315,18 @@ export function UpdatesTab() {
                           applyAppMutation.mutate(app);
                         }
                       }}
-                      disabled={isApplyingThis || isBusy || (running && !isBusy)}
+                      disabled={showSpinner || lockedByOtherApp}
                       className="inline-flex shrink-0 items-center gap-2 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
                     >
-                      {isApplyingThis || isBusy ? (
+                      {showSpinner ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
                       ) : (
                         <ArrowUpCircle className="h-3 w-3" />
                       )}
-                      {isBusy ? 'Updating…' : `Apply ${app.latestTag}`}
+                      {buttonLabel}
                     </button>
                   )}
-                  {!app.updateAvailable && !app.error && (
+                  {showUpToDate && (
                     <span className="inline-flex shrink-0 items-center gap-1 text-xs text-green-400">
                       <CheckCircle2 className="h-3 w-3" />
                       Up to date
