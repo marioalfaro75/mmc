@@ -61,8 +61,10 @@ export function UpdatesTab() {
     onError: (err) => toast.error(err.message || 'Apply failed'),
   });
 
-  // When the shared status lock releases AND we were applying an app, re-fetch
-  // the apps list so the row's current tag updates.
+  // When the shared status lock releases AND we were applying an app, parse
+  // the sidecar's log tail to decide success vs failure, then force-refresh
+  // the apps endpoint (just invalidating would re-serve the 1h server-side
+  // cache from before the apply).
   const wasRunningForApp = useRef(false);
   useEffect(() => {
     if (applyAppMutation.isPending || (status?.running && applyAppMutation.isSuccess)) {
@@ -70,9 +72,25 @@ export function UpdatesTab() {
     }
     if (wasRunningForApp.current && status?.running === false && !applyAppMutation.isPending) {
       wasRunningForApp.current = false;
-      queryClient.invalidateQueries({ queryKey: ['updates', 'apps'] });
+      const tail = status?.logTail ?? '';
+      const exitMatch = tail.match(/Done \(exit (\d+)\)/);
+      const exitCode = exitMatch ? Number(exitMatch[1]) : null;
+      const pullFailed = /Pull failed/.test(tail);
+      if (pullFailed || (exitCode !== null && exitCode !== 0)) {
+        const reason = pullFailed
+          ? 'Image tag not found in the registry — .env was rolled back.'
+          : `Updater exited with code ${exitCode}. Check the log below.`;
+        toast.error(`Update failed. ${reason}`);
+      } else {
+        toast.success('App updated.');
+      }
+      // ?force=1 bypasses the 1h server-side cache so the row re-renders
+      // with the new currentTag (or, on failure, the rolled-back one).
+      fetchApi<AppUpdatesPayload>('/api/updates/apps?force=1')
+        .catch(() => null)
+        .finally(() => queryClient.invalidateQueries({ queryKey: ['updates', 'apps'] }));
     }
-  }, [status?.running, applyAppMutation.isPending, applyAppMutation.isSuccess, queryClient]);
+  }, [status?.running, status?.logTail, applyAppMutation.isPending, applyAppMutation.isSuccess, queryClient]);
 
   // Auto-scroll the log pane as new bytes arrive.
   useEffect(() => {
