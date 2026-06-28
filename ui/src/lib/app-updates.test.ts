@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseImageRef, isNewer, APP_UPDATE_SOURCES } from './app-updates';
+import { parseImageRef, isNewer, pickHighestTag, APP_UPDATE_SOURCES } from './app-updates';
 
 describe('parseImageRef', () => {
   it('splits a standard tag', () => {
@@ -70,19 +70,53 @@ describe('isNewer', () => {
   });
 });
 
+describe('pickHighestTag', () => {
+  it('returns null on an empty list', () => {
+    expect(pickHighestTag([])).toBeNull();
+  });
+
+  it('returns the sole entry', () => {
+    expect(pickHighestTag(['1.0.0'])).toBe('1.0.0');
+  });
+
+  it('picks the numerically-highest, not the lexicographically-highest', () => {
+    // Plain alphabetical sort would put 1.5.0 above 1.41.4 — wrong.
+    expect(pickHighestTag(['1.5.0', '1.41.4', '1.31.2'])).toBe('1.41.4');
+  });
+
+  it('handles v-prefixed tags', () => {
+    expect(pickHighestTag(['v3.40', 'v3.41', 'v3.39'])).toBe('v3.41');
+  });
+});
+
 describe('APP_UPDATE_SOURCES', () => {
-  it('covers every IMAGE_* key in the env schema with a known source', async () => {
-    // Smoke check: any IMAGE_ key without an entry just won't show up in
-    // the Updates tab — but at least confirm the standard suspects are
-    // wired up so this doesn't silently regress.
+  it('covers every standard app', () => {
     for (const key of ['IMAGE_SONARR', 'IMAGE_RADARR', 'IMAGE_PROWLARR', 'IMAGE_BAZARR', 'IMAGE_QBITTORRENT']) {
       expect(APP_UPDATE_SOURCES[key]).toBeDefined();
     }
   });
 
-  it('qBittorrent strips its release- prefix', () => {
-    const fn = APP_UPDATE_SOURCES.IMAGE_QBITTORRENT.releaseTagToVersion;
-    expect(fn).toBeDefined();
-    expect(fn!('release-5.0.4')).toBe('5.0.4');
+  it('uses docker-hub for LSIO images', () => {
+    // The whole point of the rewrite: LSIO images must read from Docker
+    // Hub, not upstream GH releases, so we surface tags the registry
+    // actually carries.
+    for (const key of ['IMAGE_SONARR', 'IMAGE_RADARR', 'IMAGE_PROWLARR', 'IMAGE_BAZARR', 'IMAGE_QBITTORRENT', 'IMAGE_SABNZBD']) {
+      expect(APP_UPDATE_SOURCES[key].kind).toBe('docker-hub');
+      expect(APP_UPDATE_SOURCES[key].repo).toMatch(/^linuxserver\//);
+    }
+  });
+
+  it('pins LSIO sources to clean 3-segment semver', () => {
+    // This pattern is what excludes `latest`, `develop`, `nightly`, and
+    // build-suffixed tags like `1.31.2-ls289` or `arm64v8-1.31.2`.
+    const pat = APP_UPDATE_SOURCES.IMAGE_PROWLARR.tagPattern!;
+    expect(pat.test('1.31.2')).toBe(true);
+    expect(pat.test('1.41.4')).toBe(true);
+    expect(pat.test('latest')).toBe(false);
+    expect(pat.test('develop')).toBe(false);
+    expect(pat.test('nightly')).toBe(false);
+    expect(pat.test('1.31.2-ls289')).toBe(false);
+    expect(pat.test('arm64v8-1.31.2')).toBe(false);
+    expect(pat.test('v2.4.0.5397')).toBe(false); // the regression that prompted this rewrite
   });
 });

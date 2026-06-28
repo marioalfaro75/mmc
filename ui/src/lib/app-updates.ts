@@ -1,49 +1,69 @@
 // Per-app image update checks.
 //
-// The /api/updates/check endpoint tracks the project's *git* commit.
-// This module tracks the *image pins* in .env (IMAGE_PROWLARR=...:1.31.2)
-// against the canonical upstream release of each app.
+// Read what's *actually in the registry*, not what upstream tagged on GitHub.
 //
-// We look at upstream GitHub releases rather than registry tags because the
-// linuxserver/* tag streams mix LSIO build suffixes, develop tags, nightly
-// tags, etc. The upstream repo's "latest release" is a clean signal that
-// matches the LSIO image tag directly (LSIO ships `prowlarr:1.31.2` when
-// Prowlarr/Prowlarr releases v1.31.2).
+// Our first cut queried each project's GitHub releases. That broke when
+// upstream tagged a develop build as the latest release — e.g. Prowlarr's
+// /releases/latest momentarily returned `v2.4.0.5397`, a tag the linuxserver
+// image stream doesn't carry, so `docker pull lscr.io/...:v2.4.0.5397`
+// failed.
+//
+// Pulling from the registry side means we surface only tags the user could
+// actually pull right now. For LSIO images we query Docker Hub (linuxserver
+// also publishes there) and filter to clean semver tags, skipping
+// `nightly`/`develop`/`1.31.2-ls289`/`arm64v8-1.31.2` variants. For
+// first-party images (gluetun, recyclarr, etc.) the GitHub release tag IS
+// the image tag, so the old path stays.
 
 import { readEnv } from './env';
 import { ENV_SCHEMA } from './env-schema';
 
+export type SourceKind = 'docker-hub' | 'github-releases';
+
 export interface AppUpdateSource {
-  /** GitHub `owner/repo` whose latest release matches this image's tag. */
+  kind: SourceKind;
+  /**
+   * For docker-hub: the Docker Hub repo (`ns/name`).
+   * For github-releases: the GH repo (`owner/repo`).
+   */
   repo: string;
   /**
-   * Map a GitHub release tag to the version string that appears in the
-   * image tag. Default is identity (with stripV applied later inside the
-   * compare). Used for upstream repos that prefix tags differently from
-   * the registry — e.g. qBittorrent releases as `release-5.0.4` but the
-   * lscr.io tag is `5.0.4`.
+   * Regex a candidate tag must match. Used to filter LSIO's noisy tag list
+   * down to clean semver (e.g. `^\d+\.\d+\.\d+$`).
    */
-  releaseTagToVersion?: (tag: string) => string;
+  tagPattern?: RegExp;
+  /**
+   * Convert a release/registry tag into the version string that appears in
+   * the image tag the user pulls. Default is identity.
+   *
+   * Example: for IMAGE_QBITTORRENT we look up github-releases on
+   * qbittorrent/qBittorrent which tags `release-5.0.4`, but the LSIO image
+   * tag is `5.0.4` — so we strip the prefix.
+   */
+  tagToImageTag?: (tag: string) => string;
 }
 
-// Pinned manually rather than derived from the image name — the upstream
-// repo path is rarely the same as the registry path (linuxserver/docker-
-// prowlarr builds Prowlarr/Prowlarr releases), and tag conventions differ.
 export const APP_UPDATE_SOURCES: Record<string, AppUpdateSource> = {
-  IMAGE_SONARR: { repo: 'Sonarr/Sonarr' },
-  IMAGE_RADARR: { repo: 'Radarr/Radarr' },
-  IMAGE_PROWLARR: { repo: 'Prowlarr/Prowlarr' },
-  IMAGE_QBITTORRENT: {
-    repo: 'qbittorrent/qBittorrent',
-    releaseTagToVersion: (t) => t.replace(/^release-/, ''),
-  },
-  IMAGE_SABNZBD: { repo: 'sabnzbd/sabnzbd' },
-  IMAGE_BAZARR: { repo: 'morpheus65535/bazarr' },
-  IMAGE_SEERR: { repo: 'seerr-team/seerr' },
-  IMAGE_GLUETUN: { repo: 'qdm12/gluetun' },
-  IMAGE_RECYCLARR: { repo: 'recyclarr/recyclarr' },
-  IMAGE_UNPACKERR: { repo: 'Unpackerr/unpackerr' },
-  IMAGE_WATCHTOWER: { repo: 'containrrr/watchtower' },
+  // LSIO images — registry-sourced. Pure 3-segment semver only, which is
+  // what LSIO tags every stable build with (e.g. `1.41.4`). Anything with
+  // a dash, "nightly", "develop", "test", or an arch prefix is filtered out.
+  IMAGE_SONARR:      { kind: 'docker-hub', repo: 'linuxserver/sonarr',      tagPattern: /^\d+\.\d+\.\d+$/ },
+  IMAGE_RADARR:      { kind: 'docker-hub', repo: 'linuxserver/radarr',      tagPattern: /^\d+\.\d+\.\d+$/ },
+  IMAGE_PROWLARR:    { kind: 'docker-hub', repo: 'linuxserver/prowlarr',    tagPattern: /^\d+\.\d+\.\d+$/ },
+  IMAGE_QBITTORRENT: { kind: 'docker-hub', repo: 'linuxserver/qbittorrent', tagPattern: /^\d+\.\d+\.\d+$/ },
+  IMAGE_SABNZBD:     { kind: 'docker-hub', repo: 'linuxserver/sabnzbd',     tagPattern: /^\d+\.\d+\.\d+$/ },
+  IMAGE_BAZARR:      { kind: 'docker-hub', repo: 'linuxserver/bazarr',      tagPattern: /^\d+\.\d+\.\d+$/ },
+
+  // First-party Docker Hub images. The publisher controls both registry and
+  // versioning, so registry tags and release tags agree.
+  IMAGE_GLUETUN:     { kind: 'docker-hub', repo: 'qmcgaw/gluetun',          tagPattern: /^v\d+\.\d+(?:\.\d+)?$/ },
+  IMAGE_UNPACKERR:   { kind: 'docker-hub', repo: 'golift/unpackerr',        tagPattern: /^\d+\.\d+\.\d+$/ },
+  IMAGE_WATCHTOWER:  { kind: 'docker-hub', repo: 'containrrr/watchtower',   tagPattern: /^\d+\.\d+\.\d+$/ },
+
+  // GHCR images — Docker Hub doesn't carry these, so fall back to upstream
+  // GitHub releases (the project publishes its own image, so tags match).
+  IMAGE_RECYCLARR:   { kind: 'github-releases', repo: 'recyclarr/recyclarr', tagPattern: /^\d+\.\d+\.\d+$/ },
+  IMAGE_SEERR:       { kind: 'github-releases', repo: 'seerr-team/seerr',    tagPattern: /^v?\d+\.\d+\.\d+$/ },
 };
 
 export interface AppVersionInfo {
@@ -79,7 +99,6 @@ export function parseImageRef(ref: string): { image: string; tag: string } {
   return { image: ref, tag: 'latest' };
 }
 
-/** Strip a leading `v` so `v3.40` compares equal to `3.40`. */
 function stripV(tag: string): string {
   return tag.startsWith('v') || tag.startsWith('V') ? tag.slice(1) : tag;
 }
@@ -104,7 +123,6 @@ export function isNewer(latest: string, current: string): boolean {
       if (an < bn) return false;
       continue;
     }
-    // Numeric beats non-numeric (1.2.0 > 1.2.0-rc1).
     if (av !== bv) {
       if (av.match(/^\d+$/) && !bv.match(/^\d+$/)) return true;
       if (!av.match(/^\d+$/) && bv.match(/^\d+$/)) return false;
@@ -114,54 +132,102 @@ export function isNewer(latest: string, current: string): boolean {
   return false;
 }
 
+/**
+ * Pick the numerically-highest tag from a list. Both inputs are assumed to
+ * already match the source's tagPattern, so we can sort them confidently.
+ */
+export function pickHighestTag(tags: string[]): string | null {
+  if (!tags.length) return null;
+  return tags.reduce((best, t) => (isNewer(t, best) ? t : best));
+}
+
+interface DockerHubTagsPage {
+  results?: Array<{ name: string; last_updated?: string }>;
+  next?: string | null;
+}
+
+/**
+ * Fetch up to 100 most-recently-pushed tags from Docker Hub, filter to ones
+ * matching `tagPattern`, return the numerically-highest. Single page is fine
+ * for our use: LSIO ships a few stable tags per month, the latest stable is
+ * always in the recent push history.
+ */
+export async function fetchLatestFromDockerHub(
+  repo: string,
+  tagPattern: RegExp | undefined,
+): Promise<{ tag: string; url: string } | null> {
+  const res = await fetch(
+    `https://hub.docker.com/v2/repositories/${repo}/tags?page_size=100&ordering=last_updated`,
+    {
+      headers: { 'User-Agent': 'mmc-app-update-check' },
+      cache: 'no-store',
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`Docker Hub /tags returned ${res.status}`);
+  }
+  const body = (await res.json()) as DockerHubTagsPage;
+  const candidates = (body.results ?? [])
+    .map((r) => r.name)
+    .filter((name) => (tagPattern ? tagPattern.test(name) : true));
+  const winner = pickHighestTag(candidates);
+  if (!winner) return null;
+  return { tag: winner, url: `https://hub.docker.com/r/${repo}/tags?name=${encodeURIComponent(winner)}` };
+}
+
 interface GhRelease {
   tag_name: string;
-  name?: string;
   html_url: string;
   prerelease: boolean;
   draft: boolean;
 }
 
 /**
- * Fetch the latest non-prerelease release for `owner/repo`.
+ * Fetch up to 30 recent GitHub releases, filter to non-prerelease tags
+ * matching `tagPattern`, return the numerically-highest. Used for first-
+ * party GHCR images (recyclarr, seerr) where Docker Hub isn't an option.
  *
- * Uses /releases/latest (which already filters out prereleases & drafts);
- * falls back to /releases?per_page=10 when the project never marks a release
- * as "latest" (some only tag, never release-publish).
+ * Note: we deliberately do NOT use /releases/latest. That endpoint returns
+ * whatever the maintainer flagged as latest, which can momentarily be a
+ * develop build (Prowlarr did exactly this — `v2.4.0.5397`). Filtering a
+ * page of recent releases through tagPattern is more robust.
  */
-export async function fetchLatestRelease(repo: string): Promise<{ tag: string; url: string } | null> {
-  const headers = {
-    Accept: 'application/vnd.github+json',
-    'User-Agent': 'mmc-app-update-check',
-  };
-
-  const latestRes = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
-    headers,
+export async function fetchLatestFromGitHubReleases(
+  repo: string,
+  tagPattern: RegExp | undefined,
+): Promise<{ tag: string; url: string } | null> {
+  const res = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=30`, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'mmc-app-update-check',
+    },
     cache: 'no-store',
   });
-  if (latestRes.ok) {
-    const r = (await latestRes.json()) as GhRelease;
-    return { tag: r.tag_name, url: r.html_url };
+  if (!res.ok) {
+    throw new Error(`GitHub /releases returned ${res.status}`);
   }
-  if (latestRes.status !== 404) {
-    throw new Error(`GitHub /releases/latest returned ${latestRes.status}`);
-  }
+  const releases = (await res.json()) as GhRelease[];
+  const candidates = releases
+    .filter((r) => !r.prerelease && !r.draft)
+    .map((r) => r.tag_name)
+    .filter((tag) => (tagPattern ? tagPattern.test(tag) : true));
+  const winner = pickHighestTag(candidates);
+  if (!winner) return null;
+  const matched = releases.find((r) => r.tag_name === winner);
+  return { tag: winner, url: matched?.html_url ?? `https://github.com/${repo}/releases/tag/${winner}` };
+}
 
-  const listRes = await fetch(`https://api.github.com/repos/${repo}/releases?per_page=10`, {
-    headers,
-    cache: 'no-store',
-  });
-  if (!listRes.ok) {
-    throw new Error(`GitHub /releases returned ${listRes.status}`);
+async function fetchLatestForSource(source: AppUpdateSource): Promise<{ tag: string; url: string } | null> {
+  if (source.kind === 'docker-hub') {
+    return fetchLatestFromDockerHub(source.repo, source.tagPattern);
   }
-  const releases = (await listRes.json()) as GhRelease[];
-  const stable = releases.find((r) => !r.prerelease && !r.draft);
-  return stable ? { tag: stable.tag_name, url: stable.html_url } : null;
+  return fetchLatestFromGitHubReleases(source.repo, source.tagPattern);
 }
 
 /**
- * Read .env, walk the IMAGE_* entries with a known release source, and
- * return one AppVersionInfo per app. Network calls are made in parallel.
+ * Read .env, walk the IMAGE_* entries with a known source, return one
+ * AppVersionInfo per app. Network calls run in parallel; per-row failures
+ * surface as `error` rather than failing the whole payload.
  */
 export async function buildAppUpdatesPayload(): Promise<AppUpdatesPayload> {
   const env = readEnv();
@@ -188,15 +254,15 @@ export async function buildAppUpdatesPayload(): Promise<AppUpdatesPayload> {
         sourceRepo: source.repo,
       };
       try {
-        const latest = await fetchLatestRelease(source.repo);
+        const latest = await fetchLatestForSource(source);
         if (!latest) {
-          return { ...base, latestTag: null, updateAvailable: false, releaseUrl: null, error: 'No releases published yet' };
+          return { ...base, latestTag: null, updateAvailable: false, releaseUrl: null, error: 'No matching tags found' };
         }
-        const normalized = source.releaseTagToVersion ? source.releaseTagToVersion(latest.tag) : latest.tag;
+        const imageTag = source.tagToImageTag ? source.tagToImageTag(latest.tag) : latest.tag;
         return {
           ...base,
-          latestTag: normalized,
-          updateAvailable: isNewer(normalized, tag),
+          latestTag: imageTag,
+          updateAvailable: isNewer(imageTag, tag),
           releaseUrl: latest.url,
         };
       } catch (err) {
