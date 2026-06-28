@@ -1187,18 +1187,47 @@ cleanup_stale_containers() {
 }
 
 wait_for_port() {
-    _port="$1"
-    _timeout="$2"
-    # Pick where to probe published ports. When the script runs on the host
-    # (typical CLI use), localhost is fine. When it runs inside the updater
-    # sidecar (the in-UI Apply update path), localhost is the sidecar's own
-    # loopback — the project's published ports live on the HOST, reachable
-    # via the bridge gateway. The apply route sets MMC_PORT_CHECK_HOST so
-    # we don't have to sniff /.dockerenv here.
-    _host="${MMC_PORT_CHECK_HOST:-localhost}"
+    _svc="$1"
+    _port="$2"
+    _timeout="$3"
+    # Two probe modes:
+    #
+    #   default (host-CLI use): hit localhost (or MMC_PORT_CHECK_HOST) on the
+    #   published host port. Works because the script runs on the host where
+    #   docker bound the ports.
+    #
+    #   MMC_PORT_CHECK_MODE=docker-net (in-UI Apply update sidecar): hit the
+    #   service container directly via the compose network DNS name on its
+    #   INTERNAL port. We can't use the host bridge IP because HOST_BIND
+    #   defaults to 127.0.0.1 — published ports only accept loopback
+    #   connections, so a probe from the bridge interface gets refused. This
+    #   was the bug behind every probe in the Apply update log showing "not
+    #   responding" while every container was actually healthy.
+    #
+    # qbittorrent and sabnzbd share gluetun's network namespace (compose
+    # network_mode: service:gluetun), so under docker-net mode they're
+    # reachable at gluetun:<their internal port>, not at their own name.
+    if [ "${MMC_PORT_CHECK_MODE:-}" = "docker-net" ]; then
+        _probe_host="$_svc"
+        _probe_port="$_port"
+        case "$_svc" in
+            qbittorrent) _probe_host=gluetun; _probe_port=8080 ;;
+            sabnzbd)     _probe_host=gluetun; _probe_port=8081 ;;
+            gluetun)     _probe_port=8000 ;;
+            prowlarr)    _probe_port=9696 ;;
+            sonarr)      _probe_port=8989 ;;
+            radarr)      _probe_port=7878 ;;
+            bazarr)      _probe_port=6767 ;;
+            seerr)       _probe_port=5055 ;;
+            media-ui)    _probe_port=3000 ;;
+        esac
+    else
+        _probe_host="${MMC_PORT_CHECK_HOST:-localhost}"
+        _probe_port="$_port"
+    fi
     _waited=0
     while [ "$_waited" -lt "$_timeout" ]; do
-        if curl -s -o /dev/null -m 2 "http://${_host}:${_port}" 2>/dev/null; then
+        if curl -s -o /dev/null -m 2 "http://${_probe_host}:${_probe_port}" 2>/dev/null; then
             return 0
         fi
         sleep 1
@@ -1309,13 +1338,13 @@ stage_download_clients() {
     PORT_QBITTORRENT="${PORT_QBITTORRENT:-8080}"
     PORT_SABNZBD="${PORT_SABNZBD:-8081}"
 
-    if wait_for_port "$PORT_QBITTORRENT" 10; then
+    if wait_for_port qbittorrent "$PORT_QBITTORRENT" 10; then
         pass "qbittorrent responding on port $PORT_QBITTORRENT"
     else
         warn "qbittorrent not responding on port $PORT_QBITTORRENT (may still be starting)"
     fi
 
-    if wait_for_port "$PORT_SABNZBD" 10; then
+    if wait_for_port sabnzbd "$PORT_SABNZBD" 10; then
         pass "sabnzbd responding on port $PORT_SABNZBD"
     else
         warn "sabnzbd not responding on port $PORT_SABNZBD (may still be starting)"
@@ -1627,7 +1656,7 @@ stage_arr_stack() {
     for _svc_port in "prowlarr:$PORT_PROWLARR" "sonarr:$PORT_SONARR" "radarr:$PORT_RADARR"; do
         _svc="${_svc_port%%:*}"
         _port="${_svc_port##*:}"
-        if wait_for_port "$_port" 10; then
+        if wait_for_port "$_svc" "$_port" 10; then
             pass "$_svc responding on port $_port"
         else
             warn "$_svc not responding on port $_port (may still be starting)"
@@ -1656,7 +1685,7 @@ stage_media_server() {
     for _svc_port in "bazarr:$PORT_BAZARR" "seerr:$PORT_SEERR"; do
         _svc="${_svc_port%%:*}"
         _port="${_svc_port##*:}"
-        if wait_for_port "$_port" 10; then
+        if wait_for_port "$_svc" "$_port" 10; then
             pass "$_svc responding on port $_port"
         else
             warn "$_svc not responding on port $_port (may still be starting)"
@@ -1691,7 +1720,7 @@ stage_media_ui() {
     docker compose up -d --build --force-recreate media-ui
 
     PORT_UI="${PORT_UI:-3000}"
-    if wait_for_port "$PORT_UI" 30; then
+    if wait_for_port media-ui "$PORT_UI" 30; then
         pass "media-ui responding on port $PORT_UI"
     else
         warn "media-ui not responding on port $PORT_UI (may still be building)"
@@ -1776,7 +1805,7 @@ check_service_ports() {
         # Poll up to 30s — LinuxServer.io images (qbittorrent, sabnzbd)
         # do s6 init + permission fixing on every restart and routinely
         # need 10–20s before their web UI binds.
-        if wait_for_port "$_port" 30; then
+        if wait_for_port "$_svc" "$_port" 30; then
             pass "$_svc on port $_port"
         else
             fail "$_svc not responding on port $_port"
@@ -2195,7 +2224,7 @@ elif [ "$UI_DOCKER" = "1" ]; then
     docker compose up -d --build --no-deps media-ui
 
     PORT_UI="${PORT_UI:-3000}"
-    if wait_for_port "$PORT_UI" 30; then
+    if wait_for_port media-ui "$PORT_UI" 30; then
         pass "media-ui responding on port $PORT_UI"
     else
         warn "media-ui not responding on port $PORT_UI (may still be building)"
