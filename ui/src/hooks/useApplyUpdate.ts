@@ -33,6 +33,11 @@ export function useApplyUpdate(updateAvailable: boolean): {
 } {
   const queryClient = useQueryClient();
   const [applying, setApplying] = useState(false);
+  // Tracks whether the in-flight job was started by THIS hook. The status
+  // lock is shared across both project updates and per-app updates, so we
+  // can't blindly reload on every lock release — an app-apply triggers the
+  // same running:true→false transition but doesn't rebuild media-ui.
+  const initiatedHere = useRef(false);
 
   const statusQuery = useQuery<UpdateStatusResponse>({
     queryKey: ['updates', 'status'],
@@ -47,7 +52,8 @@ export function useApplyUpdate(updateAvailable: boolean): {
   const previousRunning = useRef<boolean | undefined>(undefined);
   useEffect(() => {
     const running = statusQuery.data?.running;
-    if (previousRunning.current === true && running === false) {
+    if (previousRunning.current === true && running === false && initiatedHere.current) {
+      initiatedHere.current = false;
       toast.success('Update finished. Refreshing version info…');
       queryClient.invalidateQueries({ queryKey: ['updates', 'check'] });
       setTimeout(() => window.location.reload(), 2000);
@@ -59,6 +65,7 @@ export function useApplyUpdate(updateAvailable: boolean): {
     if (!updateAvailable) return;
     if (!confirm(CONFIRM_MESSAGE)) return;
     setApplying(true);
+    initiatedHere.current = true;
     try {
       const res = await fetch('/api/updates/apply', { method: 'POST' });
       if (!res.ok) {
@@ -68,6 +75,7 @@ export function useApplyUpdate(updateAvailable: boolean): {
       toast.success('Update started');
       queryClient.invalidateQueries({ queryKey: ['updates', 'status'] });
     } catch (err) {
+      initiatedHere.current = false;
       toast.error(err instanceof Error ? err.message : 'Apply failed');
       setApplying(false);
     }
