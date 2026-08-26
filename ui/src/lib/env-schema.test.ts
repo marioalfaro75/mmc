@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ENV_SCHEMA, EnvVarDef } from './env-schema';
+import { ENV_SCHEMA, EnvVarDef, MASKED_VALUE, isMaskedValue, stripMaskPrefix } from './env-schema';
 
 const VALID_TYPES = new Set(['string', 'path', 'port', 'integer', 'boolean', 'select', 'secret', 'cron']);
 const VALID_GROUPS = new Set(['general', 'vpn', 'network', 'services', 'images']);
@@ -83,4 +83,43 @@ describe('keys actually used by docker-compose', () => {
       expect(present.has(k as string)).toBe(true);
     });
   }
+});
+
+describe('mask handling', () => {
+  it('MASKED_VALUE is exactly 8 bullet chars', () => {
+    expect(MASKED_VALUE).toBe('••••••••');
+    expect(MASKED_VALUE).toHaveLength(8);
+  });
+
+  it('isMaskedValue matches only the exact mask', () => {
+    expect(isMaskedValue('••••••••')).toBe(true);
+    expect(isMaskedValue('•••••••')).toBe(false); // 7 bullets
+    expect(isMaskedValue('•••••••••')).toBe(false); // 9 bullets
+    expect(isMaskedValue('••••••••x')).toBe(false); // contamination
+    expect(isMaskedValue('')).toBe(false);
+    expect(isMaskedValue('password')).toBe(false);
+  });
+
+  describe('stripMaskPrefix', () => {
+    it('strips a leading mask prefix', () => {
+      // The bug this defends against: user types into a masked field
+      // without clearing first, browser sends mask+realvalue.
+      expect(stripMaskPrefix('••••••••hunter2')).toBe('hunter2');
+    });
+
+    it('leaves values without the mask alone', () => {
+      expect(stripMaskPrefix('hunter2')).toBe('hunter2');
+      expect(stripMaskPrefix('')).toBe('');
+    });
+
+    it('is a no-op on the pure mask', () => {
+      // The pure mask returns empty — callers should still isMaskedValue-
+      // check separately to distinguish "no change" from "clear value".
+      expect(stripMaskPrefix('••••••••')).toBe('');
+    });
+
+    it('does not strip a mid-string mask', () => {
+      expect(stripMaskPrefix('abc••••••••def')).toBe('abc••••••••def');
+    });
+  });
 });

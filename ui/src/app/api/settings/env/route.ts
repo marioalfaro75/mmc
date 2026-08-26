@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { readEnv, writeEnv } from '@/lib/env';
-import { ENV_SCHEMA, maskSensitiveValues, isMaskedValue, validateEnvVars, getAffectedServices } from '@/lib/env-schema';
+import { ENV_SCHEMA, maskSensitiveValues, isMaskedValue, stripMaskPrefix, validateEnvVars, getAffectedServices } from '@/lib/env-schema';
 import { logger } from '@/lib/logger';
 import { sanitizeError } from '@/lib/security';
 import { requireAdmin } from '@/lib/auth';
@@ -34,12 +34,16 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Missing vars object' }, { status: 400 });
     }
 
-    // Filter out masked values (user didn't change them)
+    // Filter out masked values (user didn't change them). Also defense-
+    // in-depth: strip a leading mask prefix. If the user typed a new
+    // password into a masked field without clearing it first, the value
+    // reaches us as `••••••••<real>`; a bare stripMaskPrefix on all
+    // values keeps `.env` clean even if the client-side focus-clear ever
+    // regresses.
     const cleanVars: Record<string, string> = {};
     for (const [key, value] of Object.entries(vars)) {
-      if (!isMaskedValue(value)) {
-        cleanVars[key] = value;
-      }
+      if (isMaskedValue(value)) continue;
+      cleanVars[key] = stripMaskPrefix(value);
     }
 
     if (Object.keys(cleanVars).length === 0) {

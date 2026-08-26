@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { validateEnvVars, getAffectedServices, isMaskedValue } from '@/lib/env-schema';
+import { validateEnvVars, getAffectedServices, isMaskedValue, stripMaskPrefix } from '@/lib/env-schema';
 import { requireAdmin } from '@/lib/auth';
 
 export async function POST(request: Request) {
@@ -13,12 +13,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing vars object' }, { status: 400 });
     }
 
-    // Filter out masked values
+    // Filter out masked values + strip mask prefix (mirrors PUT above).
     const cleanVars: Record<string, string> = {};
     for (const [key, value] of Object.entries(vars)) {
-      if (!isMaskedValue(value)) {
-        cleanVars[key] = value;
-      }
+      if (isMaskedValue(value)) continue;
+      cleanVars[key] = stripMaskPrefix(value);
     }
 
     const errors = validateEnvVars(cleanVars);
