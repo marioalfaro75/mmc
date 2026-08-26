@@ -46,6 +46,22 @@ export function useEnvSettings() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Set the value AS IF it were on disk (updates the baseline used for
+  // dirty tracking). Called by EnvField when the reveal endpoint returns
+  // the unmasked value of a sensitive field: we want the input to
+  // display the real value, but not mark the row "modified" — the user
+  // hasn't changed anything yet, they just looked.
+  const revealVar = useCallback((key: string, value: string) => {
+    originalVars.current = { ...originalVars.current, [key]: value };
+    setData((prev) => (prev ? { ...prev, vars: { ...prev.vars, [key]: value } } : prev));
+    setDirtyVars((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }, []);
+
   const setVar = useCallback((key: string, value: string) => {
     setDirtyVars((prev) => {
       // If value matches original, remove from dirty
@@ -139,6 +155,7 @@ export function useEnvSettings() {
     saving,
     isDirty,
     setVar,
+    revealVar,
     getVar,
     validate,
     save,

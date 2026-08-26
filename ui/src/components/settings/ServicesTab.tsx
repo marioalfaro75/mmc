@@ -31,6 +31,7 @@ export function ServicesTab({ env }: ServicesTabProps) {
               def={def}
               value={env.getVar(def.key)}
               onChange={env.setVar}
+              onRevealLoaded={env.revealVar}
               error={env.validationErrors[def.key]}
               dirty={def.key in env.dirtyVars}
             />
@@ -58,6 +59,7 @@ export function ServicesTab({ env }: ServicesTabProps) {
                 def={def}
                 value={env.getVar(def.key)}
                 onChange={env.setVar}
+                onRevealLoaded={env.revealVar}
                 error={env.validationErrors[def.key]}
                 dirty={def.key in env.dirtyVars}
               />

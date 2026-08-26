@@ -30,6 +30,7 @@ export function NetworkTab({ env }: NetworkTabProps) {
               def={def}
               value={env.getVar(def.key)}
               onChange={env.setVar}
+              onRevealLoaded={env.revealVar}
               error={env.validationErrors[def.key]}
               dirty={def.key in env.dirtyVars}
             />
@@ -51,6 +52,7 @@ export function NetworkTab({ env }: NetworkTabProps) {
               def={def}
               value={env.getVar(def.key)}
               onChange={env.setVar}
+              onRevealLoaded={env.revealVar}
               error={env.validationErrors[def.key]}
               dirty={def.key in env.dirtyVars}
             />

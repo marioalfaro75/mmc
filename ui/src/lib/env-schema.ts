@@ -93,7 +93,7 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'IMAGE_WATCHTOWER', label: 'Watchtower Image', type: 'string', group: 'images', description: 'Docker image for Watchtower', default: 'containrrr/watchtower:1.7.1', affectsServices: ['watchtower'] },
 ];
 
-const MASKED_VALUE = '••••••••';
+export const MASKED_VALUE = '••••••••';
 
 export function getSensitiveKeys(): Set<string> {
   return new Set(ENV_SCHEMA.filter((v) => v.sensitive).map((v) => v.key));
@@ -110,6 +110,16 @@ export function maskSensitiveValues(vars: Record<string, string>): Record<string
 
 export function isMaskedValue(value: string): boolean {
   return value === MASKED_VALUE;
+}
+
+/**
+ * If a value has the mask string as a prefix, strip it. Defense in depth
+ * against the "user typed into a masked field without clearing first" bug
+ * — the client should never send a mask-contaminated value, but if one
+ * slips through we don't want ••••••••… landing in .env.
+ */
+export function stripMaskPrefix(value: string): string {
+  return value.startsWith(MASKED_VALUE) ? value.slice(MASKED_VALUE.length) : value;
 }
 
 export function validateEnvVar(key: string, value: string): string | null {

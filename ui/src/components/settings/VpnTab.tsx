@@ -120,6 +120,7 @@ export function VpnTab({ env }: VpnTabProps) {
               def={def}
               value={env.getVar(def.key)}
               onChange={handleChange}
+              onRevealLoaded={env.revealVar}
               error={env.validationErrors[def.key]}
               dirty={def.key in env.dirtyVars}
             />
