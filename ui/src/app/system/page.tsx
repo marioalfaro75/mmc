@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/common/Skeleton';
 import { LogViewerModal } from '@/components/common/LogViewerModal';
 import { POLLING, STALE_TIME } from '@/lib/utils/polling';
 import { fetchApi } from '@/lib/utils/fetchApi';
+import { useBrowserHost } from '@/lib/useBrowserHost';
 import { toast } from 'sonner';
 import type { ServiceHealth, VpnStatus, DockerServiceStatus } from '@/lib/types/common';
 
@@ -94,6 +95,11 @@ function getApiBadge(health: ServiceHealth | undefined) {
 }
 
 export default function SystemPage() {
+  // Whatever hostname the user typed to reach media-ui is by definition
+  // reachable from their browser — LAN IP, DNS name, Tailscale magic DNS,
+  // reverse-proxy domain. Substitute it into service links so "Open UI"
+  // works from anywhere the dashboard itself works.
+  const browserHost = useBrowserHost();
   const { data: vpnData } = useQuery<VpnStatus>({
     queryKey: ['vpn'],
     queryFn: () => fetchApi<VpnStatus>('/api/vpn'),
@@ -279,7 +285,7 @@ export default function SystemPage() {
           )}
           {info?.port && (
             <a
-              href={`${info.https ? 'https' : 'http'}://localhost:${info.port}${info.path || ''}`}
+              href={`${info.https ? 'https' : 'http'}://${browserHost}:${info.port}${info.path || ''}`}
               target="_blank"
               rel="noopener noreferrer"
               className="rounded-md border border-input p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
