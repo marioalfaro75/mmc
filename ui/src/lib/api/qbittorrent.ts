@@ -6,6 +6,14 @@ import { AuthRequiredError } from './errors';
 
 let sessionCookie: string | null = null;
 
+// qBittorrent 5.x has WebUI\CSRFProtection on by default. State-changing
+// POSTs — including /api/v2/auth/login — get 403'd if they don't carry a
+// Referer that matches the WebUI's own origin. A browser sends this for
+// free, so credentials that work interactively fail from server-side
+// fetch() until we set it explicitly. deploy.sh:1427 does the same trick
+// in seed_qbittorrent_password.
+const QBT_HEADERS = { Referer: BASE_URL, Origin: BASE_URL } as const;
+
 async function login(): Promise<string> {
   if (!PASSWORD) {
     throw new AuthRequiredError(
@@ -16,12 +24,25 @@ async function login(): Promise<string> {
   }
   const res = await fetch(`${BASE_URL}/api/v2/auth/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      ...QBT_HEADERS,
+    },
     body: `username=${encodeURIComponent(USERNAME)}&password=${encodeURIComponent(PASSWORD)}`,
     cache: 'no-store',
   });
+  // Distinguish CSRF (403 before creds are even checked) from bad
+  // password (200 + body "Fails.") so we can surface the right hint.
+  if (res.status === 403) {
+    throw new AuthRequiredError(
+      'qBittorrent',
+      'QBITTORRENT_PASSWORD',
+      'qBittorrent rejected the login as CSRF — check WebUI\\HostHeaderValidation',
+    );
+  }
+  const body = (await res.text()).trim();
   const cookie = res.headers.get('set-cookie');
-  if (!cookie || !(await res.text()).includes('Ok')) {
+  if (body === 'Fails.' || !cookie) {
     throw new AuthRequiredError(
       'qBittorrent',
       'QBITTORRENT_PASSWORD',
@@ -40,6 +61,7 @@ async function qbtFetchRaw(path: string, init?: RequestInit): Promise<Response> 
     ...init,
     headers: {
       Cookie: sessionCookie,
+      ...QBT_HEADERS,
       ...init?.headers,
     },
     cache: 'no-store',
@@ -52,6 +74,7 @@ async function qbtFetchRaw(path: string, init?: RequestInit): Promise<Response> 
       ...init,
       headers: {
         Cookie: sessionCookie,
+        ...QBT_HEADERS,
         ...init?.headers,
       },
       cache: 'no-store',
