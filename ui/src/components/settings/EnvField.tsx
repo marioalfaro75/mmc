@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Eye, EyeOff, ExternalLink } from 'lucide-react';
 import type { EnvVarDef } from '@/lib/env-schema';
 import { cn } from '@/lib/utils';
+import { useBrowserHost } from '@/lib/useBrowserHost';
 
 interface EnvFieldProps {
   def: EnvVarDef;
@@ -15,6 +16,9 @@ interface EnvFieldProps {
 
 export function EnvField({ def, value, onChange, error, dirty }: EnvFieldProps) {
   const [revealed, setRevealed] = useState(false);
+  // Point service-link icons at the same host the browser used to reach
+  // this UI — not hardcoded localhost — so they work from a phone / LAN.
+  const browserHost = useBrowserHost();
 
   const inputClasses = cn(
     'w-full rounded-md border bg-background px-3 py-2 font-mono text-sm transition-colors focus:outline-none focus:ring-1',
@@ -38,7 +42,7 @@ export function EnvField({ def, value, onChange, error, dirty }: EnvFieldProps) 
           <>
             {' · '}
             <a
-              href={`http://localhost:${def.servicePort}`}
+              href={`http://${browserHost}:${def.servicePort}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-0.5 text-primary hover:underline"
