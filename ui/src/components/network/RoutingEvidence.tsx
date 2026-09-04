@@ -243,15 +243,30 @@ export function RoutingEvidence({ networkData }: Props) {
               </tr>
               {CLIENTS.map((c) => {
                 const r = data.publicIp.clients[c];
+                // Three states, deliberately not two. A null IP means the
+                // in-container probe could not run (image ships no HTTP
+                // client) — that is NOT evidence of a leak, and must never
+                // surface the destructive Stop action.
+                const confirmedLeak = !!r.ip && !r.matchesGluetun;
                 return (
                   <tr key={c}>
                     <td className="py-1 pr-3 font-medium">{c}</td>
-                    <td className="py-1"><Code>{r.ip ?? 'unreachable'}</Code></td>
+                    <td className="py-1">
+                      <Code>{r.ip ?? (r.namespaceConfirmed ? 'shares Gluetun stack' : 'unreachable')}</Code>
+                    </td>
                     <td className="py-1 pl-3">
-                      {r.matchesGluetun ? (
-                        <span className="text-success">✓ matches Gluetun</span>
-                      ) : (
+                      {confirmedLeak ? (
                         <LeakCell label="leaking — different exit" client={c} onStop={stopClient} stopping={stoppingClient === c} />
+                      ) : r.matchesGluetun ? (
+                        <span className="text-success">✓ matches Gluetun</span>
+                      ) : r.namespaceConfirmed ? (
+                        <span className="text-success" title="Same network namespace as Gluetun — egress is identical by construction, so a separate IP probe is redundant.">
+                          ✓ same namespace — egress identical
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground" title="Could not read an IP from inside this container and it does not share Gluetun's namespace. Not proof of a leak — just no evidence either way.">
+                          ⚠ could not probe
+                        </span>
                       )}
                     </td>
                   </tr>
