@@ -37,6 +37,7 @@ export const VALID_SERVICES = new Set([
   'sabnzbd',
   'unpackerr',
   'prowlarr',
+  'flaresolverr',
   'sonarr',
   'radarr',
   'bazarr',
@@ -47,7 +48,7 @@ export const VALID_SERVICES = new Set([
 ]);
 
 // Services that share gluetun's network — cannot run without gluetun
-const VPN_DEPENDENT_SERVICES = ['qbittorrent', 'sabnzbd'];
+const VPN_DEPENDENT_SERVICES = ['qbittorrent', 'sabnzbd', 'flaresolverr'];
 
 export interface DockerServiceStatus {
   name: string;

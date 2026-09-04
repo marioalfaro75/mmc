@@ -12,7 +12,10 @@ import { getPublicIP as getGluetunPublicIp } from '@/lib/api/gluetun';
 
 export const dynamic = 'force-dynamic';
 
-const VPN_CLIENTS = ['qbittorrent', 'sabnzbd'] as const;
+// Every container that shares gluetun's network namespace. flaresolverr is
+// here because Prowlarr's Cloudflare challenges must exit via the VPN — a
+// direct-from-host solve would expose the real IP to every tracker queried.
+const VPN_CLIENTS = ['qbittorrent', 'sabnzbd', 'flaresolverr'] as const;
 type Client = (typeof VPN_CLIENTS)[number];
 
 export interface RoutingEvidence {
@@ -49,31 +52,26 @@ function isTunnelDns(ip: string): boolean {
 }
 
 async function probe(): Promise<RoutingEvidence> {
-  const [
-    gluetunInode,
-    qbitInode,
-    sabInode,
-    gluetunPublicIp,
-    qbitPublicIp,
-    sabPublicIp,
-    hostPublicIp,
-    qbitRoutes,
-    sabRoutes,
-    qbitDns,
-    sabDns,
-  ] = await Promise.all([
+  const [gluetunInode, gluetunPublicIp, hostPublicIp] = await Promise.all([
     getNetworkNamespaceInode('gluetun'),
-    getNetworkNamespaceInode('qbittorrent'),
-    getNetworkNamespaceInode('sabnzbd'),
     getGluetunPublicIp().then((r) => r.public_ip || null).catch(() => null),
-    getPublicIpFromContainer('qbittorrent'),
-    getPublicIpFromContainer('sabnzbd'),
     getHostPublicIp(),
-    getRoutes('qbittorrent'),
-    getRoutes('sabnzbd'),
-    getDnsResolvers('qbittorrent'),
-    getDnsResolvers('sabnzbd'),
   ]);
+
+  // Probe every VPN-namespaced client in parallel. Data-driven over
+  // VPN_CLIENTS so adding a service needs only that const array updated,
+  // not another four destructured bindings and four verdict operands.
+  const probes = await Promise.all(
+    VPN_CLIENTS.map(async (client) => {
+      const [inode, publicIp, routes, dns] = await Promise.all([
+        getNetworkNamespaceInode(client),
+        getPublicIpFromContainer(client),
+        getRoutes(client),
+        getDnsResolvers(client),
+      ]);
+      return { client, inode, publicIp, routes, dns };
+    }),
+  );
 
   // Geo-enrich the headline IPs only. Skip per-client lookups — they should
   // match gluetun's anyway and the extra calls add latency.
@@ -82,28 +80,26 @@ async function probe(): Promise<RoutingEvidence> {
     hostPublicIp ? lookupCountry(hostPublicIp) : Promise.resolve(null),
   ]);
 
-  // Namespace verdict
-  const namespaceInodes = { qbittorrent: qbitInode, sabnzbd: sabInode };
+  // Namespace verdict — every client must share gluetun's netns inode.
   const nsMatches = Object.fromEntries(
-    Object.entries(namespaceInodes).map(([k, v]) => [
-      k,
-      { inode: v, matchesGluetun: !!gluetunInode && v === gluetunInode },
+    probes.map((p) => [
+      p.client,
+      { inode: p.inode, matchesGluetun: !!gluetunInode && p.inode === gluetunInode },
     ]),
   ) as Record<Client, { inode: string | null; matchesGluetun: boolean }>;
-  const nsAllKnown = gluetunInode && qbitInode && sabInode;
-  const nsAllMatch = nsAllKnown && qbitInode === gluetunInode && sabInode === gluetunInode;
+  const nsAllKnown = !!gluetunInode && probes.every((p) => !!p.inode);
+  const nsAllMatch = nsAllKnown && probes.every((p) => p.inode === gluetunInode);
   const nsVerdict: 'pass' | 'fail' | 'unknown' = !nsAllKnown ? 'unknown' : nsAllMatch ? 'pass' : 'fail';
 
-  // Public-IP verdict
-  const clientIps = { qbittorrent: qbitPublicIp, sabnzbd: sabPublicIp };
+  // Public-IP verdict — every client must egress from gluetun's exit IP.
   const ipMatches = Object.fromEntries(
-    Object.entries(clientIps).map(([k, v]) => [
-      k,
-      { ip: v, matchesGluetun: !!gluetunPublicIp && v === gluetunPublicIp },
+    probes.map((p) => [
+      p.client,
+      { ip: p.publicIp, matchesGluetun: !!gluetunPublicIp && p.publicIp === gluetunPublicIp },
     ]),
   ) as Record<Client, { ip: string | null; matchesGluetun: boolean }>;
-  const ipAllKnown = gluetunPublicIp && qbitPublicIp && sabPublicIp;
-  const ipAllMatch = ipAllKnown && qbitPublicIp === gluetunPublicIp && sabPublicIp === gluetunPublicIp;
+  const ipAllKnown = !!gluetunPublicIp && probes.every((p) => !!p.publicIp);
+  const ipAllMatch = ipAllKnown && probes.every((p) => p.publicIp === gluetunPublicIp);
   const ipVerdict: 'pass' | 'fail' | 'unknown' = !ipAllKnown ? 'unknown' : ipAllMatch ? 'pass' : 'fail';
 
   // Routes: only tunnel device (wg0/tun0) on the default route is fine.
@@ -131,14 +127,12 @@ async function probe(): Promise<RoutingEvidence> {
       host: { ip: hostPublicIp, country: hostCountry },
       verdict: ipVerdict,
     },
-    routes: {
-      qbittorrent: { entries: qbitRoutes, tunnelOnly: tunnelOnly(qbitRoutes) },
-      sabnzbd: { entries: sabRoutes, tunnelOnly: tunnelOnly(sabRoutes) },
-    },
-    dns: {
-      qbittorrent: { resolvers: qbitDns, verdict: dnsVerdict(qbitDns) },
-      sabnzbd: { resolvers: sabDns, verdict: dnsVerdict(sabDns) },
-    },
+    routes: Object.fromEntries(
+      probes.map((p) => [p.client, { entries: p.routes, tunnelOnly: tunnelOnly(p.routes) }]),
+    ) as Record<Client, { entries: string[]; tunnelOnly: boolean }>,
+    dns: Object.fromEntries(
+      probes.map((p) => [p.client, { resolvers: p.dns, verdict: dnsVerdict(p.dns) }]),
+    ) as Record<Client, { resolvers: string[]; verdict: 'pass' | 'fail' | 'unknown' }>,
   };
 }
 

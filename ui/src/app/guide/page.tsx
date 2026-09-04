@@ -744,6 +744,49 @@ docker exec qbittorrent wget -qO- https://ipinfo.io`}</Pre>
           </AccordionSection>
 
           <AccordionSection
+            title="FlareSolverr"
+            description="Cloudflare solver — lets Prowlarr scrape indexers protected by Cloudflare or DDoS-Guard"
+          >
+            <p className="mb-3 text-sm text-muted-foreground">
+              Many public trackers sit behind Cloudflare&apos;s bot check. Prowlarr can&apos;t parse the
+              challenge page, so those indexers fail with errors mentioning &quot;Cloudflare protection
+              detected&quot;. FlareSolverr runs a headless browser that solves the challenge and hands
+              the resulting cookies back to Prowlarr.
+            </p>
+            <Step n={1}>
+              <p>Add the proxy: Settings → Indexers → scroll to <strong>Indexer Proxies</strong> → <Code>+</Code> → FlareSolverr</p>
+              <ul className="ml-4 mt-1 list-disc text-xs text-muted-foreground">
+                <li><strong>Name:</strong> <Code>flaresolverr</Code></li>
+                <li><strong>Tags:</strong> type <Code>flaresolverr</Code> and press Enter to create the tag</li>
+                <li><strong>Host:</strong> <Code>http://gluetun:8191</Code></li>
+                <li><strong>Request Timeout:</strong> <Code>60</Code></li>
+              </ul>
+            </Step>
+            <Step n={2}>
+              <p>Click <strong>Test</strong> — it should go green — then <strong>Save</strong>.</p>
+            </Step>
+            <Step n={3}>
+              <p>
+                Tag the indexers that need it: Indexers tab → click a Cloudflare-protected indexer →
+                add the <Code>flaresolverr</Code> tag → Save. Only tagged indexers route through the
+                solver; untagged ones use faster direct requests.
+              </p>
+            </Step>
+            <Tip>
+              The host is <Code>gluetun</Code>, not <Code>flaresolverr</Code>. FlareSolverr runs inside
+              Gluetun&apos;s network namespace so its Cloudflare challenges exit via the VPN — otherwise
+              your real IP would be exposed to every tracker Prowlarr queries. Containers in a shared
+              namespace are addressed by the namespace owner&apos;s name.
+            </Tip>
+            <Tip>
+              No web UI and no published port, by design. Verify it&apos;s working from{' '}
+              <strong>Network → Routing Evidence</strong>, which proves it shares Gluetun&apos;s
+              namespace and exits from the VPN IP, or check{' '}
+              <strong>Logs → flaresolverr</strong> for one line per solved challenge.
+            </Tip>
+          </AccordionSection>
+
+          <AccordionSection
             title="Sonarr"
             port={`${host}:8989`}
             description="TV show management — monitors, downloads, and organises TV series"

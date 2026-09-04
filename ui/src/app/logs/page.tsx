@@ -73,7 +73,7 @@ export default function LogsPage() {
 /* Service Log Tab                                                     */
 /* ------------------------------------------------------------------ */
 const SERVICE_LIST = [
-  'sonarr', 'radarr', 'prowlarr', 'bazarr',
+  'sonarr', 'radarr', 'prowlarr', 'flaresolverr', 'bazarr',
   'seerr', 'recyclarr', 'gluetun', 'qbittorrent', 'sabnzbd',
   'unpackerr', 'watchtower', 'media-ui',
 ];

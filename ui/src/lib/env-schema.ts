@@ -17,11 +17,13 @@ export interface EnvVarDef {
 
 const ALL_SERVICES = [
   'gluetun', 'qbittorrent', 'sabnzbd', 'unpackerr', 'prowlarr',
-  'sonarr', 'radarr', 'bazarr', 'seerr',
+  'flaresolverr', 'sonarr', 'radarr', 'bazarr', 'seerr',
   'recyclarr', 'watchtower', 'media-ui',
 ];
 
-const VPN_SERVICES = ['gluetun', 'qbittorrent', 'sabnzbd'];
+// flaresolverr shares gluetun's netns (network_mode: service:gluetun), so a
+// VPN settings change recreates it alongside the download clients.
+const VPN_SERVICES = ['gluetun', 'qbittorrent', 'sabnzbd', 'flaresolverr'];
 
 export const ENV_SCHEMA: EnvVarDef[] = [
   // --- General ---
@@ -76,6 +78,7 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'PLEX_URL', label: 'Plex URL', type: 'string', group: 'services', description: 'Plex server URL (e.g. http://192.168.1.x:32400). Sidebar link updates live; dashboard widgets that hit Plex (Recently Added) pick the new URL up on the next media-ui restart.', default: 'http://localhost:32400', affectsServices: [] },
   { key: 'UN_SONARR_0_API_KEY', label: 'Unpackerr Sonarr Key', type: 'secret', group: 'services', description: 'Sonarr API key for Unpackerr (auto-populated by Detect API Keys)', sensitive: true, affectsServices: ['unpackerr'] },
   { key: 'UN_RADARR_0_API_KEY', label: 'Unpackerr Radarr Key', type: 'secret', group: 'services', description: 'Radarr API key for Unpackerr (auto-populated by Detect API Keys)', sensitive: true, affectsServices: ['unpackerr'] },
+  { key: 'FLARESOLVERR_LOG_LEVEL', label: 'FlareSolverr Log Level', type: 'select', group: 'services', description: 'Verbosity for FlareSolverr. It solves Cloudflare challenges for Prowlarr from inside the VPN tunnel — no port is published, Prowlarr reaches it at http://gluetun:8191', default: 'info', options: ['debug', 'info', 'warning', 'error'], affectsServices: ['flaresolverr'] },
   { key: 'WATCHTOWER_SCHEDULE', label: 'Update Schedule', type: 'cron', group: 'services', description: 'Cron expression for Watchtower update checks', default: '0 0 4 * * *', affectsServices: ['watchtower'] },
   { key: 'WATCHTOWER_NOTIFICATIONS', label: 'Notification URL', type: 'string', group: 'services', description: 'Shoutrrr URL for Watchtower notifications (Discord, Slack, Email)', affectsServices: ['watchtower'] },
 
@@ -83,6 +86,7 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'IMAGE_SONARR', label: 'Sonarr Image', type: 'string', group: 'images', description: 'Docker image for Sonarr', default: 'lscr.io/linuxserver/sonarr:4.0.14', affectsServices: ['sonarr'] },
   { key: 'IMAGE_RADARR', label: 'Radarr Image', type: 'string', group: 'images', description: 'Docker image for Radarr', default: 'lscr.io/linuxserver/radarr:5.21.1', affectsServices: ['radarr'] },
   { key: 'IMAGE_PROWLARR', label: 'Prowlarr Image', type: 'string', group: 'images', description: 'Docker image for Prowlarr', default: 'lscr.io/linuxserver/prowlarr:1.31.2', affectsServices: ['prowlarr'] },
+  { key: 'IMAGE_FLARESOLVERR', label: 'FlareSolverr Image', type: 'string', group: 'images', description: 'Docker image for FlareSolverr', default: 'ghcr.io/flaresolverr/flaresolverr:v3.3.21', affectsServices: ['flaresolverr'] },
   { key: 'IMAGE_QBITTORRENT', label: 'qBittorrent Image', type: 'string', group: 'images', description: 'Docker image for qBittorrent', default: 'lscr.io/linuxserver/qbittorrent:5.0.4', affectsServices: ['qbittorrent'] },
   { key: 'IMAGE_SABNZBD', label: 'SABnzbd Image', type: 'string', group: 'images', description: 'Docker image for SABnzbd', default: 'lscr.io/linuxserver/sabnzbd:4.4.1', affectsServices: ['sabnzbd'] },
   { key: 'IMAGE_SEERR', label: 'Seerr Image', type: 'string', group: 'images', description: 'Docker image for Seerr', default: 'ghcr.io/seerr-team/seerr:v3.2.0', affectsServices: ['seerr'] },

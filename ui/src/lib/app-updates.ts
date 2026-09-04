@@ -63,6 +63,7 @@ export const APP_UPDATE_SOURCES: Record<string, AppUpdateSource> = {
   // GHCR images — Docker Hub doesn't carry these, so fall back to upstream
   // GitHub releases (the project publishes its own image, so tags match).
   IMAGE_RECYCLARR:   { kind: 'github-releases', repo: 'recyclarr/recyclarr', tagPattern: /^\d+\.\d+\.\d+$/ },
+  IMAGE_FLARESOLVERR: { kind: 'github-releases', repo: 'FlareSolverr/FlareSolverr', tagPattern: /^v\d+\.\d+\.\d+$/ },
   IMAGE_SEERR:       { kind: 'github-releases', repo: 'seerr-team/seerr',    tagPattern: /^v?\d+\.\d+\.\d+$/ },
 };
 

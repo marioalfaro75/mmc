@@ -9,6 +9,7 @@ const MONITORED_CONTAINERS = [
   'gluetun',
   'qbittorrent',
   'sabnzbd',
+  'flaresolverr',
   'sonarr',
   'radarr',
   'prowlarr',
