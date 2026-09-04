@@ -140,6 +140,32 @@ services:
     labels:
       - com.centurylinklabs.watchtower.enable=true
 
+  flaresolverr:
+    image: ${IMAGE_FLARESOLVERR}
+    container_name: flaresolverr
+    # Shares gluetun's network namespace so Cloudflare challenges are solved
+    # from the VPN exit IP, not the host's. Without this, every tracker
+    # Prowlarr queries would see the real home IP — correlating it with the
+    # exact indexers in use — even though the downloads themselves tunnel.
+    # Also inherits the kill-switch: no route out if the tunnel drops.
+    network_mode: "service:gluetun"
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    environment:
+      - LOG_LEVEL=${FLARESOLVERR_LOG_LEVEL:-info}
+      - TZ=${TZ}
+      - BROWSER_TIMEOUT=40000
+    # Headless Chromium spikes hard per challenge. Cap it so a runaway solve
+    # can't starve the rest of the stack.
+    mem_limit: 768m
+    # Deliberately no `ports:` — the 8191 API lives inside gluetun's netns and
+    # is reachable only container-to-container at http://gluetun:8191.
+    # Publishing it would expose an open proxy to the LAN.
+    restart: unless-stopped
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
   sonarr:
     image: ${IMAGE_SONARR}
     container_name: sonarr

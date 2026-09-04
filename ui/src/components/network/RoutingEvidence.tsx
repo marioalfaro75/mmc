@@ -20,8 +20,17 @@ import { toast } from 'sonner';
 import type { RoutingEvidence as RoutingEvidenceData } from '@/app/api/network/evidence/route';
 import type { NetworkStats } from '@/lib/types/common';
 
-const CLIENTS = ['qbittorrent', 'sabnzbd'] as const;
+// Mirrors VPN_CLIENTS in /api/network/evidence — every container sharing
+// gluetun's netns. flaresolverr is included so the Cloudflare-solving path
+// is proven to exit via the VPN, not the host.
+const CLIENTS = ['qbittorrent', 'sabnzbd', 'flaresolverr'] as const;
 type Client = (typeof CLIENTS)[number];
+
+const CLIENT_LABELS: Record<Client, string> = {
+  qbittorrent: 'qBit',
+  sabnzbd: 'SAB',
+  flaresolverr: 'FlareSolverr',
+};
 
 // 60 s cache server-side; mirror that on the client.
 const POLL_MS = 60 * 1000;
@@ -149,10 +158,10 @@ export function RoutingEvidence({ networkData }: Props) {
   // payload. tunnelRate is already smoothed in the parent.
   const tunnelTx = networkData?.tunnel?.txBytes ?? null;
   const tunnelRx = networkData?.tunnel?.rxBytes ?? null;
-  const qbitNet = networkData?.services?.find((s) => s.name === 'qbittorrent');
-  const sabNet = networkData?.services?.find((s) => s.name === 'sabnzbd');
-  const clientRxTotal =
-    (qbitNet ? parseDockerSize(qbitNet.rx) : 0) + (sabNet ? parseDockerSize(sabNet.rx) : 0);
+  const clientRxTotal = CLIENTS.reduce((sum, c) => {
+    const net = networkData?.services?.find((s) => s.name === c);
+    return sum + (net ? parseDockerSize(net.rx) : 0);
+  }, 0);
 
   return (
     <div
@@ -339,19 +348,25 @@ export function RoutingEvidence({ networkData }: Props) {
             {showCorrelation ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
             Live traffic correlation
             <span className="ml-2 text-[10px] text-muted-foreground">
-              tunnel bytes vs. download-client bytes (refreshes with the Network page)
+              tunnel bytes vs. VPN-namespaced container bytes (refreshes with the Network page)
             </span>
           </button>
+          {/* 2 tunnel tiles + one per VPN-namespaced client. */}
           {showCorrelation && (
-            <div className="mt-2 grid grid-cols-2 gap-3 rounded-md border border-border bg-muted/30 p-3 text-xs sm:grid-cols-4">
+            <div className="mt-2 grid grid-cols-2 gap-3 rounded-md border border-border bg-muted/30 p-3 text-xs sm:grid-cols-5">
               <Stat label="Tunnel rx (session)" value={tunnelRx !== null ? formatBytesTotal(tunnelRx) : '—'} />
               <Stat label="Tunnel tx (session)" value={tunnelTx !== null ? formatBytesTotal(tunnelTx) : '—'} />
-              <Stat label="qBit rx (session)" value={qbitNet?.rx ?? '—'} />
-              <Stat label="SAB rx (session)" value={sabNet?.rx ?? '—'} />
-              <div className="col-span-2 sm:col-span-4 text-[11px] text-muted-foreground">
+              {CLIENTS.map((c) => (
+                <Stat
+                  key={c}
+                  label={`${CLIENT_LABELS[c]} rx (session)`}
+                  value={networkData?.services?.find((s) => s.name === c)?.rx ?? '—'}
+                />
+              ))}
+              <div className="col-span-2 sm:col-span-5 text-[11px] text-muted-foreground">
                 {tunnelRx !== null && clientRxTotal > 0
-                  ? `Tunnel rx is ${formatRate(tunnelRx)} cumulative; clients have received ${formatRate(clientRxTotal)}. ` +
-                    'Within a couple of percent during active downloads = all client bytes flowed through the tunnel.'
+                  ? `Tunnel rx is ${formatRate(tunnelRx)} cumulative; VPN-namespaced containers have received ${formatRate(clientRxTotal)}. ` +
+                    'Within a couple of percent during active downloads = all their bytes flowed through the tunnel.'
                   : 'Start a download to see real-time correlation.'}
               </div>
             </div>

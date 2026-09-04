@@ -1236,6 +1236,28 @@ wait_for_port() {
     return 1
 }
 
+# Probe a port from INSIDE a container, via the docker socket. Needed for
+# services that publish no host port at all — flaresolverr lives in
+# gluetun's network namespace and is deliberately unexposed, so the only
+# way to reach it is from a container that shares that namespace.
+#
+# Unlike wait_for_port this behaves identically on the host CLI and in the
+# updater sidecar, since it never touches host networking.
+wait_for_container_port() {
+    _c_name="$1"
+    _c_port="$2"
+    _c_timeout="$3"
+    _c_waited=0
+    while [ "$_c_waited" -lt "$_c_timeout" ]; do
+        if docker exec "$_c_name" wget -q -T 2 -O /dev/null "http://localhost:${_c_port}" 2>/dev/null; then
+            return 0
+        fi
+        sleep 1
+        _c_waited=$((_c_waited + 1))
+    done
+    return 1
+}
+
 stage_vpn() {
     section "Stage 1: VPN (gluetun)"
     cd "$PROJECT_DIR"
@@ -1644,8 +1666,8 @@ seed_arr_api_keys() {
 stage_arr_stack() {
     section "Stage 3: Arr Stack"
     cd "$PROJECT_DIR"
-    info "Starting prowlarr, sonarr, radarr, unpackerr..."
-    docker compose up -d prowlarr sonarr radarr unpackerr
+    info "Starting prowlarr, sonarr, radarr, unpackerr, flaresolverr..."
+    docker compose up -d prowlarr sonarr radarr unpackerr flaresolverr
 
     sleep 10
 
@@ -1668,6 +1690,18 @@ stage_arr_stack() {
         pass "unpackerr is running"
     else
         warn "unpackerr may not be running"
+    fi
+
+    # flaresolverr publishes no host port by design — it lives inside
+    # gluetun's netns and is reachable only container-to-container. So we
+    # can't use wait_for_port (which probes a published host port); instead
+    # exec into gluetun, whose loopback IS flaresolverr's loopback. Works
+    # identically from the host CLI and from the updater sidecar since it
+    # only needs the docker socket.
+    if wait_for_container_port gluetun 8191 20; then
+        pass "flaresolverr responding on gluetun:8191"
+    else
+        warn "flaresolverr not responding on gluetun:8191 (may still be starting)"
     fi
 }
 

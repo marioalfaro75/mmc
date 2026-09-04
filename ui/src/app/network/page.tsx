@@ -195,27 +195,35 @@ export default function NetworkPage() {
           <h2 className="text-base font-semibold">VPN Kill-Switch Protection</h2>
         </div>
         <p className="text-sm text-muted-foreground">
-          qBittorrent and SABnzbd are configured with{' '}
+          qBittorrent, SABnzbd and FlareSolverr are configured with{' '}
           <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">network_mode: service:gluetun</code>{' '}
           in Docker Compose. They share Gluetun&apos;s network stack entirely and have no independent network
           interface — all traffic must traverse the VPN tunnel.
         </p>
         <ul className="ml-4 mt-3 list-disc space-y-2 text-sm text-muted-foreground">
           <li>
-            <strong className="text-foreground">No independent networking</strong> — download clients have
+            <strong className="text-foreground">No independent networking</strong> — these containers have
             no direct access to your host network. Every packet goes through Gluetun.
           </li>
           <li>
-            <strong className="text-foreground">Startup dependency</strong> — download clients will not start
+            <strong className="text-foreground">Startup dependency</strong> — they will not start
             until Gluetun&apos;s healthcheck confirms the VPN is connected.
           </li>
           <li>
-            <strong className="text-foreground">Automatic kill-switch</strong> — if the VPN drops, download
-            clients lose all connectivity immediately. There is no fallback path to the internet.
+            <strong className="text-foreground">Automatic kill-switch</strong> — if the VPN drops, they
+            lose all connectivity immediately. There is no fallback path to the internet.
           </li>
           <li>
-            <strong className="text-foreground">No exposed ports</strong> — download client containers have
-            no ports of their own. Their web UIs are published on the Gluetun container instead.
+            <strong className="text-foreground">No exposed ports</strong> — these containers have
+            no ports of their own. Download client web UIs are published on the Gluetun container instead;
+            FlareSolverr publishes nothing at all and is reachable only from Prowlarr at{' '}
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">http://gluetun:8191</code>.
+          </li>
+          <li>
+            <strong className="text-foreground">No indexer-scraping leak</strong> — FlareSolverr solves
+            Cloudflare challenges from the VPN exit IP. Routed directly, your real IP would be visible to
+            every tracker Prowlarr queries, correlating your home address with the exact indexers in use —
+            even though the downloads themselves are tunnelled.
           </li>
         </ul>
         <p className="mt-3 text-sm text-muted-foreground">

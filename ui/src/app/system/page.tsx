@@ -30,6 +30,9 @@ const SERVICE_CATALOG: Record<string, ServiceInfo> = {
   qbittorrent: { description: 'Torrent client — downloads from torrent indexers via VPN', port: 8080, tip: 'Default login — username: admin, password: your QBITTORRENT_PASSWORD from Settings. Change the default password after first login.' },
   sabnzbd: { description: 'Usenet client — downloads from Usenet providers via VPN', port: 8081 },
   prowlarr: { description: 'Indexer manager — manages torrent and Usenet sources for Sonarr/Radarr', port: 9696 },
+  // No `port` on purpose — FlareSolverr has no browsable UI and publishes no
+  // host port, so no "Open UI" link should render for it.
+  flaresolverr: { description: 'Cloudflare solver — lets Prowlarr scrape indexers behind CF/DDoS-Guard', tip: 'No web UI and no published port by design. Runs inside Gluetun\'s network namespace so challenges are solved from the VPN exit IP. Prowlarr reaches it at http://gluetun:8191.' },
   sonarr: { description: 'TV show manager — monitors, downloads, and organises TV episodes', port: 8989 },
   radarr: { description: 'Movie manager — monitors, downloads, and organises movies', port: 7878 },
   unpackerr: { description: 'Archive extractor — unpacks completed downloads for import' },
@@ -48,7 +51,7 @@ interface ServiceGroup {
 const SERVICE_GROUPS: ServiceGroup[] = [
   { label: 'VPN Gateway', services: ['gluetun'] },
   { label: 'Download Clients', services: ['qbittorrent', 'sabnzbd'] },
-  { label: 'Indexer & Media Managers', services: ['prowlarr', 'sonarr', 'radarr', 'unpackerr'] },
+  { label: 'Indexer & Media Managers', services: ['prowlarr', 'flaresolverr', 'sonarr', 'radarr', 'unpackerr'] },
   { label: 'Media Companions', services: ['bazarr', 'seerr'] },
   { label: 'Operations', services: ['recyclarr', 'watchtower'] },
   { label: 'Web UI', services: ['media-ui'] },
