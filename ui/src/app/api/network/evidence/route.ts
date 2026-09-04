@@ -9,6 +9,7 @@ import {
 } from '@/lib/docker';
 import { lookupCountry } from '@/lib/api/geolocation';
 import { getPublicIP as getGluetunPublicIp } from '@/lib/api/gluetun';
+import { classifyEgress, rollUpEgressVerdict } from '@/lib/egress-verdict';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,13 @@ export interface RoutingEvidence {
   };
   publicIp: {
     gluetun: { ip: string | null; country: string | null };
-    clients: Record<Client, { ip: string | null; matchesGluetun: boolean }>;
+    clients: Record<Client, {
+      ip: string | null;
+      matchesGluetun: boolean;
+      /** Shares gluetun's netns, so egress is identical by construction —
+       *  true even when the in-container IP probe couldn't run. */
+      namespaceConfirmed: boolean;
+    }>;
     host: { ip: string | null; country: string | null };
     verdict: 'pass' | 'fail' | 'unknown';
   };
@@ -91,16 +98,24 @@ async function probe(): Promise<RoutingEvidence> {
   const nsAllMatch = nsAllKnown && probes.every((p) => p.inode === gluetunInode);
   const nsVerdict: 'pass' | 'fail' | 'unknown' = !nsAllKnown ? 'unknown' : nsAllMatch ? 'pass' : 'fail';
 
-  // Public-IP verdict — every client must egress from gluetun's exit IP.
+  // Public-IP verdict. Three states per client, NOT two — see
+  // lib/egress-verdict.ts for why conflating "could not probe" with
+  // "leaking" is actively harmful.
+  const tunnel = { ip: gluetunPublicIp, inode: gluetunInode };
+  const egressStates = probes.map((p) =>
+    classifyEgress({ ip: p.publicIp, inode: p.inode }, tunnel),
+  );
   const ipMatches = Object.fromEntries(
-    probes.map((p) => [
+    probes.map((p, i) => [
       p.client,
-      { ip: p.publicIp, matchesGluetun: !!gluetunPublicIp && p.publicIp === gluetunPublicIp },
+      {
+        ip: p.publicIp,
+        matchesGluetun: egressStates[i] === 'match',
+        namespaceConfirmed: egressStates[i] === 'namespace',
+      },
     ]),
-  ) as Record<Client, { ip: string | null; matchesGluetun: boolean }>;
-  const ipAllKnown = !!gluetunPublicIp && probes.every((p) => !!p.publicIp);
-  const ipAllMatch = ipAllKnown && probes.every((p) => p.publicIp === gluetunPublicIp);
-  const ipVerdict: 'pass' | 'fail' | 'unknown' = !ipAllKnown ? 'unknown' : ipAllMatch ? 'pass' : 'fail';
+  ) as Record<Client, { ip: string | null; matchesGluetun: boolean; namespaceConfirmed: boolean }>;
+  const ipVerdict = rollUpEgressVerdict(egressStates);
 
   // Routes: only tunnel device (wg0/tun0) on the default route is fine.
   const tunnelOnly = (entries: string[]): boolean => {

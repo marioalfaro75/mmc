@@ -383,10 +383,48 @@ async function fetchEchoIp(execArgs: string[]): Promise<string | null> {
   return null;
 }
 
+/** Fetch the echo-IP endpoints using python3's stdlib, for images that ship
+ *  neither wget nor curl. FlareSolverr is one — a slim Python app image.
+ *  The URL is embedded in the -c script rather than passed as a trailing
+ *  arg, so this needs its own loop rather than reusing fetchEchoIp. */
+async function fetchEchoIpViaPython(container: string): Promise<string | null> {
+  for (const url of PUBLIC_IP_ENDPOINTS) {
+    try {
+      // JSON.stringify gives a double-quoted literal that is valid Python.
+      // Passed as one argv element via execFile (no shell), and the URLs are
+      // a module-level const, so there is nothing injectable here.
+      const script =
+        'import urllib.request,sys;' +
+        `sys.stdout.write(urllib.request.urlopen(${JSON.stringify(url)},timeout=5).read().decode())`;
+      const { stdout } = await execFileAsync(
+        'docker', ['exec', container, 'python3', '-c', script],
+        { timeout: 8000 },
+      );
+      const ip = stdout.trim().split('\n').pop()?.trim() || '';
+      if (/^[0-9a-f.:]+$/i.test(ip) && ip.includes('.')) return ip;
+    } catch {
+      // try next endpoint
+    }
+  }
+  return null;
+}
+
 export async function getPublicIpFromContainer(container: string): Promise<string | null> {
-  // Prefer wget over curl: present on both LSIO (Alpine + busybox wget) and
-  // most other images. -q quiet, -O- write to stdout, -T 5 timeout 5s.
-  return fetchEchoIp(['docker', 'exec', container, 'wget', '-qO-', '-T', '5']);
+  // Image bases differ in which HTTP client they ship, so try a chain:
+  //   wget    — busybox/Alpine (LSIO images, gluetun)
+  //   curl    — Debian-ish images that dropped wget
+  //   python3 — Python app images (FlareSolverr) that ship neither
+  // Without the fallbacks a probe failure looks identical to "no IP", which
+  // the Network page used to render as a leak.
+  const attempts: string[][] = [
+    ['docker', 'exec', container, 'wget', '-qO-', '-T', '5'],
+    ['docker', 'exec', container, 'curl', '-fsS', '--max-time', '5'],
+  ];
+  for (const argv of attempts) {
+    const ip = await fetchEchoIp(argv);
+    if (ip) return ip;
+  }
+  return fetchEchoIpViaPython(container);
 }
 
 // The HOST's real public IP — the one trackers would see if there were no
