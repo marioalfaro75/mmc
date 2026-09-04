@@ -126,8 +126,53 @@ async function checkBackupSchedule() {
   }
 }
 
+/**
+ * Repair an override file generated before media-ui was removed from the
+ * NAS mount list.
+ *
+ * Installs from that era mount the CIFS volume into media-ui, which means a
+ * NAS outage stops the dashboard from starting at all. Regenerating only
+ * happens if the user re-runs the Migration wizard, which they have no
+ * reason to do — so heal it here, at boot.
+ *
+ * Note the bootstrap gap this cannot close: if the NAS is *currently* down,
+ * media-ui won't start, so this never runs. Recovering from that state needs
+ * the NAS back (or a manual edit). What it does guarantee is that it can
+ * only bite you once.
+ */
+function healNasOverride() {
+  try {
+    // Dynamic require, same reason as checkBackupSchedule above: keeps
+    // webpack from resolving Node builtins for the edge bundle.
+    const fs = require('fs');
+    const { OVERRIDE_FILENAME, stripMediaUiFromOverride } = require('@/lib/nas-override');
+
+    const projectDir = process.env.HOST_PROJECT_DIR;
+    if (!projectDir) return;
+    const path = `${projectDir}/${OVERRIDE_FILENAME}`;
+    if (!fs.existsSync(path)) return;
+
+    const current = fs.readFileSync(path, 'utf-8');
+    const repaired = stripMediaUiFromOverride(current);
+    if (!repaired) return; // already clean
+
+    fs.writeFileSync(`${path}.bak`, current, { mode: 0o644 });
+    fs.writeFileSync(path, repaired, { mode: 0o644 });
+    console.log(
+      `[nas-override] Removed the media-ui NAS mount from ${OVERRIDE_FILENAME} ` +
+      '(a NAS outage could previously stop the dashboard from starting). ' +
+      `Previous file saved as ${OVERRIDE_FILENAME}.bak. ` +
+      'Run `docker compose up -d media-ui` to drop the mount from the running container.',
+    );
+  } catch (err) {
+    console.error(`[nas-override] Could not repair the NAS override: ${err}`);
+  }
+}
+
 export async function register() {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+
+  healNasOverride();
 
   // Initial search after services have had time to start
   setTimeout(() => {

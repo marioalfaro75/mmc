@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Activity, Shield, ShieldAlert, ShieldCheck, ExternalLink, Info,
   Play, Square, RotateCcw, ScrollText, Loader2, RefreshCw,
-  Power,
+  Power, HardDrive,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
@@ -16,6 +16,7 @@ import { fetchApi } from '@/lib/utils/fetchApi';
 import { useBrowserHost } from '@/lib/useBrowserHost';
 import { toast } from 'sonner';
 import type { ServiceHealth, VpnStatus, DockerServiceStatus } from '@/lib/types/common';
+import type { NasStatus } from '@/app/api/system/nas-status/route';
 
 interface ServiceInfo {
   description: string;
@@ -103,6 +104,16 @@ export default function SystemPage() {
   // reverse-proxy domain. Substitute it into service links so "Open UI"
   // works from anywhere the dashboard itself works.
   const browserHost = useBrowserHost();
+
+  // Only meaningful when the Migration wizard set up a NAS volume; the
+  // endpoint reports configured:false otherwise and the card stays hidden.
+  const { data: nasStatus } = useQuery<NasStatus>({
+    queryKey: ['nas-status'],
+    queryFn: () => fetchApi<NasStatus>('/api/system/nas-status'),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
   const { data: vpnData } = useQuery<VpnStatus>({
     queryKey: ['vpn'],
     queryFn: () => fetchApi<VpnStatus>('/api/vpn'),
@@ -411,6 +422,63 @@ export default function SystemPage() {
           </div>
         </div>
       </Card>
+
+      {/* NAS reachability — only rendered when a NAS volume is configured.
+          media-ui deliberately does not mount that volume, so this card is
+          what tells you the NAS is down instead of the dashboard just
+          failing to start. */}
+      {nasStatus?.configured && (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <div className="flex items-center gap-2">
+                {nasStatus.reachable
+                  ? <HardDrive className="h-4 w-4 text-success" />
+                  : <HardDrive className="h-4 w-4 text-danger" />}
+                NAS
+              </div>
+            </CardTitle>
+            <Badge variant={nasStatus.reachable ? 'success' : 'danger'}>
+              {nasStatus.reachable ? 'Reachable' : 'Unreachable'}
+            </Badge>
+          </CardHeader>
+          <div className="grid grid-cols-2 gap-3 p-4 pt-0 sm:grid-cols-4">
+            <div className="rounded-md bg-muted/50 p-3">
+              <p className="text-xs text-muted-foreground">Host</p>
+              <p className="font-mono text-sm">{nasStatus.host}</p>
+            </div>
+            <div className="rounded-md bg-muted/50 p-3">
+              <p className="text-xs text-muted-foreground">Share</p>
+              <p className="truncate font-mono text-sm">{nasStatus.share || '—'}</p>
+            </div>
+            <div className="rounded-md bg-muted/50 p-3">
+              <p className="text-xs text-muted-foreground">
+                {nasStatus.protocol === 'smb' ? 'SMB' : 'NFS'} port {nasStatus.port}
+              </p>
+              <p className="text-sm">
+                {nasStatus.reachable ? `${nasStatus.latencyMs} ms` : 'no route'}
+              </p>
+            </div>
+            <div className="rounded-md bg-muted/50 p-3">
+              <p className="text-xs text-muted-foreground">Depends on it</p>
+              <p className="text-sm">{nasStatus.dependentServices.join(', ')}</p>
+            </div>
+          </div>
+          {!nasStatus.reachable && (
+            <div className="mx-4 mb-4 rounded-md border border-danger/40 bg-danger/10 p-3 text-sm">
+              <p className="font-medium text-danger">
+                {nasStatus.error || 'The NAS is not responding.'}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {nasStatus.dependentServices.join(', ')} mount this share as a Docker volume and
+                cannot start until it is back. This dashboard is unaffected — it does not mount the
+                share. Common causes: the NAS is asleep, powered off, or its IP changed (check for a
+                DHCP reservation).
+              </p>
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Unified Services Card */}
       <Card>
