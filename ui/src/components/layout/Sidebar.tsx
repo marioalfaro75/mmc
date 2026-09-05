@@ -61,9 +61,10 @@ export function Sidebar() {
   });
   const plexUrl = plexData?.plexUrl ?? undefined;
 
-  // Convert internal Docker URL to localhost for browser access. Treat
-  // the wizard's placeholder default as "not configured" so the link
-  // doesn't appear at all until the user enters a real URL.
+  // Both of these are container-internal addresses that a browser cannot
+  // reach, so treat them as "not configured" and hide the link until the
+  // user supplies a real one. (No conversion happens here — an earlier
+  // comment claimed there was.)
   const plexWebUrl =
     plexUrl && plexUrl !== 'http://localhost:32400' && plexUrl !== 'http://host.docker.internal:32400'
       ? `${plexUrl}/web`
