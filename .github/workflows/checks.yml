@@ -36,6 +36,9 @@ jobs:
           sed -i "s|^HOST_PROJECT_DIR=.*|HOST_PROJECT_DIR=$PWD|" .env
       - name: Validate base compose
         run: docker compose -f docker-compose.yml config -q
+      - name: Validate the build override
+        # The escape hatch for local development / GHCR being unreachable.
+        run: docker compose -f docker-compose.yml -f docker-compose.build.yml config -q
       - name: Validate with NAS override (synthetic)
         run: |
           cat > docker-compose.nas.override.yml <<'YAML'

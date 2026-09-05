@@ -265,19 +265,37 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - TZ=${TZ}
-      - WATCHTOWER_SCHEDULE=${WATCHTOWER_SCHEDULE}
+      # On-demand only. Every image in this stack is pinned to an explicit
+      # tag, so a scheduled sweep could never bump anything — it only ever
+      # re-pulled the same digest. Updates are now driven from the UI, which
+      # POSTs to the API below after writing the new tag to .env.
+      - WATCHTOWER_HTTP_API_UPDATE=true
+      # Not guarded with `:?`. A missing updater secret must not stop Sonarr,
+      # Radarr and qBittorrent from starting — that is the same over-coupling
+      # that let a NAS blip take down the dashboard. deploy.sh generates the
+      # token on migrate; if it is somehow still blank, Watchtower runs
+      # without its API and the UI reports the update button as unavailable.
+      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_TOKEN:-}
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_LABEL_ENABLE=true
       - WATCHTOWER_NOTIFICATIONS_HOSTNAME=mars-media-centre
       - DOCKER_API_VERSION=1.44
+    networks:
+      - medianet
     restart: unless-stopped
 
   # ============================================================
   # Unified Web UI
   # ============================================================
   media-ui:
-    build:
-      context: ./ui
+    # Pre-built by CI and pulled from GHCR — the production host does not
+    # compile anything. Building here used to mean stopping the running
+    # container first, then risking an OOM or a flaky npm registry with no
+    # image left to roll back to.
+    #
+    # To build from source instead (local development, or if GHCR is
+    # unreachable):  docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build media-ui
+    image: ${IMAGE_MEDIA_UI:-ghcr.io/marioalfaro75/mmc-media-ui:latest}
     container_name: media-ui
     networks:
       - medianet
@@ -335,4 +353,8 @@ services:
       - prowlarr
     restart: unless-stopped
     labels:
-      - com.centurylinklabs.watchtower.enable=false
+      # Watchtower performs the pull-and-recreate when you click Update, so
+      # media-ui never has to operate on itself. It cannot: a container
+      # cannot recreate the container it is running in, which is why this
+      # used to need a detached sidecar.
+      - com.centurylinklabs.watchtower.enable=true

@@ -827,6 +827,27 @@ migrate_env() {
     else
         pass "Added $_added new variable(s) to .env"
     fi
+
+    # Generate any secret that must not ship as a blank. The compose file
+    # guards WATCHTOWER_TOKEN with `:?`, so an empty value fails the whole
+    # stack rather than one service — and the loop above copies it from
+    # .env.example empty by design (the example must not contain a secret).
+    _wt_token=$(grep -E '^WATCHTOWER_TOKEN=' "$ENV_FILE" | head -1 | cut -d= -f2-)
+    if [ -z "$_wt_token" ]; then
+        _wt_new=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom 2>/dev/null | head -c 40)
+        if [ "${#_wt_new}" -ge 32 ]; then
+            sed -i "s|^WATCHTOWER_TOKEN=.*|WATCHTOWER_TOKEN=$_wt_new|" "$ENV_FILE"
+            pass "Generated WATCHTOWER_TOKEN"
+            export WATCHTOWER_TOKEN="$_wt_new"
+            # Same redaction the qBittorrent seed does — never echoed, but
+            # scrub the deploy log anyway.
+            if [ -n "$_MMC_LOGGED" ] && [ -f "$_MMC_LOGGED" ]; then
+                sed -i "s/WATCHTOWER_TOKEN=.*/WATCHTOWER_TOKEN=[REDACTED]/g" "$_MMC_LOGGED" 2>/dev/null || true
+            fi
+        else
+            warn "Could not generate WATCHTOWER_TOKEN — set it by hand in .env"
+        fi
+    fi
 }
 
 validate_env() {
@@ -1747,17 +1768,33 @@ stage_operations() {
 stage_media_ui() {
     section "Stage 6: Media UI"
     cd "$PROJECT_DIR"
-    info "Building and starting media-ui..."
+    info "Pulling media-ui image..."
+    # Pull first, separately, so a registry problem surfaces as its own clear
+    # failure while the running container is still up and serving. The old
+    # `up -d --build` stopped the container first and then built, so any
+    # build or fetch failure left no dashboard and no image to fall back to.
+    if ! docker compose pull media-ui; then
+        fail "Could not pull the media-ui image"
+        info "The running container (if any) has been left alone."
+        info "To build from source instead:"
+        info "  docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build media-ui"
+        return 1
+    fi
+
+    info "Starting media-ui..."
     # --force-recreate so env vars are read from the *current* .env, not
     # whatever was in scope when an earlier container instance was created.
     # Matters if the seed step has just updated QBITTORRENT_PASSWORD.
-    docker compose up -d --build --force-recreate media-ui
+    docker compose up -d --no-build --force-recreate media-ui
 
     PORT_UI="${PORT_UI:-3000}"
-    if wait_for_port media-ui "$PORT_UI" 30; then
+    if wait_for_port media-ui "$PORT_UI" 60; then
         pass "media-ui responding on port $PORT_UI"
     else
-        warn "media-ui not responding on port $PORT_UI (may still be building)"
+        fail "media-ui did not become healthy on port $PORT_UI"
+        info "Recent logs:"
+        docker logs --tail 40 media-ui 2>&1 | sed 's/^/    /' || true
+        return 1
     fi
 }
 
@@ -2305,18 +2342,34 @@ elif [ "$UPDATE_MODE" = "1" ]; then
     # after a code-only update) are rebuilt and recreated. Wiping the whole
     # stack every update tore down qBit/SAB/etc unnecessarily and was the
     # main cause of "Apply update takes a long time".
-    info "Running docker compose up -d --build..."
+    # Pull as its own step. Images are built by CI and published to GHCR, so
+    # nothing is compiled here — a registry failure surfaces before anything
+    # running is touched, rather than after the container has been stopped.
+    info "Pulling images..."
+    set +e
+    docker compose pull
+    _pull_rc=$?
+    set -e
+    if [ "$_pull_rc" -eq 0 ]; then
+        pass "docker compose pull completed"
+    else
+        warn "docker compose pull exited $_pull_rc — some images could not be fetched"
+        info "The running stack has not been touched yet. If GHCR is unreachable:"
+        info "  docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build media-ui"
+    fi
+
+    info "Running docker compose up -d --no-build..."
     # Tolerate partial failures (e.g. VPN healthcheck) so the validation
     # section below still runs and the user gets a useful summary instead
     # of a bare compose error.
     set +e
-    docker compose up -d --build
+    docker compose up -d --no-build
     _compose_rc=$?
     set -e
     if [ "$_compose_rc" -eq 0 ]; then
-        pass "docker compose up -d --build completed"
+        pass "docker compose up -d completed"
     else
-        warn "docker compose up -d --build exited $_compose_rc — one or more services failed to start"
+        warn "docker compose up -d exited $_compose_rc — one or more services failed to start"
         info "Most often this is the VPN healthcheck. To diagnose:"
         info "  docker logs gluetun"
         info "Then fix VPN credentials in $PROJECT_DIR/.env and re-run ./scripts/deploy.sh"
@@ -2329,6 +2382,19 @@ elif [ "$UPDATE_MODE" = "1" ]; then
     print_services_summary
     print_post_install_checklist
     print_summary
+
+    # Exit non-zero if anything failed. Without this the update reported
+    # success no matter what — `fail()` only increments a counter, so a run
+    # that printed "DEPLOY FAILED — web UI did not start" still exited 0 and
+    # the dashboard showed a green success toast.
+    if [ "$FAIL_COUNT" -gt 0 ]; then
+        echo ""
+        printf "  ${RED}${BOLD}Update finished with %s failure(s).${RESET}\n" "$FAIL_COUNT"
+        info "To roll back, pin the previous image in .env and re-run:"
+        info "  IMAGE_MEDIA_UI=ghcr.io/marioalfaro75/mmc-media-ui:v<previous>"
+        info "  docker compose up -d --no-build media-ui"
+        exit 1
+    fi
 elif [ "$DRY_RUN" = "1" ]; then
     section "Mars Media Centre — Dry Run"
     info "Pre-flight validation (no containers will be started)"

@@ -18,7 +18,7 @@
 import { readEnv } from './env';
 import { ENV_SCHEMA } from './env-schema';
 
-export type SourceKind = 'docker-hub' | 'github-releases';
+export type SourceKind = 'docker-hub' | 'github-releases' | 'ghcr';
 
 export interface AppUpdateSource {
   kind: SourceKind;
@@ -63,6 +63,12 @@ export const APP_UPDATE_SOURCES: Record<string, AppUpdateSource> = {
   // GHCR images — Docker Hub doesn't carry these, so fall back to upstream
   // GitHub releases (the project publishes its own image, so tags match).
   IMAGE_RECYCLARR:   { kind: 'github-releases', repo: 'recyclarr/recyclarr', tagPattern: /^\d+\.\d+\.\d+$/ },
+
+  // This dashboard. Built by our own CI and published to GHCR, so we read the
+  // registry's tag list directly — the source of truth for what is actually
+  // pullable. Only vX.Y.Z release tags are offered; `edge` and `sha-…` exist
+  // but are opt-in via .env, not something to suggest as an update.
+  IMAGE_MEDIA_UI:    { kind: 'ghcr', repo: 'marioalfaro75/mmc-media-ui', tagPattern: /^v\d+\.\d+\.\d+$/ },
   IMAGE_FLARESOLVERR: { kind: 'github-releases', repo: 'FlareSolverr/FlareSolverr', tagPattern: /^v\d+\.\d+\.\d+$/ },
   IMAGE_SEERR:       { kind: 'github-releases', repo: 'seerr-team/seerr',    tagPattern: /^v?\d+\.\d+\.\d+$/ },
 };
@@ -218,9 +224,57 @@ export async function fetchLatestFromGitHubReleases(
   return { tag: winner, url: matched?.html_url ?? `https://github.com/${repo}/releases/tag/${winner}` };
 }
 
+interface GhcrTagList {
+  tags?: string[];
+}
+
+/**
+ * Fetch tags from GitHub Container Registry.
+ *
+ * Unlike Docker Hub's plain JSON endpoint, GHCR speaks the OCI distribution
+ * spec and requires a bearer token even for public images — an anonymous
+ * one, but the handshake is mandatory. Two hops: mint a pull-scoped token,
+ * then list tags with it.
+ */
+export async function fetchLatestFromGhcr(
+  repo: string,
+  tagPattern: RegExp | undefined,
+): Promise<{ tag: string; url: string } | null> {
+  const tokenRes = await fetch(
+    `https://ghcr.io/token?service=ghcr.io&scope=repository:${repo}:pull`,
+    { headers: { 'User-Agent': 'mmc-app-update-check' }, cache: 'no-store' },
+  );
+  if (!tokenRes.ok) {
+    throw new Error(`GHCR token returned ${tokenRes.status}`);
+  }
+  const { token } = (await tokenRes.json()) as { token?: string };
+  if (!token) throw new Error('GHCR token response had no token');
+
+  const res = await fetch(`https://ghcr.io/v2/${repo}/tags/list?n=100`, {
+    headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'mmc-app-update-check' },
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    // 403 here usually means the package is private — the anonymous token is
+    // issued but carries no pull scope. Say so rather than "no tags found".
+    if (res.status === 403) {
+      throw new Error('GHCR denied access — is the package public?');
+    }
+    throw new Error(`GHCR /tags/list returned ${res.status}`);
+  }
+  const body = (await res.json()) as GhcrTagList;
+  const candidates = (body.tags ?? []).filter((t) => (tagPattern ? tagPattern.test(t) : true));
+  const winner = pickHighestTag(candidates);
+  if (!winner) return null;
+  return { tag: winner, url: `https://github.com/${repo.split('/')[0]}/mmc/releases/tag/${winner}` };
+}
+
 async function fetchLatestForSource(source: AppUpdateSource): Promise<{ tag: string; url: string } | null> {
   if (source.kind === 'docker-hub') {
     return fetchLatestFromDockerHub(source.repo, source.tagPattern);
+  }
+  if (source.kind === 'ghcr') {
+    return fetchLatestFromGhcr(source.repo, source.tagPattern);
   }
   return fetchLatestFromGitHubReleases(source.repo, source.tagPattern);
 }
