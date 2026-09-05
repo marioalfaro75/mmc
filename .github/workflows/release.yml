@@ -1,40 +1,39 @@
-name: CI
+name: Release
 
+# Publishes the media-ui image to GitHub Container Registry on a version tag
+# (e.g. `git tag v1.2.0 && git push --tags`), or on manual dispatch.
+#
+# Prefer the "Cut release" workflow for normal releases — it publishes the
+# image *before* creating the tag, so a release can never exist without the
+# image it names. This workflow covers tags pushed by hand.
 on:
   push:
-    branches: [main, "claude/**"]
-  pull_request:
-    branches: [main]
-
-# Newer pushes on the same ref supersede in-progress runs.
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Extra tag to publish (manual runs), e.g. edge"
+        required: false
+        default: edge
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
-  # The lint/type/test/audit bar lives in checks.yml so the release paths run
-  # exactly the same jobs before they publish an image.
+  # Anyone who can push a tag could otherwise ship an image that had never run
+  # a test — `:latest` is the tag users actually pull, so it clears the same
+  # bar as a pull request.
   checks:
     name: Checks
     uses: ./.github/workflows/checks.yml
 
-  # On a green push to main, publish the rolling `edge` tag plus an immutable
-  # `sha-<short>` for pinning and rollback. `:latest` and the semver tags stay
-  # reserved for cut releases — a deliberate act, not a side effect of merging.
-  publish-edge:
-    name: Publish mmc-media-ui (edge)
+  publish:
     needs: checks
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3       # enables linux/arm64 builds
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Log in to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -48,8 +47,10 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/mmc-media-ui
           tags: |
-            type=raw,value=edge,enable={{is_default_branch}}
-            type=sha,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
       - name: Build and push
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
