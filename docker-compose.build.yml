@@ -1,0 +1,30 @@
+# ============================================================
+# docker-compose.build.yml — build media-ui from source
+#
+# The base compose file pulls a pre-built image from GHCR, because building
+# on the production host meant stopping the running container and then
+# risking an OOM or a registry hiccup with nothing to roll back to.
+#
+# This override restores the old behaviour for the cases that still want it:
+#
+#   * local development against uncommitted changes
+#   * GHCR unreachable (offline install, network policy, outage)
+#   * a fork that hasn't set up its own image publishing
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build media-ui
+#
+# The image tag it produces deliberately matches the default in the base
+# file, so a subsequent plain `docker compose up -d` keeps using your local
+# build rather than silently reverting to the registry. Remove it with
+# `docker rmi` (or repoint IMAGE_MEDIA_UI) when you want the published image
+# back.
+# ============================================================
+
+services:
+  media-ui:
+    build:
+      context: ./ui
+      args:
+        MMC_VERSION: local
+    image: ${IMAGE_MEDIA_UI:-ghcr.io/marioalfaro75/mmc-media-ui:latest}

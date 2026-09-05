@@ -1,164 +1,82 @@
 import { NextResponse } from 'next/server';
-import { execFile } from 'child_process';
-import { writeFile, stat } from 'fs/promises';
-import { existsSync } from 'fs';
 import { requireAdmin } from '@/lib/auth';
 import { sanitizeError } from '@/lib/security';
+import { readEnv, writeEnv } from '@/lib/env';
+import { selfRestart } from '@/lib/docker';
+import { parseImageRef } from '@/lib/app-updates';
+import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
-const LOCK_PATH = '/app/logs/update.lock';
-const LOCK_STALE_MS = 30 * 60 * 1000; // 30 min
+const LOG = 'updates';
+// OCI tag grammar: [A-Za-z0-9_][A-Za-z0-9._-]{0,127}
+const TAG_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
 
 /**
- * Kick off ./scripts/deploy.sh --update inside a detached sidecar container.
+ * Update the dashboard itself.
  *
- * The sidecar is necessary because deploy.sh's `docker compose up -d --build`
- * will recreate the media-ui container — which is where this API route lives.
- * If we spawned the script inside media-ui, our process would die mid-build.
- * The sidecar uses the same mmc-media-ui:latest image (already on disk, has
- * docker-cli + git) but runs in its own container so it survives our restart.
+ * This used to spawn a sidecar that ran `deploy.sh --update`, which did a
+ * `git pull` and then rebuilt the Next.js app on the host — stopping the
+ * running container first. An OOM or a registry hiccup at that point left no
+ * dashboard and no image to fall back to, and the script exited 0 regardless,
+ * so the UI reported success either way.
  *
- * Returns immediately with a job ID. Clients poll /api/updates/status to
- * watch progress; once media-ui has recycled, the polling resumes against
- * the new instance, which reads the same shared log file.
+ * The image is now built by CI and published to GHCR, so updating is: write
+ * the new tag to .env, then pull and recreate. If the pull fails, the running
+ * container is untouched. Rolling back is the same operation with an older
+ * tag.
+ *
+ * Optional body: { tag } to move to a specific version. Without it, this
+ * re-pulls the currently pinned tag — which is what you want when `:latest`
+ * has advanced after a release.
  */
 export async function POST(request: Request) {
   const denied = requireAdmin(request);
   if (denied) return denied;
 
-  const projectDir = process.env.HOST_PROJECT_DIR;
-  const hostLogsDir = process.env.MMC_HOST_LOGS_DIR;
-  if (!projectDir) {
-    return NextResponse.json({ error: 'HOST_PROJECT_DIR is not set' }, { status: 500 });
-  }
-  if (!hostLogsDir) {
-    return NextResponse.json({ error: 'MMC_HOST_LOGS_DIR is not set (redeploy media-ui to pick it up)' }, { status: 500 });
-  }
-
-  // Refuse if a previous update is still in flight (unless it's stale).
-  if (existsSync(LOCK_PATH)) {
-    try {
-      const st = await stat(LOCK_PATH);
-      if (Date.now() - st.mtimeMs < LOCK_STALE_MS) {
-        return NextResponse.json(
-          { error: 'An update is already in progress. Use /api/updates/status to follow it.' },
-          { status: 409 },
-        );
-      }
-    } catch {
-      // fall through — we'll overwrite the lock
-    }
-  }
-
-  const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const logFileName = `update-${ts}.log`;
-  const containerLogPath = `/app/logs/${logFileName}`;
-  const hostLogPath = `${hostLogsDir}/${logFileName}`;
-  const hostLockPath = `${hostLogsDir}/update.lock`;
-
-  const lock = {
-    jobId: ts,
-    startedAt: new Date().toISOString(),
-    containerLogPath,
-    hostLogPath,
-  };
-  await writeFile(LOCK_PATH, JSON.stringify(lock, null, 2));
-
-  // The sidecar reuses mmc-media-ui:latest (already on disk, has docker-cli,
-  // git, bash from the recently-updated Dockerfile). When deploy.sh recreates
-  // media-ui, the sidecar is unaffected — different container.
-  //
-  // We pre-trust the project dir before invoking deploy.sh so the script's
-  // own `git pull` doesn't trip the "dubious ownership" guard (the host
-  // repo is owned by PUID, the sidecar runs as root).
-  //
-  // After the update we chown .git back to PUID:PGID — the sidecar runs as
-  // root, so git pull lands new pack files in .git/objects owned by root.
-  // Without this fixup, `rm -rf ~/mmc` from the user later fails on those
-  // files, and the user-side `git pull` we suggest after install starts
-  // hitting permission errors too.
-  const sidecarName = `mmc-updater-${ts}`;
-  const puid = process.env.PUID || '1000';
-  const pgid = process.env.PGID || '1000';
-  const innerCmd =
-    `git config --global --add safe.directory ${projectDir} && ` +
-    `./scripts/deploy.sh --update >> ${hostLogPath} 2>&1; rc=$?; ` +
-    `chown -R ${puid}:${pgid} ${projectDir}/.git >> ${hostLogPath} 2>&1 || true; ` +
-    `rm -f ${hostLockPath}; exit $rc`;
-
-  // Discover the compose `medianet` network attached to *this* container
-  // (media-ui). Names vary by project (e.g. `mmc_medianet`), so derive it
-  // instead of hardcoding. Attaching the sidecar to medianet lets
-  // deploy.sh's wait_for_port hit service containers directly by their
-  // compose service name — sidestepping the HOST_BIND=127.0.0.1 default
-  // that made every host-port probe from the bridge interface fail.
-  let medianetName: string | null = null;
+  let tag: string | undefined;
   try {
-    const out = await new Promise<string>((resolve, reject) => {
-      execFile(
-        'docker',
-        ['inspect', 'media-ui', '--format', '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'],
-        (err, stdout) => (err ? reject(err) : resolve(stdout.trim())),
-      );
-    });
-    const nets = out.split(/\s+/).filter(Boolean);
-    medianetName = nets.find((n) => n.endsWith('_medianet')) ?? nets[0] ?? null;
+    const body = (await request.json()) as { tag?: string };
+    tag = body?.tag;
   } catch {
-    // Best effort. Without medianet the probes fall back to the old
-    // host-gateway path and will warn on every service — same as today.
+    // No body is fine — means "re-pull the current tag".
   }
 
-  const args = [
-    'run',
-    '--rm', '-d',
-    '--name', sidecarName,
-    ...(medianetName ? ['--network', medianetName] : ['--add-host', 'host.docker.internal:host-gateway']),
-    '-v', '/var/run/docker.sock:/var/run/docker.sock',
-    '-v', `${projectDir}:${projectDir}`,
-    '-v', `${hostLogsDir}:${hostLogsDir}`,
-    '-w', projectDir,
-    '-e', `HOST_PROJECT_DIR=${projectDir}`,
-    ...(medianetName
-      // docker-net mode: probe service containers directly on their
-      // internal port over the compose network.
-      ? ['-e', 'MMC_PORT_CHECK_MODE=docker-net']
-      // Fallback: legacy host-gateway probe (broken when HOST_BIND=127.0.0.1
-      // but kept for the unlikely case where network discovery failed).
-      : ['-e', 'MMC_PORT_CHECK_HOST=host.docker.internal']),
-    '--entrypoint', 'sh',
-    'mmc-media-ui:latest',
-    '-c', innerCmd,
-  ];
-
   try {
-    await new Promise<void>((resolve, reject) => {
-      execFile('docker', args, (err, _stdout, stderr) => {
-        if (err) {
-          console.error('Updater sidecar failed to start:', err.message, stderr);
-          reject(new Error(stderr || err.message));
-        } else {
-          resolve();
-        }
-      });
+    const env = readEnv();
+    const current = env.IMAGE_MEDIA_UI || 'ghcr.io/marioalfaro75/mmc-media-ui:latest';
+    const { image, tag: currentTag } = parseImageRef(current);
+
+    let target = current;
+    if (tag) {
+      if (!TAG_RE.test(tag)) {
+        return NextResponse.json({ error: `Tag rejected: ${tag}` }, { status: 400 });
+      }
+      target = `${image}:${tag}`;
+      if (target !== current) {
+        writeEnv({ IMAGE_MEDIA_UI: target });
+        logger.info(LOG, `Pinned dashboard image ${currentTag} -> ${tag}`);
+      }
+    }
+
+    // Fire-and-forget: the helper container recreates us, so this process is
+    // about to be replaced. The response goes out first; the client polls
+    // /api/health until the new instance answers.
+    selfRestart(true);
+    logger.info(LOG, `Dashboard update started (${target})`);
+
+    return NextResponse.json({
+      status: 'started',
+      image: target,
+      previousTag: currentTag,
+      message:
+        'Pulling and recreating the dashboard. This page will reconnect in a few seconds.',
     });
   } catch (err) {
-    // Failed to start — clear our lock so the next attempt isn't blocked.
-    try {
-      await writeFile(LOCK_PATH, '');
-    } catch {
-      /* ignore */
-    }
+    logger.error(LOG, `Dashboard update failed to start: ${String(err)}`);
     return NextResponse.json(
-      { error: 'Failed to start updater sidecar', details: sanitizeError(err) },
+      { error: 'Failed to start the update', details: sanitizeError(err) },
       { status: 500 },
     );
   }
-
-  return NextResponse.json({
-    status: 'started',
-    jobId: ts,
-    sidecarName,
-    logPath: containerLogPath,
-  });
 }

@@ -265,6 +265,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - TZ=${TZ}
+      # On-demand only. Every image in this stack is pinned to an explicit
+      # tag, so a scheduled sweep could never bump anything — it only ever
+      # re-pulled the same digest. Updates are now driven from the UI, which
+      # POSTs to the API below after writing the new tag to .env.
       - WATCHTOWER_SCHEDULE=${WATCHTOWER_SCHEDULE}
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_LABEL_ENABLE=true
@@ -276,8 +280,14 @@ services:
   # Unified Web UI
   # ============================================================
   media-ui:
-    build:
-      context: ./ui
+    # Pre-built by CI and pulled from GHCR — the production host does not
+    # compile anything. Building here used to mean stopping the running
+    # container first, then risking an OOM or a flaky npm registry with no
+    # image left to roll back to.
+    #
+    # To build from source instead (local development, or if GHCR is
+    # unreachable):  docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build media-ui
+    image: ${IMAGE_MEDIA_UI:-ghcr.io/marioalfaro75/mmc-media-ui:latest}
     container_name: media-ui
     networks:
       - medianet
@@ -318,9 +328,6 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-      # Host path of ~/.mmc/logs — used by /api/updates/apply so the
-      # updater sidecar writes logs visible to both the host and media-ui.
-      - MMC_HOST_LOGS_DIR=${HOME}/.mmc/logs
     volumes:
       - ./:${HOST_PROJECT_DIR}
       - /var/run/docker.sock:/var/run/docker.sock
@@ -335,4 +342,8 @@ services:
       - prowlarr
     restart: unless-stopped
     labels:
+      # Stays false: media-ui updates are user-driven from Settings ->
+      # Updates, via a `docker:cli` helper that pulls the pinned tag and
+      # recreates. Letting Watchtower bump it on a schedule would restart the
+      # dashboard unannounced, and could not honour a pinned rollback tag.
       - com.centurylinklabs.watchtower.enable=false

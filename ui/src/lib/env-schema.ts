@@ -95,6 +95,7 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'IMAGE_RECYCLARR', label: 'Recyclarr Image', type: 'string', group: 'images', description: 'Docker image for Recyclarr', default: 'ghcr.io/recyclarr/recyclarr:7.4.0', affectsServices: ['recyclarr'] },
   { key: 'IMAGE_UNPACKERR', label: 'Unpackerr Image', type: 'string', group: 'images', description: 'Docker image for Unpackerr', default: 'golift/unpackerr:0.14.5', affectsServices: ['unpackerr'] },
   { key: 'IMAGE_WATCHTOWER', label: 'Watchtower Image', type: 'string', group: 'images', description: 'Docker image for Watchtower', default: 'containrrr/watchtower:1.7.1', affectsServices: ['watchtower'] },
+  { key: 'IMAGE_MEDIA_UI', label: 'Dashboard Image', type: 'string', group: 'images', description: 'Docker image for this dashboard, built by CI and published to GHCR. Pin a version to roll back (e.g. :v1.2.3), or :edge to track main', default: 'ghcr.io/marioalfaro75/mmc-media-ui:latest', affectsServices: ['media-ui'] },
 ];
 
 export const MASKED_VALUE = '••••••••';
