@@ -712,6 +712,26 @@ setup_nas() {
     fi
 }
 
+# Resolve every IMAGE_* pin to the latest published tag and write it into
+# $1. Best-effort: a registry that can't be reached leaves that pin alone, so
+# the worst case is the stale-but-working default we shipped, never a broken
+# install. See scripts/resolve-image-tags.sh.
+refresh_image_pins() {
+    _env="$1"
+    _resolver="$PROJECT_DIR/scripts/resolve-image-tags.sh"
+    if [ ! -x "$_resolver" ]; then
+        warn "resolve-image-tags.sh not found or not executable — keeping the pins from .env.example"
+        return 0
+    fi
+    section "Image Versions"
+    info "Resolving current versions (the shipped defaults go stale between releases)..."
+    if "$_resolver" --write "$_env"; then
+        pass "Image pins resolved"
+    else
+        warn "Some versions could not be resolved — those pins keep their shipped default"
+    fi
+}
+
 check_env_file() {
     section "Environment"
     ENV_FILE="$PROJECT_DIR/.env"
@@ -726,6 +746,15 @@ check_env_file() {
         else
             warn ".env file not found — launching setup wizard"
             run_setup_wizard
+            # Bring the freshly-copied image pins up to date before anything
+            # is pulled. .env.example carries whatever was current when it was
+            # last edited, so without this a brand-new install starts life
+            # several versions — sometimes whole majors — behind on every
+            # service, and immediately reports updates for all of them.
+            #
+            # Only on first-run: an existing .env is the user's pinned state
+            # and is never rewritten behind their back.
+            refresh_image_pins "$ENV_FILE"
             # Source the newly created .env
             load_env "$ENV_FILE"
         fi
