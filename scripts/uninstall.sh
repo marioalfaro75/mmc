@@ -5,9 +5,10 @@
 # Default is a dry-run preview. Pass --yes to apply.
 #
 # Tier 1 (default, MMC-only):
-#   * stop+rm the 12 MMC containers, networks, locally-built image
+#   * stop+rm the MMC containers, networks, volumes, locally-built image
 #   * rm ~/.mmc/{config,logs,install-path,.nas-credentials}
-#   * rm the cloned repo dir (includes .env with the WireGuard key)
+#   * rm the cloned repo dir (includes .env with the WireGuard key —
+#     see --keep-secrets to rescue it first)
 #   * rm /etc/systemd/system/mmc.service if installed
 #   * unmount and remove fstab line for the NAS mount, if used
 #
@@ -19,6 +20,8 @@
 #   --wipe-docker-data        Also rm -rf /var/lib/docker (with --remove-docker)
 #   --remove-node             apt-remove Node.js + NodeSource repo
 #   --remove-nas-packages     apt-remove nfs-common cifs-utils smbclient
+#   --keep-secrets [PATH]     Save VPN keys + third-party API keys before
+#                             deleting .env (default ~/mmc-secrets-<ts>.env)
 #   --force                   Skip "other docker artifacts" safety guard
 #   --yes                     Actually execute (otherwise dry-run)
 #   --help | -h               Show this message
@@ -56,12 +59,30 @@ WIPE_DOCKER_DATA=0
 REMOVE_NODE=0
 REMOVE_NAS_PACKAGES=0
 FORCE=0
+KEEP_SECRETS=0
+KEEP_SECRETS_PATH=""
 
-# MMC's footprint (kept in one place so it's easy to audit)
-MMC_CONTAINERS="gluetun qbittorrent sabnzbd prowlarr sonarr radarr unpackerr bazarr seerr recyclarr watchtower media-ui"
+# MMC's footprint (kept in one place so it's easy to audit).
+#
+# These lists must track docker-compose.yml and .env.example. They had already
+# drifted once: flaresolverr was added to the stack and never added here, so an
+# uninstall left it running. If you add a service, add it in all three places.
+MMC_CONTAINERS="gluetun qbittorrent sabnzbd prowlarr flaresolverr sonarr radarr unpackerr bazarr seerr recyclarr watchtower media-ui"
 MMC_NETWORKS="mmc_medianet mmc_default"
+# Named volumes compose creates. nas-media comes from the Migration page's
+# managed-volume mode; it survived a full uninstall until this was added.
+MMC_VOLUMES="mmc_nas-media"
+# Only produced by docker-compose.build.yml now — the normal path pulls
+# media-ui from GHCR, which IMAGE_MEDIA_UI below covers.
 MMC_BUILT_IMAGES="mmc-media-ui:latest"
-MMC_IMAGE_VARS="IMAGE_GLUETUN IMAGE_QBITTORRENT IMAGE_SABNZBD IMAGE_PROWLARR IMAGE_SONARR IMAGE_RADARR IMAGE_UNPACKERR IMAGE_BAZARR IMAGE_SEERR IMAGE_RECYCLARR IMAGE_WATCHTOWER"
+MMC_IMAGE_VARS="IMAGE_GLUETUN IMAGE_QBITTORRENT IMAGE_SABNZBD IMAGE_PROWLARR IMAGE_FLARESOLVERR IMAGE_SONARR IMAGE_RADARR IMAGE_UNPACKERR IMAGE_BAZARR IMAGE_SEERR IMAGE_RECYCLARR IMAGE_WATCHTOWER IMAGE_MEDIA_UI"
+# Everything MMC puts under ~/.mmc. Missing an entry here leaves ~/.mmc
+# non-empty, so the rmdir at the end silently does nothing.
+MMC_HOME_PATHS="logs scripts install-path .nas-credentials backup-schedule.json"
+# Values worth rescuing before the repo (and .env) is deleted: things that came
+# from outside this install and are a nuisance to re-obtain. Deliberately not
+# MMC_API_KEY or QBITTORRENT_PASSWORD — the installer regenerates those.
+MMC_SECRET_KEYS="WIREGUARD_PRIVATE_KEY WIREGUARD_ADDRESSES WIREGUARD_PRESHARED_KEY WIREGUARD_MTU VPN_SERVICE_PROVIDER VPN_TYPE SERVER_COUNTRIES SERVER_HOSTNAMES SECURE_CORE_ONLY VPN_PORT_FORWARDING TMDB_API_KEY PLEX_URL NAS_HOST NAS_SHARE NAS_USERNAME NAS_PASSWORD NAS_VERS"
 
 # --- Parse args ------------------------------------------------------------
 show_help() {
@@ -71,9 +92,10 @@ uninstall.sh — Remove Mars Media Centre cleanly
 Default is a dry-run preview. Pass --yes to apply.
 
 Tier 1 (default, MMC-only):
-  * stop+rm the 12 MMC containers, networks, locally-built image
+  * stop+rm the MMC containers, networks, volumes, locally-built image
   * rm ~/.mmc/{config,logs,install-path,.nas-credentials}
-  * rm the cloned repo dir (includes .env with the WireGuard key)
+  * rm the cloned repo dir (includes .env with the WireGuard key —
+    see --keep-secrets to rescue it first)
   * rm /etc/systemd/system/mmc.service if installed
   * unmount and remove fstab line for the NAS mount, if used
 
@@ -85,6 +107,8 @@ Opt-in flags:
   --wipe-docker-data        Also rm -rf /var/lib/docker (with --remove-docker)
   --remove-node             apt-remove Node.js + NodeSource repo
   --remove-nas-packages     apt-remove nfs-common cifs-utils smbclient
+  --keep-secrets [PATH]     Save VPN keys + third-party API keys before
+                            deleting .env (default ~/mmc-secrets-<ts>.env)
   --force                   Skip "other docker artifacts" safety guard
   --yes                     Actually execute (otherwise dry-run)
   --help | -h               Show this message
@@ -102,6 +126,14 @@ while [ $# -gt 0 ]; do
         --wipe-docker-data)    WIPE_DOCKER_DATA=1 ;;
         --remove-node)         REMOVE_NODE=1 ;;
         --remove-nas-packages) REMOVE_NAS_PACKAGES=1 ;;
+        --keep-secrets)
+            KEEP_SECRETS=1
+            # Optional path. Only consume the next arg if it isn't another flag.
+            case "${2:-}" in
+                ""|--*) ;;
+                *) KEEP_SECRETS_PATH="$2"; shift ;;
+            esac
+            ;;
         --force)               FORCE=1 ;;
         --help|-h)             show_help ;;
         *) echo "ERROR: Unknown option: $1" >&2; echo "Run '${_MMC_UNINSTALL_ORIG_SELF:-$0} --help' for usage." >&2; exit 1 ;;
@@ -260,6 +292,7 @@ if [ -n "$_inside" ]; then
     [ "$WIPE_DOCKER_DATA" = "1" ]     && _suggest_flags="$_suggest_flags --wipe-docker-data"
     [ "$REMOVE_NODE" = "1" ]          && _suggest_flags="$_suggest_flags --remove-node"
     [ "$REMOVE_NAS_PACKAGES" = "1" ]  && _suggest_flags="$_suggest_flags --remove-nas-packages"
+    [ "$KEEP_SECRETS" = "1" ]         && _suggest_flags="$_suggest_flags --keep-secrets${KEEP_SECRETS_PATH:+ $KEEP_SECRETS_PATH}"
     [ "$FORCE" = "1" ]                && _suggest_flags="$_suggest_flags --force"
 
     printf "\n${RED}${BOLD}✗ Refusing to run from inside ${_inside}${RESET}\n\n"
@@ -289,8 +322,66 @@ info "Data root:         $DATA_ROOT"
 info "Config root:       $CONFIG_ROOT"
 info "Backup dir:        $BACKUP_DIR"
 
+# --- Rescue secrets (opt-in) -----------------------------------------------
+# Deliberately first. Everything below is destructive, and the whole point of
+# this flag is that the WireGuard key survives even if a later step fails.
+if [ "$KEEP_SECRETS" = "1" ]; then
+    section "Rescue secrets (--keep-secrets)"
+
+    if [ -z "$KEEP_SECRETS_PATH" ]; then
+        KEEP_SECRETS_PATH="$HOME/mmc-secrets-$(date +%Y%m%d-%H%M%S).env"
+    fi
+
+    # Refuse a destination inside the blast radius — saving the key into the
+    # directory we are about to delete would be worse than not saving it,
+    # because it looks like it worked.
+    _ks_real="$(readlink -f "$(dirname "$KEEP_SECRETS_PATH")" 2>/dev/null || echo "")"
+    case "$_ks_real" in
+        "$_real_repo"|"$_real_repo"/*|"$_real_mmc"|"$_real_mmc"/*)
+            fail "Refusing to write secrets into $_ks_real — that path is about to be deleted."
+            info "Pick somewhere outside the repo and ~/.mmc, e.g. \$HOME."
+            exit 1
+            ;;
+    esac
+
+    if [ ! -f "$ENV_FILE" ]; then
+        warn "No .env at $ENV_FILE — nothing to rescue"
+    else
+        plan "Write rescued values to $KEEP_SECRETS_PATH (mode 600)"
+        if [ "$DRY_RUN" = "0" ]; then
+            _tmp_ks="${KEEP_SECRETS_PATH}.partial"
+            {
+                echo "# Rescued by uninstall.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                echo "# Values that came from outside this install and are a"
+                echo "# nuisance to re-obtain. Paste back when reinstalling."
+                echo "#"
+                echo "# CONTAINS SECRETS — including your WireGuard private key."
+                echo ""
+                for _k in $MMC_SECRET_KEYS; do
+                    # Take the line verbatim from .env rather than the sourced
+                    # variable, so quoting and empties round-trip unchanged.
+                    grep -E "^${_k}=" "$ENV_FILE" 2>/dev/null | head -1 || true
+                done
+            } > "$_tmp_ks"
+            # 600 before it holds anything, then move into place — never a
+            # window where the key sits world-readable.
+            chmod 600 "$_tmp_ks"
+            mv "$_tmp_ks" "$KEEP_SECRETS_PATH"
+            chmod 600 "$KEEP_SECRETS_PATH"
+            _found=$(grep -cE "^[A-Z_]+=." "$KEEP_SECRETS_PATH" 2>/dev/null || echo 0)
+            ok "Saved $_found value(s) to $KEEP_SECRETS_PATH"
+            if grep -qE "^WIREGUARD_PRIVATE_KEY=." "$KEEP_SECRETS_PATH" 2>/dev/null; then
+                ok "WireGuard private key rescued"
+            else
+                warn "No WireGuard private key found in .env — nothing to rescue there"
+            fi
+            info "Copy this off the VM before you rely on it."
+        fi
+    fi
+fi
+
 # --- Tier 1: containers, networks, built image -----------------------------
-section "Containers, networks, locally-built image"
+section "Containers, networks, volumes, locally-built image"
 
 if have_cmd docker && docker info >/dev/null 2>&1; then
     _running=$(docker ps -aq --filter "name=^($(echo "$MMC_CONTAINERS" | tr ' ' '|'))$" 2>/dev/null | wc -l | tr -d ' ')
@@ -314,6 +405,22 @@ if have_cmd docker && docker info >/dev/null 2>&1; then
         done
         ok "Networks removed (any missing were already gone)"
     fi
+
+    # Named volumes. `compose down` above drops these only when it can parse
+    # the project — a broken .env means it can't, and mmc_nas-media then
+    # survives a "complete" uninstall. Remove them explicitly.
+    for _v in $MMC_VOLUMES; do
+        if docker volume inspect "$_v" >/dev/null 2>&1; then
+            plan "Remove volume: $_v"
+            if [ "$DRY_RUN" = "0" ]; then
+                docker volume rm "$_v" >/dev/null 2>&1 \
+                    && ok "Removed $_v" \
+                    || warn "Could not remove $_v (still in use?)"
+            fi
+        else
+            skip "Volume $_v not present"
+        fi
+    done
 
     for _img in $MMC_BUILT_IMAGES; do
         _exists=$(docker image inspect "$_img" >/dev/null 2>&1 && echo yes || echo no)
@@ -385,7 +492,14 @@ fi
 # --- Tier 1: ~/.mmc subdirs and repo ---------------------------------------
 section "MMC files"
 
-for _p in "$CONFIG_ROOT" "$HOME/.mmc/logs" "$INSTALL_MARKER"; do
+# CONFIG_ROOT is listed separately because the user can relocate it outside
+# ~/.mmc; everything in MMC_HOME_PATHS is fixed relative to ~/.mmc.
+_sweep="$CONFIG_ROOT"
+for _hp in $MMC_HOME_PATHS; do
+    _sweep="$_sweep $HOME/.mmc/$_hp"
+done
+
+for _p in $_sweep; do
     if [ -e "$_p" ]; then
         _sz=$(size_of "$_p")
         plan "Remove $_p ($_sz)"
@@ -409,11 +523,6 @@ if [ -d "$REPO_DIR" ]; then
             fail "Could not fully remove $REPO_DIR"
         fi
     fi
-fi
-
-# Try ~/.mmc — only if it ends up empty
-if [ -d "$HOME/.mmc" ] && [ "$DRY_RUN" = "0" ]; then
-    rmdir "$HOME/.mmc" 2>/dev/null && ok "Removed empty $HOME/.mmc" || true
 fi
 
 # --- Systemd unit ----------------------------------------------------------
@@ -565,6 +674,20 @@ if [ "$REMOVE_NAS_PACKAGES" = "1" ]; then
     info "Not removing rsync — too widely used by other tools."
 fi
 
+# --- Final sweep -----------------------------------------------------------
+# Attempted last, not in the "MMC files" section: DATA_ROOT and BACKUP_DIR
+# usually live under ~/.mmc and are only removed by the opt-in purges further
+# up. Trying earlier always failed on a non-empty directory and left an empty
+# ~/.mmc behind after a full purge.
+if [ -d "$HOME/.mmc" ] && [ "$DRY_RUN" = "0" ]; then
+    if rmdir "$HOME/.mmc" 2>/dev/null; then
+        ok "Removed empty $HOME/.mmc"
+    else
+        _left=$(ls -A "$HOME/.mmc" 2>/dev/null | tr '\n' ' ')
+        [ -n "$_left" ] && info "Kept $HOME/.mmc (still holds: $_left)"
+    fi
+fi
+
 # --- Summary ---------------------------------------------------------------
 section "Summary"
 
@@ -579,12 +702,19 @@ if [ "$DRY_RUN" = "1" ]; then
     [ "$WIPE_DOCKER_DATA" = "1" ]    && _flags="$_flags --wipe-docker-data"
     [ "$REMOVE_NODE" = "1" ]         && _flags="$_flags --remove-node"
     [ "$REMOVE_NAS_PACKAGES" = "1" ] && _flags="$_flags --remove-nas-packages"
+    [ "$KEEP_SECRETS" = "1" ]        && _flags="$_flags --keep-secrets${KEEP_SECRETS_PATH:+ $KEEP_SECRETS_PATH}"
     [ "$FORCE" = "1" ]               && _flags="$_flags --force"
     _hint_self="${_MMC_UNINSTALL_ORIG_SELF:-$0}"
     info "To apply the plan above:"
     info "  $_hint_self $_flags"
 else
     printf "  ${GREEN}${BOLD}✓ Uninstall complete${RESET}\n"
+    if [ "$KEEP_SECRETS" = "1" ] && [ -f "$KEEP_SECRETS_PATH" ]; then
+        echo ""
+        printf "  ${BOLD}Rescued secrets:${RESET} %s\n" "$KEEP_SECRETS_PATH"
+        info "  Contains your WireGuard private key. Copy it off this VM."
+    fi
+    echo ""
     info "What remains intact (unless you passed the opt-in flags):"
     [ -d "$DATA_ROOT" ]   && info "  - $DATA_ROOT"
     [ -d "$BACKUP_DIR" ]  && info "  - $BACKUP_DIR"
