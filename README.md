@@ -170,7 +170,7 @@ docker compose up -d   # Recreate changed containers
 
 ## Post-Deploy Configuration
 
-Complete these steps in order after first deploy. The web UI also has a full interactive guide with Quick Setup buttons at `http://localhost:3000/guide`.
+Complete these steps in order after first deploy. The web UI also has a full interactive guide with Quick Setup buttons at `http://<host>:3000/guide`.
 
 ### Auto-Detect API Keys
 
@@ -184,7 +184,7 @@ After first deploy, go to the Guide page and click **Detect API Keys**. This rea
    ```
    Confirm the output shows a VPN IP, not your real IP. If it fails, check `docker logs gluetun` for connection errors.
 
-2. **qBittorrent** (`localhost:8080`):
+2. **qBittorrent** (`<host>:8080`):
    - **Password is auto-rotated on first deploy.** Before Stage 3, `deploy.sh` scrapes qBittorrent's one-time temporary password from container logs, swaps it for a strong random password via the WebUI API, and writes that value to `.env` as `QBITTORRENT_PASSWORD`. The dashboard chip is green from first boot — no manual log-grep + password-paste dance.
    - The generated password is only ever stored in `.env` (mode `600`). View it under Settings → Services (masked like any other secret), or just inspect the file. Pass `--skip-qbt-autoseed` to `deploy.sh` if you'd rather handle it yourself; if you do, the temp password is at:
      ```bash
@@ -192,7 +192,7 @@ After first deploy, go to the Guide page and click **Detect API Keys**. This rea
      ```
    - Use Quick Setup in the Guide page to auto-configure save paths, categories, VPN binding, and seeding limits.
 
-3. **SABnzbd** (`localhost:8081`):
+3. **SABnzbd** (`<host>:8081`):
    - Run through the setup wizard on first access
    - Add your usenet server(s): Config → Servers → Add Server
    - Set folders: Config → Folders:
@@ -204,15 +204,15 @@ After first deploy, go to the Guide page and click **Detect API Keys**. This rea
 
 ### Phase 2: Indexers & Media Managers
 
-4. **Prowlarr** (`localhost:9696`):
+4. **Prowlarr** (`<host>:9696`):
    - Add indexers: Indexers → Add Indexer → search and configure your trackers/usenet indexers
    - Use Quick Setup to auto-connect Sonarr and Radarr, or manually add via Settings → Apps
 
-5. **Sonarr** (`localhost:8989`):
+5. **Sonarr** (`<host>:8989`):
    - Use Quick Setup to auto-configure root folder, download clients, and naming, or configure manually
    - Find your API key: Settings → General → API Key
 
-6. **Radarr** (`localhost:7878`):
+6. **Radarr** (`<host>:7878`):
    - Use Quick Setup to auto-configure root folder, download clients, and naming, or configure manually
    - Find your API key: Settings → General → API Key
 
@@ -227,12 +227,12 @@ After first deploy, go to the Guide page and click **Detect API Keys**. This rea
 
 ### Phase 3: Subtitles & Requests
 
-8. **Bazarr** (`localhost:6767`):
+8. **Bazarr** (`<host>:6767`):
    - Use Quick Setup in the Guide page to auto-connect Sonarr and Radarr, or configure manually
    - Add subtitle providers: Settings → Providers → Add (OpenSubtitles, Addic7ed, etc.)
    - Set languages: Settings → Languages → add your preferred subtitle language(s)
 
-9. **Seerr** (`localhost:5055`):
+9. **Seerr** (`<host>:5055`):
    - Sign in with your Plex account on first access (creates admin user)
    - Use Quick Setup in the Guide page or the "Auto-configure Seerr" button on the Requests page to connect Sonarr and Radarr automatically
    - Configure user permissions: Settings → Users → click a user → set request limits and auto-approve rules
@@ -252,19 +252,32 @@ After first deploy, go to the Guide page and click **Detect API Keys**. This rea
 
 ## Service URLs
 
-| Service | Default URL | Purpose |
-|---------|-------------|---------|
-| Mars Media Centre UI | `http://localhost:3000` | Dashboard & management |
-| qBittorrent | `http://localhost:8080` | Torrent client |
-| SABnzbd | `http://localhost:8081` | Usenet client |
-| Sonarr | `http://localhost:8989` | TV show management |
-| Radarr | `http://localhost:7878` | Movie management |
-| Prowlarr | `http://localhost:9696` | Indexer management |
-| Seerr | `http://localhost:5055` | Media requests |
-| Bazarr | `http://localhost:6767` | Subtitle management |
-| Gluetun | `http://localhost:8000` | VPN control API |
+Replace `<host>` below with wherever the stack runs — the VM's LAN IP
+(`192.168.1.50`), its hostname (`mmc.local`), or `localhost` if you are
+browsing from the machine itself.
 
-> All ports are bound to `127.0.0.1` (localhost only) by default. Plex runs externally and is accessed via the sidebar link.
+| Service | URL | Purpose |
+|---------|-----|---------|
+| Mars Media Centre UI | `http://<host>:3000` | Dashboard & management |
+| qBittorrent | `http://<host>:8080` | Torrent client |
+| SABnzbd | `http://<host>:8081` | Usenet client |
+| Sonarr | `http://<host>:8989` | TV show management |
+| Radarr | `http://<host>:7878` | Movie management |
+| Prowlarr | `http://<host>:9696` | Indexer management |
+| Seerr | `http://<host>:5055` | Media requests |
+| Bazarr | `http://<host>:6767` | Subtitle management |
+| Gluetun | `http://<host>:8000` | VPN control API |
+
+> **`<host>` can only be a remote address if you have opened the ports.** By
+> default `HOST_BIND=127.0.0.1`, which publishes every service on loopback
+> only — reachable from the VM itself and nowhere else. Browsing from your
+> laptop then needs either `HOST_BIND=0.0.0.0` (see below) or an SSH tunnel:
+> `ssh -L 3000:localhost:3000 user@<vm-ip>`.
+>
+> The dashboard's own links follow whatever hostname you used to reach it, so
+> they work from a phone or laptop without any further configuration.
+>
+> Plex runs externally and is accessed via the sidebar link.
 
 ### Exposing services on the LAN
 
@@ -385,7 +398,7 @@ docker exec qbittorrent wget -qO- https://ipinfo.io
 
 ## Web UI
 
-The Mars Media Centre dashboard at `http://localhost:3000` provides:
+The Mars Media Centre dashboard at `http://<host>:3000` provides:
 
 - Combined download queue (torrents + usenet) with pause, resume, force start, and delete with optional file removal. Sort by name or progress. Import-blocked downloads shown with warning messages and blocklist/search actions.
 - Dashboard with download stats (today/week/failed counts + recently completed history)
@@ -403,7 +416,7 @@ The Mars Media Centre dashboard at `http://localhost:3000` provides:
 
 ### Settings Page
 
-The Settings page (`http://localhost:3000/settings`) provides tabbed configuration:
+The Settings page (`http://<host>:3000/settings`) provides tabbed configuration:
 
 - **General** — Timezone, user/group IDs, storage paths, log level, API key (authentication)
 - **VPN** — Provider, credentials, server country, port forwarding, ProtonVPN Secure Core
@@ -416,14 +429,14 @@ The Settings page (`http://localhost:3000/settings`) provides tabbed configurati
 
 ### Logs Page
 
-The Logs page (`http://localhost:3000/logs`) provides two tabs:
+The Logs page (`http://<host>:3000/logs`) provides two tabs:
 
 - **Services** — View application log files for each service (Sonarr, Radarr, Prowlarr, Bazarr, Seerr, Recyclarr, media-ui). Toggle between app logs and Docker container output.
 - **Deploy** — Browse and view deploy script log files
 
 ## Media Migration
 
-The Migration page (`http://localhost:3000/migration`) lets you move your media library to a NAS, network share, or local directory without leaving the web UI.
+The Migration page (`http://<host>:3000/migration`) lets you move your media library to a NAS, network share, or local directory without leaving the web UI.
 
 ### Destination Options
 

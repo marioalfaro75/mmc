@@ -1,4 +1,7 @@
-const BASE_URL = process.env.PLEX_URL || 'http://localhost:32400';
+// host.docker.internal, not localhost: this runs inside the media-ui
+// container, where localhost is the container's own loopback. compose maps
+// host.docker.internal to the host gateway via extra_hosts.
+const BASE_URL = process.env.PLEX_URL || 'http://host.docker.internal:32400';
 const TOKEN = process.env.PLEX_TOKEN || '';
 
 async function plexFetch<T>(path: string): Promise<T> {

@@ -447,6 +447,45 @@ service_host() {
     esac
 }
 
+# True when the published ports are loopback-only, i.e. every URL we print is
+# unreachable from any other machine.
+host_is_loopback() {
+    case "${HOST_BIND:-127.0.0.1}" in
+        ""|127.0.0.1|localhost) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Print the loopback caveat once, wherever we hand the user a URL.
+#
+# service_host() is honest — with HOST_BIND=127.0.0.1 the service really is
+# reachable only from this machine — but ending an install by pointing at a
+# URL the user cannot open, from the laptop they are almost certainly sitting
+# at, is a poor way to finish. Say what to do instead.
+print_access_note() {
+    host_is_loopback || return 0
+    _lan=$(detect_local_ip 2>/dev/null || echo "")
+    echo ""
+    warn "These URLs work on this machine only — HOST_BIND=127.0.0.1 publishes"
+    info "  every service on loopback. To reach them from another device:"
+    info ""
+    info "  Open them to your LAN (then re-run this script):"
+    info "    sed -i 's|^HOST_BIND=.*|HOST_BIND=0.0.0.0|' ${PROJECT_DIR}/.env"
+    if [ -n "$_lan" ] && [ "$_lan" != "localhost" ]; then
+        info "    ...then browse to http://${_lan}:${PORT_UI:-3000}"
+        info ""
+        info "  Or leave it closed and tunnel over SSH from your laptop:"
+        info "    ssh -L ${PORT_UI:-3000}:localhost:${PORT_UI:-3000} ${USER}@${_lan}"
+    else
+        info ""
+        info "  Or leave it closed and tunnel over SSH from your laptop:"
+        info "    ssh -L ${PORT_UI:-3000}:localhost:${PORT_UI:-3000} ${USER}@<this-vm-ip>"
+    fi
+    info ""
+    info "  Opening to the LAN also fixes service links inside the dashboard,"
+    info "  which follow whatever hostname you used to reach it."
+}
+
 # ============================================================
 # NAS MOUNT FUNCTIONS
 # ============================================================
@@ -1137,6 +1176,7 @@ print_services_summary() {
     if [ "$_host" != "localhost" ]; then
         info "  (also reachable as http://localhost:${PORT_UI} on this machine)"
     fi
+    print_access_note
     echo ""
 
     info "${BOLD}Media Management${RESET}"
@@ -1996,6 +2036,8 @@ print_post_install_checklist() {
     info "     can connect Sonarr/Radarr/Bazarr to it automatically."
 
     echo ""
+    print_access_note
+    echo ""
     info "All of the above are walked through step-by-step in the Setup Guide:"
     info "  http://${_host}:${PORT_UI}/guide"
 }
@@ -2030,6 +2072,7 @@ print_summary() {
         info "${BOLD}Next steps:${RESET}"
         _step=1
         info "  ${_step}. Open http://${_host}:${PORT_UI}/settings to configure missing settings"
+        host_is_loopback && info "     (loopback-only — see the access note above if you are on another machine)"
         _step=$((_step + 1))
         if [ -n "$_missing_vars" ]; then
             info "  ${_step}. Required fields still empty:${_missing_vars}"
