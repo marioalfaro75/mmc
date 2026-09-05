@@ -1,0 +1,88 @@
+name: Refresh image pins
+
+# Opens a PR bumping the IMAGE_* defaults in .env.example to whatever is
+# currently published.
+#
+# Pinning is deliberate — reproducible installs, no surprise 3am breakage.
+# But the *defaults* were hardcoded and never revisited, so they rotted: at one
+# point a brand-new install started with Radarr, Prowlarr and SABnzbd each a
+# full major version behind, and immediately reported updates for everything.
+#
+# This does not touch anyone's running stack. It only proposes a change to the
+# committed defaults, which you review and merge like any other PR.
+#
+# deploy.sh --install also resolves versions at install time, so a fresh
+# install is current even if this file has drifted since the last merge. The
+# two are belt and braces.
+
+on:
+  schedule:
+    # Mondays 06:00 UTC. Weekly is enough — the *arr projects don't ship daily,
+    # and a PR per day would train you to ignore them.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    name: Resolve latest tags
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Resolve and rewrite .env.example
+        id: resolve
+        run: |
+          chmod +x scripts/resolve-image-tags.sh
+          # Capture the report so it can go in the PR body — the diff alone
+          # doesn't say which are major jumps worth looking at.
+          ./scripts/resolve-image-tags.sh --write .env.example | tee /tmp/report.txt
+          {
+            echo 'report<<REPORT_EOF'
+            cat /tmp/report.txt
+            echo 'REPORT_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Any changes?
+        id: diff
+        run: |
+          if git diff --quiet -- .env.example; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "All pins already current — nothing to propose."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff -- .env.example
+          fi
+
+      - name: Open pull request
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e # v7
+        with:
+          branch: chore/refresh-image-pins
+          # Reuse one branch: a stale open PR gets updated rather than piling
+          # up a new one every week.
+          delete-branch: true
+          commit-message: "chore: refresh image pins in .env.example"
+          title: "chore: refresh image pins in .env.example"
+          body: |
+            Automated weekly refresh of the `IMAGE_*` defaults in `.env.example`.
+
+            These are the versions a **fresh install** starts from. They do not
+            affect any running stack — existing `.env` files are never touched.
+
+            ```
+            ${{ steps.resolve.outputs.report }}
+            ```
+
+            `^` means the pin moved, `=` means it was already current, `?` means
+            that registry could not be reached and the pin was left alone.
+
+            **Check for major version jumps before merging.** The *arr projects
+            do ship breaking changes across majors — config schema migrations
+            that can't be rolled back. A jump like `5.x -> 6.x` is worth a
+            glance at that project's release notes; a patch bump usually isn't.
+          labels: |
+            dependencies
