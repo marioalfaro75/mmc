@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowUpCircle,
@@ -9,7 +9,6 @@ import {
   Loader2,
   Package,
   RefreshCw,
-  Terminal,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@/components/common/Card';
@@ -20,7 +19,6 @@ import type { AppUpdatesPayload, AppVersionInfo } from '@/lib/app-updates';
 
 export function UpdatesTab() {
   const queryClient = useQueryClient();
-  const logRef = useRef<HTMLPreElement>(null);
 
   const check = useQuery<UpdateCheckPayload>({
     queryKey: ['updates', 'check'],
@@ -34,27 +32,14 @@ export function UpdatesTab() {
     staleTime: 60 * 60 * 1000,
   });
 
-  const { apply, applying, running, status } = useApplyUpdate(
+  const { apply, applying, running } = useApplyUpdate(
     check.data?.updateAvailable ?? false,
   );
 
-  // Per-app apply. Doesn't reload the page (sibling containers, not media-ui)
-  // — just kicks off the sidecar and re-fetches the apps list when the
-  // shared status lock releases.
-  //
-  // Per-app apply lifecycle. The naive "watch status.running flip back to
-  // false → finished" check has a race: status.running starts at undefined
-  // (not yet polled) or false (last poll showed no job), so the moment the
-  // POST returns success we'd fire cleanup before the status query has
-  // even noticed the sidecar exists. Explicit phases keep the button
-  // showing progress through the whole run.
-  //   idle → waiting (POST returned) → running (status.running=true seen) → idle
-  type ApplyPhase = 'idle' | 'waiting' | 'running';
-  const [appPhase, setAppPhase] = useState<ApplyPhase>('idle');
-  const appPhaseKey = useRef<string | null>(null);
-  const appPhaseLabel = useRef<string | null>(null);
-  const appPhaseTag = useRef<string | null>(null);
-
+  // Per-app apply. Synchronous now: the endpoint pulls, writes .env and
+  // recreates that one container before responding, so there is no job to
+  // poll and no log to tail. The mutation's own pending state is the whole
+  // progress model.
   const applyAppMutation = useMutation<unknown, Error, AppVersionInfo>({
     mutationFn: async (app) => {
       const res = await fetch('/api/updates/apps/apply', {
@@ -69,59 +54,17 @@ export function UpdatesTab() {
       return res.json();
     },
     onSuccess: (_data, app) => {
-      appPhaseKey.current = app.key;
-      appPhaseLabel.current = app.label;
-      appPhaseTag.current = app.latestTag;
-      setAppPhase('waiting');
-      toast.success(`Updating ${app.label} → ${app.latestTag}`);
-      queryClient.invalidateQueries({ queryKey: ['updates', 'status'] });
+      toast.success(`${app.label} updated to ${app.latestTag}`);
     },
     onError: (err) => toast.error(err.message || 'Apply failed'),
-  });
-
-  useEffect(() => {
-    // waiting → running: the status poll has now caught the sidecar.
-    if (appPhase === 'waiting' && status?.running) {
-      setAppPhase('running');
-      return;
-    }
-    // running → idle: sidecar finished. Parse the log tail to decide
-    // success vs failure, then force-refresh the apps endpoint (just
-    // invalidating would re-serve the 1h server-side cache from before
-    // the apply).
-    if (appPhase === 'running' && status?.running === false) {
-      const tail = status?.logTail ?? '';
-      const exitMatch = tail.match(/Done \(exit (\d+)\)/);
-      const exitCode = exitMatch ? Number(exitMatch[1]) : null;
-      const pullFailed = /Pull failed/.test(tail);
-      const label = appPhaseLabel.current ?? 'App';
-      const tag = appPhaseTag.current;
-      if (pullFailed || (exitCode !== null && exitCode !== 0)) {
-        const reason = pullFailed
-          ? 'Image tag not found in the registry — .env was rolled back.'
-          : `Updater exited with code ${exitCode}. Check the log below.`;
-        toast.error(`${label} update failed. ${reason}`);
-      } else {
-        toast.success(tag ? `${label} updated to ${tag}.` : `${label} updated.`);
-      }
-      setAppPhase('idle');
-      appPhaseKey.current = null;
-      appPhaseLabel.current = null;
-      appPhaseTag.current = null;
+    onSettled: () => {
       // ?force=1 bypasses the 1h server-side cache so the row re-renders
-      // with the new currentTag (or, on failure, the rolled-back one).
+      // with the tag that is actually running now.
       fetchApi<AppUpdatesPayload>('/api/updates/apps?force=1')
         .catch(() => null)
         .finally(() => queryClient.invalidateQueries({ queryKey: ['updates', 'apps'] }));
-    }
-  }, [appPhase, status?.running, status?.logTail, queryClient]);
-
-  // Auto-scroll the log pane as new bytes arrive.
-  useEffect(() => {
-    if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight;
-    }
-  }, [status?.logBytes]);
+    },
+  });
 
   const forceCheck = useCallback(async () => {
     await Promise.all([
@@ -199,7 +142,7 @@ export function UpdatesTab() {
                 <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
-                    onClick={apply}
+                    onClick={() => apply()}
                     disabled={applying || running}
                     className="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
                   >
@@ -259,26 +202,15 @@ export function UpdatesTab() {
               // briefly flip to "Up to date" between the POST returning
               // and the status poll noticing the new job, and again
               // before the apps endpoint re-fetches.
-              const isPhaseBusyForThisApp =
-                appPhase !== 'idle' && appPhaseKey.current === app.key;
-              // Also catch the case where another tab/session started the
-              // sidecar — the job ID encodes the service name.
-              const isExternalBusy =
-                running && !!status?.jobId && status.jobId.includes(`-${app.service}-`);
-              const showSpinner = isApplyingThis || isPhaseBusyForThisApp || isExternalBusy;
+              const showSpinner = isApplyingThis;
               const showButton =
                 (app.updateAvailable && !!app.latestTag) || showSpinner;
               const showUpToDate =
                 !showButton && !app.updateAvailable && !app.error;
-              const buttonLabel = showSpinner
-                ? appPhase === 'waiting'
-                  ? 'Starting…'
-                  : 'Updating…'
-                : `Apply ${app.latestTag}`;
-              // Lock out applies on every row while ANY apply is running
-              // (the lock file is shared, the server would 409 anyway).
-              const lockedByOtherApp =
-                !showSpinner && (running || appPhase !== 'idle');
+              const buttonLabel = showSpinner ? 'Updating…' : `Apply ${app.latestTag}`;
+              // One at a time: each apply recreates a container, and doing
+              // several at once makes a failure hard to attribute.
+              const lockedByOtherApp = !showSpinner && applyAppMutation.isPending;
               return (
                 <div key={app.key} className="flex flex-wrap items-center justify-between gap-3 p-3">
                   <div className="min-w-0 flex-1">
@@ -339,32 +271,6 @@ export function UpdatesTab() {
         )}
       </Card>
 
-      {(running || (status?.logTail && status.logTail.length > 0)) && (
-        <Card className="space-y-2 p-4">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Terminal className="h-3 w-3" />
-            <span>
-              Update log
-              {status?.jobId && (
-                <span className="ml-2 font-mono">({status.jobId})</span>
-              )}
-              {running && <span className="ml-2">— in progress</span>}
-            </span>
-          </div>
-          <pre
-            ref={logRef}
-            className="max-h-[480px] overflow-auto rounded bg-black/40 p-3 font-mono text-[11px] leading-relaxed text-muted-foreground"
-          >
-            {status?.logTail || 'Waiting for output…'}
-          </pre>
-          {running && (
-            <p className="text-xs text-muted-foreground">
-              The dashboard will briefly disconnect when media-ui is recreated; this page will
-              reload automatically once the new instance is healthy.
-            </p>
-          )}
-        </Card>
-      )}
     </div>
   );
 }

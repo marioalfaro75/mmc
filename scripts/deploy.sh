@@ -828,26 +828,6 @@ migrate_env() {
         pass "Added $_added new variable(s) to .env"
     fi
 
-    # Generate any secret that must not ship as a blank. The compose file
-    # guards WATCHTOWER_TOKEN with `:?`, so an empty value fails the whole
-    # stack rather than one service — and the loop above copies it from
-    # .env.example empty by design (the example must not contain a secret).
-    _wt_token=$(grep -E '^WATCHTOWER_TOKEN=' "$ENV_FILE" | head -1 | cut -d= -f2-)
-    if [ -z "$_wt_token" ]; then
-        _wt_new=$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom 2>/dev/null | head -c 40)
-        if [ "${#_wt_new}" -ge 32 ]; then
-            sed -i "s|^WATCHTOWER_TOKEN=.*|WATCHTOWER_TOKEN=$_wt_new|" "$ENV_FILE"
-            pass "Generated WATCHTOWER_TOKEN"
-            export WATCHTOWER_TOKEN="$_wt_new"
-            # Same redaction the qBittorrent seed does — never echoed, but
-            # scrub the deploy log anyway.
-            if [ -n "$_MMC_LOGGED" ] && [ -f "$_MMC_LOGGED" ]; then
-                sed -i "s/WATCHTOWER_TOKEN=.*/WATCHTOWER_TOKEN=[REDACTED]/g" "$_MMC_LOGGED" 2>/dev/null || true
-            fi
-        else
-            warn "Could not generate WATCHTOWER_TOKEN — set it by hand in .env"
-        fi
-    fi
 }
 
 validate_env() {

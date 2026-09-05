@@ -269,19 +269,11 @@ services:
       # tag, so a scheduled sweep could never bump anything — it only ever
       # re-pulled the same digest. Updates are now driven from the UI, which
       # POSTs to the API below after writing the new tag to .env.
-      - WATCHTOWER_HTTP_API_UPDATE=true
-      # Not guarded with `:?`. A missing updater secret must not stop Sonarr,
-      # Radarr and qBittorrent from starting — that is the same over-coupling
-      # that let a NAS blip take down the dashboard. deploy.sh generates the
-      # token on migrate; if it is somehow still blank, Watchtower runs
-      # without its API and the UI reports the update button as unavailable.
-      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_TOKEN:-}
+      - WATCHTOWER_SCHEDULE=${WATCHTOWER_SCHEDULE}
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_LABEL_ENABLE=true
       - WATCHTOWER_NOTIFICATIONS_HOSTNAME=mars-media-centre
       - DOCKER_API_VERSION=1.44
-    networks:
-      - medianet
     restart: unless-stopped
 
   # ============================================================
@@ -336,9 +328,6 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-      # Host path of ~/.mmc/logs — used by /api/updates/apply so the
-      # updater sidecar writes logs visible to both the host and media-ui.
-      - MMC_HOST_LOGS_DIR=${HOME}/.mmc/logs
     volumes:
       - ./:${HOST_PROJECT_DIR}
       - /var/run/docker.sock:/var/run/docker.sock
@@ -353,8 +342,8 @@ services:
       - prowlarr
     restart: unless-stopped
     labels:
-      # Watchtower performs the pull-and-recreate when you click Update, so
-      # media-ui never has to operate on itself. It cannot: a container
-      # cannot recreate the container it is running in, which is why this
-      # used to need a detached sidecar.
-      - com.centurylinklabs.watchtower.enable=true
+      # Stays false: media-ui updates are user-driven from Settings ->
+      # Updates, via a `docker:cli` helper that pulls the pinned tag and
+      # recreates. Letting Watchtower bump it on a schedule would restart the
+      # dashboard unannounced, and could not honour a pinned rollback tag.
+      - com.centurylinklabs.watchtower.enable=false

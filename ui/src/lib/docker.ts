@@ -213,6 +213,12 @@ export async function startService(name: string): Promise<void> {
   }
 }
 
+/** Pull one image by full reference. Separate from compose so a bad tag
+ *  fails here, before .env or any running container has been touched. */
+export async function pullImage(ref: string): Promise<void> {
+  await execFileAsync('docker', ['pull', ref], { timeout: 300000 });
+}
+
 export async function recreateServices(services: string[]): Promise<void> {
   const args = [...composeArgs(), 'up', '-d', '--force-recreate', ...services];
   await execFileAsync('docker', args, { timeout: 180000 });
@@ -246,28 +252,52 @@ export function selfStop(): void {
   child.unref();
 }
 
-export function selfRestart(): void {
+/**
+ * Recreate the media-ui container from a short-lived helper.
+ *
+ * `docker compose up -d --force-recreate media-ui` kills this container
+ * mid-execution, so it cannot be run from inside it. The helper is a separate
+ * container and survives our restart.
+ *
+ * The helper image is `docker:cli` — small, stable, and crucially NOT
+ * mmc-media-ui. A helper built from the image being replaced cannot recover
+ * from a bad image: the thing you need to run the fix is the thing that is
+ * broken.
+ *
+ * @param pullFirst  Also pull before recreating. Needed when the image tag is
+ *                   unchanged but its digest moved (`:latest` advanced after a
+ *                   release) — compose only pulls when an image is absent, so
+ *                   without this it would recreate from the stale local copy.
+ *                   A tag *change* in .env doesn't need it, but pulling is
+ *                   harmless there and one code path is easier to reason about.
+ */
+export function selfRestart(pullFirst = false): void {
   if (!PROJECT_DIR || !/^\/[\w./-]+$/.test(PROJECT_DIR)) {
     throw new Error('Invalid or missing HOST_PROJECT_DIR');
   }
 
-  // To pick up new env vars or volume mounts, we need
-  // `docker compose up -d --force-recreate media-ui`.
-  // But that command kills this container mid-execution.
-  // Solution: run the compose command from a short-lived helper container that
-  // shares the Docker socket and project directory. This container survives
-  // the media-ui restart because it's a separate container.
+  const compose = [
+    'docker', 'compose',
+    ...composeFileArgs(),
+    '--project-directory', PROJECT_DIR,
+    '--env-file', `${PROJECT_DIR}/.env`,
+  ].join(' ');
+
+  // `pull` must not be fatal on its own: if the registry is unreachable but a
+  // usable image is already local, recreating is still the better outcome than
+  // refusing to do anything.
+  const inner = pullFirst
+    ? `${compose} pull media-ui || true; ${compose} up -d --force-recreate media-ui`
+    : `${compose} up -d --force-recreate media-ui`;
+
   const args = [
     'run', '--rm', '-d',
     '--name', 'mmc-self-restart',
     '-v', '/var/run/docker.sock:/var/run/docker.sock',
     '-v', `${PROJECT_DIR}:${PROJECT_DIR}:ro`,
+    '--entrypoint', 'sh',
     'docker:cli',
-    'docker', 'compose',
-    ...composeFileArgs(),
-    '--project-directory', PROJECT_DIR,
-    '--env-file', `${PROJECT_DIR}/.env`,
-    'up', '-d', '--force-recreate', 'media-ui',
+    '-c', inner,
   ];
   const child = execFile('docker', args, { timeout: 30000 }, () => {});
   child.unref();

@@ -1,49 +1,33 @@
 import { NextResponse } from 'next/server';
-import { execFile } from 'child_process';
-import { writeFile, stat } from 'fs/promises';
-import { existsSync } from 'fs';
 import { requireAdmin } from '@/lib/auth';
 import { sanitizeError } from '@/lib/security';
 import { readEnv, writeEnv } from '@/lib/env';
+import { pullImage, recreateServices } from '@/lib/docker';
 import { APP_UPDATE_SOURCES, parseImageRef } from '@/lib/app-updates';
 import { ENV_SCHEMA } from '@/lib/env-schema';
+import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
-const LOCK_PATH = '/app/logs/update.lock';
-const LOCK_STALE_MS = 30 * 60 * 1000;
-
-// Image tags allow [A-Za-z0-9_.-] up to 128 chars per OCI spec; no slashes.
+const LOG = 'updates';
+// OCI tag grammar: [A-Za-z0-9_][A-Za-z0-9._-]{0,127}
 const TAG_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
 
 /**
- * Bump one IMAGE_* pin in .env and recreate the affected container.
+ * Bump one IMAGE_* pin in .env and recreate that container.
  *
- * Unlike /api/updates/apply (which rebuilds media-ui and so must run in a
- * sidecar to survive its own restart), this one targets sibling containers
- * — but we still spawn a detached sidecar so:
- *  - the route returns immediately with a jobId,
- *  - progress logs to the same shared file /api/updates/status reads,
- *  - the in-flight lock keeps the existing "single update at a time" rule.
+ * Runs inline rather than in a sidecar. The sidecar only ever existed
+ * because media-ui cannot recreate *itself* — but these are sibling
+ * containers, so the docker socket we already hold is enough. That removes
+ * the lock file, the log tailing and the status polling that went with it.
  *
- * The pull-then-write-then-up order means a broken tag (typo, removed
- * image) fails at `docker pull` before .env is touched.
+ * Pull first, write .env second, recreate third. A bad tag then fails at the
+ * pull, before anything on disk or any running container has been touched —
+ * the previous ordering wrote .env first and had to sed it back on failure.
  */
 export async function POST(request: Request) {
   const denied = requireAdmin(request);
   if (denied) return denied;
-
-  const projectDir = process.env.HOST_PROJECT_DIR;
-  const hostLogsDir = process.env.MMC_HOST_LOGS_DIR;
-  if (!projectDir) {
-    return NextResponse.json({ error: 'HOST_PROJECT_DIR is not set' }, { status: 500 });
-  }
-  if (!hostLogsDir) {
-    return NextResponse.json(
-      { error: 'MMC_HOST_LOGS_DIR is not set (redeploy media-ui to pick it up)' },
-      { status: 500 },
-    );
-  }
 
   let body: { key?: string; tag?: string };
   try {
@@ -74,126 +58,51 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `${key} has no current value` }, { status: 500 });
   }
   const { image, tag: currentTag } = parseImageRef(currentValue);
-  const newValue = `${image}:${tag}`;
   if (currentTag === tag) {
     return NextResponse.json({ error: `${key} is already on ${tag}` }, { status: 400 });
   }
+  const newValue = `${image}:${tag}`;
 
-  if (existsSync(LOCK_PATH)) {
-    try {
-      const st = await stat(LOCK_PATH);
-      if (Date.now() - st.mtimeMs < LOCK_STALE_MS) {
-        return NextResponse.json(
-          { error: 'An update is already in progress. Use /api/updates/status to follow it.' },
-          { status: 409 },
-        );
-      }
-    } catch {
-      /* fall through and overwrite */
-    }
+  try {
+    await pullImage(newValue);
+  } catch (err) {
+    logger.warn(LOG, `Pull failed for ${newValue}: ${String(err)}`);
+    return NextResponse.json(
+      {
+        error: `Could not pull ${newValue} — is that tag published?`,
+        details: sanitizeError(err),
+      },
+      { status: 502 },
+    );
   }
 
-  const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const logFileName = `app-update-${service}-${ts}.log`;
-  const containerLogPath = `/app/logs/${logFileName}`;
-  const hostLogPath = `${hostLogsDir}/${logFileName}`;
-  const hostLockPath = `${hostLogsDir}/update.lock`;
-
-  await writeFile(
-    LOCK_PATH,
-    JSON.stringify(
-      { jobId: ts, startedAt: new Date().toISOString(), containerLogPath, hostLogPath },
-      null,
-      2,
-    ),
-  );
-
-  // Write .env BEFORE the sidecar runs so `docker compose up -d` reads the
-  // new IMAGE_* value when it interpolates the compose file. The earlier
-  // `docker pull` in the sidecar fails fast on a bad tag, but the .env is
-  // already moved at that point — so on failure we rewrite the old value
-  // from the sidecar (since the sidecar owns the rollback path).
   try {
     writeEnv({ [key]: newValue });
-  } catch (err) {
-    try { await writeFile(LOCK_PATH, ''); } catch { /* ignore */ }
-    return NextResponse.json(
-      { error: 'Failed to write .env', details: sanitizeError(err) },
-      { status: 500 },
-    );
-  }
-
-  // Inner script:
-  //   1. Pull the new image. If pull fails, restore the .env pin.
-  //   2. Recreate the service via `docker compose up -d --no-deps <service>`.
-  //   3. Drop the lock either way.
-  // Compose is invoked with --env-file so the host .env is honored (the
-  // sidecar's cwd is HOST_PROJECT_DIR but compose's default .env discovery
-  // already covers that — being explicit is just safety against future cwd
-  // changes).
-  //
-  // The shell-quoting here is safe because `tag` passed TAG_RE, `key` came
-  // from APP_UPDATE_SOURCES (constant keys), and `service` came from
-  // ENV_SCHEMA (constant strings). `image`, `currentValue`, `newValue` are
-  // built from those same trusted inputs.
-  const sidecarName = `mmc-app-updater-${service}-${ts}`;
-  const innerCmd =
-    `set -e; ` +
-    `echo "[$(date -u +%FT%TZ)] Pulling ${newValue}" >> ${hostLogPath}; ` +
-    `if ! docker pull ${newValue} >> ${hostLogPath} 2>&1; then ` +
-    `  echo "[$(date -u +%FT%TZ)] Pull failed — rolling back .env to ${currentValue}" >> ${hostLogPath}; ` +
-    `  sed -i 's|^${key}=.*|${key}=${currentValue}|' ${projectDir}/.env >> ${hostLogPath} 2>&1; ` +
-    `  rm -f ${hostLockPath}; ` +
-    `  exit 1; ` +
-    `fi; ` +
-    `echo "[$(date -u +%FT%TZ)] Recreating ${service}" >> ${hostLogPath}; ` +
-    `docker compose --env-file ${projectDir}/.env -f ${projectDir}/docker-compose.yml up -d --no-deps ${service} >> ${hostLogPath} 2>&1; ` +
-    `rc=$?; ` +
-    `echo "[$(date -u +%FT%TZ)] Done (exit $rc)" >> ${hostLogPath}; ` +
-    `rm -f ${hostLockPath}; ` +
-    `exit $rc`;
-
-  const args = [
-    'run',
-    '--rm', '-d',
-    '--name', sidecarName,
-    '-v', '/var/run/docker.sock:/var/run/docker.sock',
-    '-v', `${projectDir}:${projectDir}`,
-    '-v', `${hostLogsDir}:${hostLogsDir}`,
-    '-w', projectDir,
-    '--entrypoint', 'sh',
-    'mmc-media-ui:latest',
-    '-c', innerCmd,
-  ];
-
-  try {
-    await new Promise<void>((resolve, reject) => {
-      execFile('docker', args, (err, _stdout, stderr) => {
-        if (err) {
-          console.error('App-updater sidecar failed to start:', err.message, stderr);
-          reject(new Error(stderr || err.message));
-        } else {
-          resolve();
-        }
-      });
+    await recreateServices([service]);
+    logger.info(LOG, `Updated ${service}: ${currentTag} -> ${tag}`);
+    return NextResponse.json({
+      status: 'updated',
+      key,
+      service,
+      previousTag: currentTag,
+      tag,
+      image: newValue,
     });
   } catch (err) {
-    // Sidecar didn't start — roll back .env and clear the lock.
-    try { writeEnv({ [key]: currentValue }); } catch { /* ignore */ }
-    try { await writeFile(LOCK_PATH, ''); } catch { /* ignore */ }
+    // The image pulled fine, so this is a compose/runtime problem. Put the
+    // pin back so .env keeps describing what is actually running.
+    try {
+      writeEnv({ [key]: currentValue });
+    } catch {
+      /* best effort */
+    }
+    logger.error(LOG, `Recreate failed for ${service}: ${String(err)}`);
     return NextResponse.json(
-      { error: 'Failed to start app-updater sidecar', details: sanitizeError(err) },
+      {
+        error: `${service} failed to restart on ${tag} — rolled back to ${currentTag}`,
+        details: sanitizeError(err),
+      },
       { status: 500 },
     );
   }
-
-  return NextResponse.json({
-    status: 'started',
-    jobId: ts,
-    sidecarName,
-    service,
-    key,
-    newValue,
-    logPath: containerLogPath,
-  });
 }
