@@ -52,6 +52,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `No service mapped for ${key}` }, { status: 500 });
   }
 
+  // This route recreates a *sibling* container. Pointing it at media-ui kills
+  // the process serving the request, so the response never arrives and the
+  // browser shows "Failed to fetch" — with .env possibly already written and
+  // the error path that would restore it never reached.
+  //
+  // Updating ourselves needs the detached helper in /api/updates/apply, which
+  // survives our replacement precisely because it is a separate container.
+  if (service === 'media-ui') {
+    return NextResponse.json(
+      {
+        error:
+          'The dashboard cannot update itself through this endpoint — it would ' +
+          'kill the process mid-request. Use POST /api/updates/apply instead.',
+      },
+      { status: 400 },
+    );
+  }
+
   const env = readEnv();
   const currentValue = env[key] || def?.default || '';
   if (!currentValue) {

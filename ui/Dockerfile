@@ -23,9 +23,12 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 EXPOSE 3000
 
-# The deploy script and Watchtower both need a real readiness signal — "the
-# process didn't exit" is not the same as "it is serving".
+# Liveness, not stack health. /api/health fans out to eight services and
+# waits for all of them, so a single unreachable one (a stopped SABnzbd)
+# pushed it past the probe timeout and marked this container unhealthy while
+# it was serving fine. /api/health/live answers immediately and touches
+# nothing, which is the actual question a healthcheck asks.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=3 \
-  CMD curl -fsS http://localhost:3000/api/health || exit 1
+  CMD curl -fsS http://localhost:3000/api/health/live || exit 1
 
 CMD ["node", "server.js"]
