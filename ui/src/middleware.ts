@@ -265,7 +265,10 @@ export async function middleware(request: NextRequest) {
   if (apiKey) {
     // Paths that skip API key auth
     const isPublic =
-      pathname === '/api/health' ||
+      // Prefix, not exact: /api/health/live is the container's liveness
+      // probe and must answer without credentials, or the healthcheck marks
+      // a perfectly healthy container unhealthy.
+      pathname.startsWith('/api/health') ||
       pathname === '/login' ||
       pathname === '/admin-login' ||
       pathname === '/setup' ||
