@@ -36,6 +36,7 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   { key: 'BACKUP_DIR', label: 'Backup Directory', type: 'path', group: 'general', description: 'Where backup.sh stores archives', required: true, default: '~/.mmc/backups', affectsServices: [] },
   { key: 'LOG_LEVEL', label: 'Log Level', type: 'select', group: 'general', description: 'Application log verbosity', default: 'info', options: ['debug', 'info', 'warn', 'error'], affectsServices: ['media-ui'] },
   { key: 'MMC_API_KEY', label: 'API Key', type: 'secret', group: 'general', description: 'Optional API key to require authentication for the web UI (leave blank to disable)', sensitive: true, affectsServices: ['media-ui'] },
+  { key: 'HTTPS_ONLY', label: 'HTTPS Only', type: 'select', group: 'general', description: 'Set to 1 when the UI is served over HTTPS (reverse proxy or direct cert). Adds the Secure flag to auth cookies and emits HSTS. Leave at 0 for plain HTTP on a LAN', options: ['0', '1'], default: '0', affectsServices: ['media-ui'] },
   { key: 'GLUETUN_CONTROL_PASSWORD', label: 'Gluetun Control Password', type: 'secret', group: 'general', description: 'Password for the Gluetun VPN control API (basic auth)', sensitive: true, default: 'changeme', affectsServices: ['gluetun'] },
 
   // --- VPN ---
@@ -54,6 +55,10 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   // --- Network ---
   { key: 'DOCKER_SUBNET', label: 'Docker Subnet', type: 'string', group: 'network', description: 'Docker subnet for inter-container communication', default: '172.28.0.0/24', affectsServices: ALL_SERVICES },
   { key: 'LOCAL_SUBNET', label: 'Local Subnet', type: 'string', group: 'network', description: 'Your home LAN subnet', default: '192.168.1.0/24', affectsServices: VPN_SERVICES },
+  // Changing which interface ports bind to requires recreating every
+  // container that publishes one, which is all of them bar the ones inside
+  // gluetun's netns — so this affects the whole stack, not just media-ui.
+  { key: 'HOST_BIND', label: 'Bind Address', type: 'string', group: 'network', description: 'Which interface service ports listen on. 127.0.0.1 (default) means only this machine can reach the UIs; 0.0.0.0 exposes them to the whole LAN — pair that with a firewall. Torrent port 6881 is always exposed regardless, as it must accept peer connections', default: '127.0.0.1', affectsServices: ALL_SERVICES },
   { key: 'PORT_SONARR', label: 'Sonarr Port', type: 'port', group: 'network', description: 'Sonarr web UI port', default: '8989', affectsServices: ['sonarr'] },
   { key: 'PORT_RADARR', label: 'Radarr Port', type: 'port', group: 'network', description: 'Radarr web UI port', default: '7878', affectsServices: ['radarr'] },
   { key: 'PORT_PROWLARR', label: 'Prowlarr Port', type: 'port', group: 'network', description: 'Prowlarr web UI port', default: '9696', affectsServices: ['prowlarr'] },
