@@ -157,6 +157,35 @@ describe('manifest vs docker-compose.yml', () => {
   });
 });
 
+describe('init.sh vs docker-compose.yml', () => {
+  /**
+   * Every service compose bind-mounts a config directory into needs that
+   * directory pre-created and chowned to PUID before it starts.
+   *
+   * Left to Docker, the bind mount's source is auto-created root-owned. The
+   * LinuxServer images hide that — their /init runs as root and chowns
+   * /config — but Seerr's does not, and it dies at startup with
+   * `EACCES: permission denied, mkdir '/app/config/logs/'`. That is exactly
+   * how the first integration run failed.
+   *
+   * init.sh's list is in shell, so it cannot import the manifest. This is
+   * the next best thing: assert it against compose directly.
+   */
+  it('creates a config directory for every service that mounts one', () => {
+    const mounted = (composeSource.match(/\$\{CONFIG_ROOT\}\/[a-z-]+/g) ?? [])
+      .map((m) => m.split('/').pop() as string)
+      .filter((v, i, all) => all.indexOf(v) === i)
+      .sort();
+
+    const initSh = readFileSync(join(ROOT, 'scripts/init.sh'), 'utf8');
+    const declared = initSh.match(/^CONFIG_SERVICES="([^"]*)"/m);
+    expect(declared, 'CONFIG_SERVICES not found in scripts/init.sh — renamed?').toBeTruthy();
+    const created = (declared as RegExpMatchArray)[1].trim().split(/\s+/).sort();
+
+    expect(mounted.filter((s) => !created.includes(s))).toEqual([]);
+  });
+});
+
 describe('env schema vs .env.example', () => {
   // Vars deploy.sh computes, or the shell provides.
   const EXEMPT = new Set(['HOST_PROJECT_DIR', 'HOME']);

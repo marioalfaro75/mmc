@@ -148,6 +148,21 @@ grep -E '^IMAGE_[A-Z_]+=' .env.example >> "$ENV_FILE"
 WROTE_ENV=1
 
 # ------------------------------------------------------------------
+say "Creating the directory tree (scripts/init.sh)"
+# The same script deploy.sh runs before it deploys. Not a hand-rolled
+# mkdir: the per-service config directories have to exist AND be owned by
+# PUID before the containers start.
+#
+# The LSIO images paper over a missing directory — their /init runs as
+# root and chowns /config — but Seerr's does not. Left to Docker,
+# $CONFIG_ROOT/seerr gets auto-created root-owned on the bind mount and
+# Seerr dies at startup with
+#   EACCES: permission denied, mkdir '/app/config/logs/'
+# Calling init.sh here also means this path is exercised by CI rather
+# than only ever running on a user's VM.
+"$PROJECT_DIR/scripts/init.sh"
+
+# ------------------------------------------------------------------
 say "Building media-ui and starting the stack"
 # Built from this commit, not pulled — otherwise the run tests whatever was
 # published last rather than the change under review.

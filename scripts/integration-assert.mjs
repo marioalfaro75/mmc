@@ -127,6 +127,19 @@ async function checkLiveness() {
     const body = await json('/api/health/live');
     if (body.ok !== true) { fail('media-ui liveness', `returned ${JSON.stringify(body)}`); return; }
     pass('media-ui liveness', `version ${body.version}`);
+
+    // docker-compose.build.yml passes MMC_VERSION=local, and it tags the
+    // built image with the same name the base file pulls from GHCR. That
+    // keeps a later plain `up -d` on the local build, but it also means the
+    // image NAME cannot tell you which one you got. The version can: if the
+    // build were skipped and a published :latest used instead, this whole
+    // run would be testing an image that predates the change under review.
+    if (body.version !== 'local') {
+      fail('media-ui is the local build',
+        `reports version "${body.version}", expected "local" — the container is a published image, not a build of this commit`);
+    } else {
+      pass('media-ui is the local build');
+    }
   } catch (err) {
     fail('media-ui liveness', String(err.message));
   }
