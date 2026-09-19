@@ -162,6 +162,26 @@ say "Creating the directory tree (scripts/init.sh)"
 # than only ever running on a user's VM.
 "$PROJECT_DIR/scripts/init.sh"
 
+# CI-only: let a container running as ANY uid write its config.
+#
+# init.sh leaves the tree as PUID:PGID mode 750 — nothing for "other".
+# That suits the LinuxServer images, whose /init runs as root and chowns
+# /config to PUID before dropping privileges. Seerr's image does not do
+# that, and its compose entry passes no PUID/PGID, so it runs as the uid
+# baked into the image. On a GitHub runner PUID is 1001, which does not
+# match, and Seerr dies with EACCES on /app/config/logs.
+#
+# Relaxing the mode here keeps the harness honest about what it is
+# testing — the dashboard's behaviour, not the host's uid mapping. This
+# workspace is ephemeral and torn down at the end of the run.
+#
+# NOTE: the underlying mismatch is real for users too. Anyone whose PUID
+# differs from Seerr's image uid hits the same crash; it only works by
+# coincidence when PUID is 1000. Fixing that means pinning seerr's uid in
+# compose, which would change ownership expectations for existing
+# installs — deliberately not done as a side effect of this test.
+chmod -R a+rwX "$CONFIG_ROOT" "$DATA_ROOT"
+
 # ------------------------------------------------------------------
 say "Building media-ui and starting the stack"
 # Built from this commit, not pulled — otherwise the run tests whatever was
