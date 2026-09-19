@@ -8,3 +8,9 @@ ui/out/
 ui/tsconfig.tsbuildinfo
 ui/coverage/
 *.swp
+
+# Playwright
+ui/test-results/
+ui/playwright-report/
+ui/blob-report/
+ui/.playwright/
