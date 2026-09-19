@@ -39,6 +39,10 @@ jobs:
       - name: Validate the build override
         # The escape hatch for local development / GHCR being unreachable.
         run: docker compose -f docker-compose.yml -f docker-compose.build.yml config -q
+      - name: Validate the CI override
+        # integration.yml only runs on some PRs, so without this a syntax
+        # error here would sit unnoticed until the nightly run.
+        run: docker compose -f docker-compose.yml -f docker-compose.build.yml -f docker-compose.ci.yml config -q
       - name: Validate with NAS override (synthetic)
         run: |
           cat > docker-compose.nas.override.yml <<'YAML'

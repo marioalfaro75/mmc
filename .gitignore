@@ -1,6 +1,12 @@
 .env
 .env.bak.*
 docker-compose.nas.override.yml
+
+# integration-test.sh: its scratch config/data roots, and the .env it moves
+# aside. Both are removed on exit, but a --keep run or a hard kill leaves
+# them behind and they must never be committed.
+.ci/
+.env.integration-backup
 *.tar.gz
 ui/node_modules/
 ui/.next/
