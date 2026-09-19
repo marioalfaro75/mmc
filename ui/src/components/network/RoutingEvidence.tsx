@@ -19,12 +19,13 @@ import { fetchApi } from '@/lib/utils/fetchApi';
 import { toast } from 'sonner';
 import type { RoutingEvidence as RoutingEvidenceData } from '@/app/api/network/evidence/route';
 import type { NetworkStats } from '@/lib/types/common';
+import { NETNS_SERVICES } from '@/lib/services';
 
 // Mirrors VPN_CLIENTS in /api/network/evidence — every container sharing
 // gluetun's netns. flaresolverr is included so the Cloudflare-solving path
 // is proven to exit via the VPN, not the host.
-const CLIENTS = ['qbittorrent', 'sabnzbd', 'flaresolverr'] as const;
-type Client = (typeof CLIENTS)[number];
+const CLIENTS = NETNS_SERVICES;
+type Client = string;
 
 const CLIENT_LABELS: Record<Client, string> = {
   qbittorrent: 'qBit',

@@ -59,14 +59,6 @@ jobs:
                 - nas:/data
           YAML
           docker compose -f docker-compose.yml -f docker-compose.nas.override.yml config -q
-      - name: Config drift
-        # The dashboard keeps its own copies of the service list, the env
-        # schema and the image pins. Nothing derives them from compose, so
-        # they drift silently — this asserts they still agree. Needs no
-        # daemon; `docker compose config` is parsing, not orchestration.
-        run: |
-          rm -f docker-compose.nas.override.yml
-          node scripts/check-drift.mjs --verbose
 
   ui:
     name: UI typecheck and tests
@@ -89,6 +81,10 @@ jobs:
       # whatever it flags across the existing codebase — worth doing, but not
       # as a side effect of the release-pipeline change.
       - name: Unit tests
+        # Includes services.compose.test.ts, which asserts the service
+        # manifest against `docker compose config` — the runner image
+        # ships the compose CLI, and the suite fails rather than skips if
+        # it is ever missing.
         run: npm test
       - name: Production build
         # The release path publishes an image built from this same source; if

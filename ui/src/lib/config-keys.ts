@@ -1,11 +1,17 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { servicesWithApiKeyFormat } from './services';
 
-const SERVICES_WITH_XML_KEY: Record<string, { envKey: string; configSubdir: string }> = {
-  sonarr: { envKey: 'SONARR_API_KEY', configSubdir: 'sonarr' },
-  radarr: { envKey: 'RADARR_API_KEY', configSubdir: 'radarr' },
-  prowlarr: { envKey: 'PROWLARR_API_KEY', configSubdir: 'prowlarr' },
-};
+// Derived from the service manifest: every service that writes its key into
+// an <ApiKey> element. Adding another *arr means declaring it once in
+// lib/services.ts, not remembering to extend this map too.
+const SERVICES_WITH_XML_KEY: Record<string, { envKey: string; configSubdir: string }> =
+  Object.fromEntries(
+    servicesWithApiKeyFormat('xml').map((s) => [
+      s.name,
+      { envKey: s.apiKey!.envKey, configSubdir: s.name },
+    ]),
+  );
 
 function extractApiKey(xmlContent: string): string | null {
   const match = xmlContent.match(/<ApiKey>([^<]+)<\/ApiKey>/);

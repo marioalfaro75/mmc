@@ -1,3 +1,5 @@
+import { SERVICE_NAMES, VPN_SERVICES, SERVICES } from './services';
+
 export type EnvVarType = 'string' | 'path' | 'port' | 'integer' | 'boolean' | 'select' | 'secret' | 'cron';
 export type EnvGroup = 'general' | 'vpn' | 'network' | 'services' | 'images';
 
@@ -15,15 +17,24 @@ export interface EnvVarDef {
   servicePort?: number;
 }
 
-const ALL_SERVICES = [
-  'gluetun', 'qbittorrent', 'sabnzbd', 'unpackerr', 'prowlarr',
-  'flaresolverr', 'sonarr', 'radarr', 'bazarr', 'seerr',
-  'recyclarr', 'watchtower', 'media-ui',
-];
+// Both derived from the service manifest. VPN_SERVICES is the gateway plus
+// everything sharing its network namespace — flaresolverr included, so a VPN
+// settings change recreates it alongside the download clients.
+const ALL_SERVICES = SERVICE_NAMES;
 
-// flaresolverr shares gluetun's netns (network_mode: service:gluetun), so a
-// VPN settings change recreates it alongside the download clients.
-const VPN_SERVICES = ['gluetun', 'qbittorrent', 'sabnzbd', 'flaresolverr'];
+/**
+ * The port an "Open UI" link next to a credential field should point at.
+ * Read from the manifest so a service's port is stated once, not here and
+ * again in the System page's catalogue.
+ */
+const uiPort = (service: string): number | undefined =>
+  SERVICES.find((s) => s.name === service)?.webUi?.defaultPort;
+
+/** Same value as the default for that service's PORT_* var. */
+const uiPortDefault = (service: string): string | undefined => {
+  const port = uiPort(service);
+  return port === undefined ? undefined : String(port);
+};
 
 export const ENV_SCHEMA: EnvVarDef[] = [
   // --- General ---
@@ -59,26 +70,26 @@ export const ENV_SCHEMA: EnvVarDef[] = [
   // container that publishes one, which is all of them bar the ones inside
   // gluetun's netns — so this affects the whole stack, not just media-ui.
   { key: 'HOST_BIND', label: 'Bind Address', type: 'string', group: 'network', description: 'Which interface service ports listen on. 127.0.0.1 (default) means only this machine can reach the UIs; 0.0.0.0 exposes them to the whole LAN — pair that with a firewall. Torrent port 6881 is always exposed regardless, as it must accept peer connections', default: '127.0.0.1', affectsServices: ALL_SERVICES },
-  { key: 'PORT_SONARR', label: 'Sonarr Port', type: 'port', group: 'network', description: 'Sonarr web UI port', default: '8989', affectsServices: ['sonarr'] },
-  { key: 'PORT_RADARR', label: 'Radarr Port', type: 'port', group: 'network', description: 'Radarr web UI port', default: '7878', affectsServices: ['radarr'] },
-  { key: 'PORT_PROWLARR', label: 'Prowlarr Port', type: 'port', group: 'network', description: 'Prowlarr web UI port', default: '9696', affectsServices: ['prowlarr'] },
-  { key: 'PORT_QBITTORRENT', label: 'qBittorrent Port', type: 'port', group: 'network', description: 'qBittorrent web UI port', default: '8080', affectsServices: ['gluetun'] },
-  { key: 'PORT_SABNZBD', label: 'SABnzbd Port', type: 'port', group: 'network', description: 'SABnzbd web UI port', default: '8081', affectsServices: ['gluetun'] },
-  { key: 'PORT_SEERR', label: 'Seerr Port', type: 'port', group: 'network', description: 'Seerr web UI port', default: '5055', affectsServices: ['seerr'] },
-  { key: 'PORT_BAZARR', label: 'Bazarr Port', type: 'port', group: 'network', description: 'Bazarr web UI port', default: '6767', affectsServices: ['bazarr'] },
+  { key: 'PORT_SONARR', label: 'Sonarr Port', type: 'port', group: 'network', description: 'Sonarr web UI port', default: uiPortDefault('sonarr'), affectsServices: ['sonarr'] },
+  { key: 'PORT_RADARR', label: 'Radarr Port', type: 'port', group: 'network', description: 'Radarr web UI port', default: uiPortDefault('radarr'), affectsServices: ['radarr'] },
+  { key: 'PORT_PROWLARR', label: 'Prowlarr Port', type: 'port', group: 'network', description: 'Prowlarr web UI port', default: uiPortDefault('prowlarr'), affectsServices: ['prowlarr'] },
+  { key: 'PORT_QBITTORRENT', label: 'qBittorrent Port', type: 'port', group: 'network', description: 'qBittorrent web UI port', default: uiPortDefault('qbittorrent'), affectsServices: ['gluetun'] },
+  { key: 'PORT_SABNZBD', label: 'SABnzbd Port', type: 'port', group: 'network', description: 'SABnzbd web UI port', default: uiPortDefault('sabnzbd'), affectsServices: ['gluetun'] },
+  { key: 'PORT_SEERR', label: 'Seerr Port', type: 'port', group: 'network', description: 'Seerr web UI port', default: uiPortDefault('seerr'), affectsServices: ['seerr'] },
+  { key: 'PORT_BAZARR', label: 'Bazarr Port', type: 'port', group: 'network', description: 'Bazarr web UI port', default: uiPortDefault('bazarr'), affectsServices: ['bazarr'] },
   { key: 'PORT_GLUETUN_CONTROL', label: 'Gluetun Control Port', type: 'port', group: 'network', description: 'Gluetun HTTP control port', default: '8000', affectsServices: ['gluetun'] },
   { key: 'PORT_UI', label: 'Web UI Port', type: 'port', group: 'network', description: 'Unified web UI port', default: '3000', affectsServices: ['media-ui'] },
 
   // --- Services ---
-  { key: 'SONARR_API_KEY', label: 'Sonarr API Key', type: 'secret', group: 'services', description: 'API key from Sonarr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 8989 },
-  { key: 'RADARR_API_KEY', label: 'Radarr API Key', type: 'secret', group: 'services', description: 'API key from Radarr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 7878 },
-  { key: 'PROWLARR_API_KEY', label: 'Prowlarr API Key', type: 'secret', group: 'services', description: 'API key from Prowlarr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 9696 },
-  { key: 'QBITTORRENT_PASSWORD', label: 'qBittorrent Password', type: 'secret', group: 'services', description: 'qBittorrent web UI password', sensitive: true, affectsServices: ['media-ui'], servicePort: 8080 },
+  { key: 'SONARR_API_KEY', label: 'Sonarr API Key', type: 'secret', group: 'services', description: 'API key from Sonarr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: uiPort('sonarr') },
+  { key: 'RADARR_API_KEY', label: 'Radarr API Key', type: 'secret', group: 'services', description: 'API key from Radarr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: uiPort('radarr') },
+  { key: 'PROWLARR_API_KEY', label: 'Prowlarr API Key', type: 'secret', group: 'services', description: 'API key from Prowlarr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: uiPort('prowlarr') },
+  { key: 'QBITTORRENT_PASSWORD', label: 'qBittorrent Password', type: 'secret', group: 'services', description: 'qBittorrent web UI password', sensitive: true, affectsServices: ['media-ui'], servicePort: uiPort('qbittorrent') },
   { key: 'USE_QBITTORRENT', label: 'Use qBittorrent', type: 'select', group: 'services', description: 'Wire qBittorrent into Sonarr/Radarr during Quick Setup and surface it on Downloads / System pages', options: ['on', 'off'], default: 'on', affectsServices: ['media-ui'] },
-  { key: 'SABNZBD_API_KEY', label: 'SABnzbd API Key', type: 'secret', group: 'services', description: 'API key from SABnzbd → Config → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 8081 },
+  { key: 'SABNZBD_API_KEY', label: 'SABnzbd API Key', type: 'secret', group: 'services', description: 'API key from SABnzbd → Config → General', sensitive: true, affectsServices: ['media-ui'], servicePort: uiPort('sabnzbd') },
   { key: 'USE_SABNZBD', label: 'Use SABnzbd', type: 'select', group: 'services', description: 'Wire SABnzbd into Sonarr/Radarr during Quick Setup and surface it on Downloads / System pages', options: ['on', 'off'], default: 'off', affectsServices: ['media-ui'] },
-  { key: 'SEERR_API_KEY', label: 'Seerr API Key', type: 'secret', group: 'services', description: 'API key from Seerr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 5055 },
-  { key: 'BAZARR_API_KEY', label: 'Bazarr API Key', type: 'secret', group: 'services', description: 'API key from Bazarr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: 6767 },
+  { key: 'SEERR_API_KEY', label: 'Seerr API Key', type: 'secret', group: 'services', description: 'API key from Seerr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: uiPort('seerr') },
+  { key: 'BAZARR_API_KEY', label: 'Bazarr API Key', type: 'secret', group: 'services', description: 'API key from Bazarr → Settings → General', sensitive: true, affectsServices: ['media-ui'], servicePort: uiPort('bazarr') },
   { key: 'TMDB_API_KEY', label: 'TMDB API Key', type: 'secret', group: 'services', description: 'Free API key from themoviedb.org — enables searching for movies and TV shows by actor name', sensitive: true, affectsServices: ['media-ui'] },
   { key: 'PLEX_URL', label: 'Plex URL', type: 'string', group: 'services', description: 'Plex server URL (e.g. http://192.168.1.x:32400). Sidebar link updates live; dashboard widgets that hit Plex (Recently Added) pick the new URL up on the next media-ui restart.', default: 'http://localhost:32400', affectsServices: [] },
   { key: 'UN_SONARR_0_API_KEY', label: 'Unpackerr Sonarr Key', type: 'secret', group: 'services', description: 'Sonarr API key for Unpackerr (auto-populated by Detect API Keys)', sensitive: true, affectsServices: ['unpackerr'] },

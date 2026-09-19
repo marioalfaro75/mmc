@@ -10,14 +10,17 @@ import {
 import { lookupCountry } from '@/lib/api/geolocation';
 import { getPublicIP as getGluetunPublicIp } from '@/lib/api/gluetun';
 import { classifyEgress, rollUpEgressVerdict } from '@/lib/egress-verdict';
+import { NETNS_SERVICES } from '@/lib/services';
 
 export const dynamic = 'force-dynamic';
 
 // Every container that shares gluetun's network namespace. flaresolverr is
 // here because Prowlarr's Cloudflare challenges must exit via the VPN — a
 // direct-from-host solve would expose the real IP to every tracker queried.
-const VPN_CLIENTS = ['qbittorrent', 'sabnzbd', 'flaresolverr'] as const;
-type Client = (typeof VPN_CLIENTS)[number];
+// Every container sharing gluetun's network namespace, from the service
+// manifest — see lib/services.ts. Adding one needs no edit here.
+const VPN_CLIENTS = NETNS_SERVICES;
+type Client = string;
 
 export interface RoutingEvidence {
   cachedAt: string;

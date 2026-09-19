@@ -17,61 +17,17 @@
 
 import { readEnv } from './env';
 import { ENV_SCHEMA } from './env-schema';
+import { APP_UPDATE_SOURCES, SERVICE_BY_IMAGE_KEY } from './services';
+import type { SourceKind, UpdateSource } from './services';
 
-export type SourceKind = 'docker-hub' | 'github-releases' | 'ghcr';
-
-export interface AppUpdateSource {
-  kind: SourceKind;
-  /**
-   * For docker-hub: the Docker Hub repo (`ns/name`).
-   * For github-releases: the GH repo (`owner/repo`).
-   */
-  repo: string;
-  /**
-   * Regex a candidate tag must match. Used to filter LSIO's noisy tag list
-   * down to clean semver (e.g. `^\d+\.\d+\.\d+$`).
-   */
-  tagPattern?: RegExp;
-  /**
-   * Convert a release/registry tag into the version string that appears in
-   * the image tag the user pulls. Default is identity.
-   *
-   * Example: for IMAGE_QBITTORRENT we look up github-releases on
-   * qbittorrent/qBittorrent which tags `release-5.0.4`, but the LSIO image
-   * tag is `5.0.4` — so we strip the prefix.
-   */
-  tagToImageTag?: (tag: string) => string;
-}
-
-export const APP_UPDATE_SOURCES: Record<string, AppUpdateSource> = {
-  // LSIO images — registry-sourced. Pure 3-segment semver only, which is
-  // what LSIO tags every stable build with (e.g. `1.41.4`). Anything with
-  // a dash, "nightly", "develop", "test", or an arch prefix is filtered out.
-  IMAGE_SONARR:      { kind: 'docker-hub', repo: 'linuxserver/sonarr',      tagPattern: /^\d+\.\d+\.\d+$/ },
-  IMAGE_RADARR:      { kind: 'docker-hub', repo: 'linuxserver/radarr',      tagPattern: /^\d+\.\d+\.\d+$/ },
-  IMAGE_PROWLARR:    { kind: 'docker-hub', repo: 'linuxserver/prowlarr',    tagPattern: /^\d+\.\d+\.\d+$/ },
-  IMAGE_QBITTORRENT: { kind: 'docker-hub', repo: 'linuxserver/qbittorrent', tagPattern: /^\d+\.\d+\.\d+$/ },
-  IMAGE_SABNZBD:     { kind: 'docker-hub', repo: 'linuxserver/sabnzbd',     tagPattern: /^\d+\.\d+\.\d+$/ },
-  IMAGE_BAZARR:      { kind: 'docker-hub', repo: 'linuxserver/bazarr',      tagPattern: /^\d+\.\d+\.\d+$/ },
-
-  // First-party Docker Hub images. The publisher controls both registry and
-  // versioning, so registry tags and release tags agree.
-  IMAGE_GLUETUN:     { kind: 'docker-hub', repo: 'qmcgaw/gluetun',          tagPattern: /^v\d+\.\d+(?:\.\d+)?$/ },
-  IMAGE_UNPACKERR:   { kind: 'docker-hub', repo: 'golift/unpackerr',        tagPattern: /^\d+\.\d+\.\d+$/ },
-  IMAGE_WATCHTOWER:  { kind: 'docker-hub', repo: 'containrrr/watchtower',   tagPattern: /^\d+\.\d+\.\d+$/ },
-
-  // GHCR images — Docker Hub doesn't carry these, so fall back to upstream
-  // GitHub releases (the project publishes its own image, so tags match).
-  IMAGE_RECYCLARR:   { kind: 'github-releases', repo: 'recyclarr/recyclarr', tagPattern: /^\d+\.\d+\.\d+$/ },
-
-  // This dashboard. Built by our own CI and published to GHCR, so we read the
-  // registry's tag list directly — the source of truth for what is actually
-  // pullable. Only vX.Y.Z release tags are offered; `edge` and `sha-…` exist
-  // but are opt-in via .env, not something to suggest as an update.
-  IMAGE_MEDIA_UI:    { kind: 'ghcr', repo: 'marioalfaro75/mmc-media-ui', tagPattern: /^v\d+\.\d+\.\d+$/ },
-  IMAGE_FLARESOLVERR: { kind: 'github-releases', repo: 'FlareSolverr/FlareSolverr', tagPattern: /^v\d+\.\d+\.\d+$/ },
-  IMAGE_SEERR:       { kind: 'github-releases', repo: 'seerr-team/seerr',    tagPattern: /^v?\d+\.\d+\.\d+$/ },
-};
+/**
+ * Update sources now live in the service manifest, alongside everything else
+ * a service declares — see lib/services.ts. Re-exported here so existing
+ * importers (and the Updates tab) keep working unchanged.
+ */
+export { APP_UPDATE_SOURCES };
+export type { SourceKind };
+export type AppUpdateSource = UpdateSource;
 
 export interface AppVersionInfo {
   key: string;            // 'IMAGE_PROWLARR'
@@ -287,23 +243,29 @@ async function fetchLatestForSource(source: AppUpdateSource): Promise<{ tag: str
 export async function buildAppUpdatesPayload(): Promise<AppUpdatesPayload> {
   const env = readEnv();
 
-  const targets = ENV_SCHEMA
-    .filter((def) => def.key.startsWith('IMAGE_') && APP_UPDATE_SOURCES[def.key])
-    .map((def) => ({
-      def,
-      source: APP_UPDATE_SOURCES[def.key],
-      currentValue: env[def.key] || def.default || '',
-    }));
+  // Driven by the manifest, in manifest order. The env schema is consulted
+  // only for the pinned image value and its default — the label and the
+  // compose service name come from the service's own declaration rather
+  // than being reverse-engineered from the env var (they used to be: the
+  // label by stripping " Image" off the field label, the service by taking
+  // affectsServices[0], which was only ever right by convention).
+  const targets = Object.entries(APP_UPDATE_SOURCES).map(([imageKey, source]) => {
+    const def = ENV_SCHEMA.find((d) => d.key === imageKey);
+    return {
+      imageKey,
+      source,
+      svc: SERVICE_BY_IMAGE_KEY[imageKey],
+      currentValue: env[imageKey] || def?.default || '',
+    };
+  });
 
   const apps = await Promise.all(
-    targets.map(async ({ def, source, currentValue }): Promise<AppVersionInfo> => {
+    targets.map(async ({ imageKey, source, svc, currentValue }): Promise<AppVersionInfo> => {
       const { image, tag } = parseImageRef(currentValue);
-      const baseLabel = def.label.replace(/\s+Image$/, '');
-      const service = def.affectsServices[0] || def.key.replace(/^IMAGE_/, '').toLowerCase();
       const base: Omit<AppVersionInfo, 'latestTag' | 'updateAvailable' | 'releaseUrl' | 'error'> = {
-        key: def.key,
-        label: baseLabel,
-        service,
+        key: imageKey,
+        label: svc.label,
+        service: svc.name,
         image,
         currentTag: tag,
         sourceRepo: source.repo,

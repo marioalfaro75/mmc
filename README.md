@@ -540,7 +540,7 @@ Static checks run on every push and PR via `.github/workflows/ci.yml`:
 |-------|---------|-----------------|
 | Shell syntax | `bash -n scripts/*.sh` | Typos in deploy/init/backup scripts |
 | Compose render | `docker compose config -q` | Bad YAML or unresolved `${VAR}` references |
-| Config drift | `node scripts/check-drift.mjs` | The dashboard's copy of the stack disagreeing with compose |
+| Manifest drift | `cd ui && npm test` | The service manifest disagreeing with `docker-compose.yml` |
 | TypeScript | `cd ui && npx tsc --noEmit` | Type errors in the UI |
 | Unit tests | `cd ui && npm test` | Schema integrity, shell-escape safety, mount-script input validation |
 | Browser tests | `cd ui && npm run test:e2e` | Settings, Updates and routing-evidence behaviour against a stubbed API |
@@ -548,15 +548,13 @@ Static checks run on every push and PR via `.github/workflows/ci.yml`:
 
 Run the UI tests locally with `cd ui && npm test` (or `npm run test:watch`). The test suite lives in `ui/src/**/*.test.ts`.
 
-### Config drift
+### The service manifest
 
-The dashboard keeps its own copies of what the stack looks like — the service list (in four places), the env schema, the image update sources — and none is derived from `docker-compose.yml`. `scripts/check-drift.mjs` asserts they still agree, and that `media-ui` never acquires a hard dependency on something it monitors. It needs no Docker daemon and runs in milliseconds:
+`ui/src/lib/services.ts` is the single declaration of what the stack contains. Each service states its name, label, group, description, image pin, update source, web UI port, network namespace, API-key location and whether the Network page monitors it — once. Everything else derives from it: the valid-service set, the VPN grouping, the System page catalogue, the Logs picker, the Updates tab's sources, the routing-evidence client list.
 
-```bash
-node scripts/check-drift.mjs --verbose
-```
+**Adding a service is two files**: `docker-compose.yml`, then `services.ts`.
 
-If you add a service to `docker-compose.yml`, this tells you every file that still needs to know about it.
+`ui/src/lib/services.compose.test.ts` asserts the manifest against `docker compose config` — same service set, same `network_mode` namespaces, same `IMAGE_*` pins — plus that `.env.example` and the env schema agree, and that `media-ui` never acquires a hard dependency on something it monitors. It needs no Docker daemon (`compose config` is parsing, not orchestration) and runs in milliseconds as part of `npm test`.
 
 ### Integration tests
 
