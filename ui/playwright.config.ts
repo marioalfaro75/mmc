@@ -88,6 +88,10 @@ export default defineConfig({
           // No MMC_API_KEY and no admins configured, so the middleware's auth
           // layers stay open and tests don't each need a login dance.
           MMC_API_KEY: '',
+          // Every test hits 127.0.0.1, so they all share one rate-limit
+          // bucket. Without this the suite exhausts it partway through and
+          // later tests get {"error":"Too many requests"} instead of a page.
+          MMC_RATE_LIMIT_MAX: '100000',
         },
       },
 });

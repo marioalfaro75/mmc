@@ -18,7 +18,20 @@ function constantTimeEqual(a: string, b: string): boolean {
 /* ------------------------------------------------------------------ */
 
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
-const RATE_LIMIT_MAX = 120;
+
+// Requests per IP per window. Static assets are excluded by the matcher, so
+// this counts real API traffic only.
+//
+// 120 was too tight to be safe. One open tab on the Downloads page is already
+// ~30 req/min on its own (downloads poll every 3s, VPN every 10s, health and
+// services every 30s), so a laptop and a phone both watching a download —
+// or one browser with a few tabs open — hit the ceiling and start getting
+// 429s during normal use. The limiter is here to stop a runaway client, not
+// to ration ordinary polling.
+//
+// Override with MMC_RATE_LIMIT_MAX (the e2e suite raises it, since every test
+// shares 127.0.0.1 and one bucket).
+const RATE_LIMIT_MAX = Number(process.env.MMC_RATE_LIMIT_MAX) || 600;
 
 interface RateEntry {
   count: number;
