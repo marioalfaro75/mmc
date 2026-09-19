@@ -22,7 +22,16 @@ on:
       - 'ui/src/app/api/health/**'
       - 'ui/src/app/api/updates/**'
       - 'scripts/integration-*'
+      - 'scripts/init.sh'
       - '.github/workflows/integration.yml'
+      # What the container is built from. The Next 14 -> 16 upgrade would
+      # not have matched any path above, because this list was written for
+      # image-pin bumps — yet a framework major is exactly the change most
+      # likely to break a real stack while every stubbed test stays green.
+      - 'ui/package.json'
+      - 'ui/package-lock.json'
+      - 'ui/next.config.js'
+      - 'ui/Dockerfile'
   schedule:
     # 14:30 UTC daily — after the weekly pin refresh (Mondays) has had time
     # to open its PR, and offset from the hour so it isn't queued behind

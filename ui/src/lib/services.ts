@@ -278,11 +278,7 @@ export const NETNS_SERVICES: string[] = SERVICES.filter((s) => s.netns).map((s) 
 
 /** The netns members plus the gateway itself — everything a VPN change touches. */
 export const VPN_SERVICES: string[] = [
-  // The gateways, de-duplicated without spreading a Set (the build targets
-  // ES5, where that needs downlevelIteration).
-  ...SERVICES.filter((s) => s.netns)
-    .map((s) => s.netns as string)
-    .filter((name, i, all) => all.indexOf(name) === i),
+  ...new Set(SERVICES.filter((s) => s.netns).map((s) => s.netns as string)),
   ...NETNS_SERVICES,
 ];
 
