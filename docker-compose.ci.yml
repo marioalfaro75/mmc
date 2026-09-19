@@ -1,0 +1,59 @@
+# ============================================================
+# docker-compose.ci.yml — boot a real stack for integration tests
+#
+# Used by scripts/integration-test.sh. Layered on top of
+# docker-compose.yml + docker-compose.build.yml, so media-ui is built from
+# the commit under test rather than pulled from GHCR — otherwise the tests
+# would be checking the last published image, not the change.
+#
+# WHAT IS NOT STARTED, AND WHY
+#
+# qbittorrent, sabnzbd and flaresolverr use `network_mode: "service:gluetun"`
+# and wait on gluetun being healthy. gluetun needs real VPN credentials,
+# NET_ADMIN and /dev/net/tun, so booting them would mean putting a working
+# WireGuard key in CI — secrets that can't run on fork PRs, a real tunnel
+# billed to someone, and a test that fails when the VPN provider has a bad
+# night. Their topology is covered by unit tests over classifyEgress and by
+# the drift checker; standing up a gluetun stub is a separate, later job.
+#
+# watchtower is left out because it holds the Docker socket and exists to
+# mutate other containers — not something to have running next to a test
+# that asserts on container state. recyclarr and unpackerr need *arr API
+# keys and a config to do anything, so they'd start and idle.
+#
+# What remains is the part the dashboard actually talks to over HTTP.
+# ============================================================
+
+services:
+  # A crash should surface as a stopped container the test can report on,
+  # not a restart loop that silently burns the timeout.
+  prowlarr:
+    restart: "no"
+  sonarr:
+    restart: "no"
+  radarr:
+    restart: "no"
+  bazarr:
+    restart: "no"
+  seerr:
+    restart: "no"
+  media-ui:
+    restart: "no"
+    environment:
+      # Leave API-key auth off: the assertions hit /api/health and
+      # /api/updates/apps directly. Admin-gated routes need a session and
+      # are covered by the Playwright suite against a stubbed backend.
+      - MMC_API_KEY=
+      # The default 600/min is sized for a browser; the assertion script is
+      # far below that, but keep it explicit so a future assertion that
+      # loops doesn't trip a limiter and get reported as a service failure.
+      - MMC_RATE_LIMIT_MAX=100000
+    healthcheck:
+      # Same probe as production, just a shorter start period — there is no
+      # slow NAS or cold page cache on a runner, and waiting 40s per boot
+      # adds up across retries.
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health/live"]
+      interval: 5s
+      timeout: 5s
+      start_period: 15s
+      retries: 12

@@ -1,0 +1,64 @@
+name: Integration
+
+# Boots a real stack and asserts the dashboard against it. Deliberately NOT
+# on every push: it takes ~10 minutes and pulls five upstream images, so it
+# runs where the risk actually is.
+#
+#   * PRs that touch image pins, the compose topology, or the code that
+#     parses container state. This is what covers a refresh-image-pins PR —
+#     matched by path rather than branch name, so a hand-edited pin is
+#     caught too.
+#   * Nightly, to notice an upstream image changing under a pin we already
+#     merged.
+#   * On demand.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.env.example'
+      - 'docker-compose*.yml'
+      - 'ui/src/lib/docker.ts'
+      - 'ui/src/lib/app-updates.ts'
+      - 'ui/src/app/api/health/**'
+      - 'ui/src/app/api/updates/**'
+      - 'scripts/integration-*'
+      - '.github/workflows/integration.yml'
+  schedule:
+    # 14:30 UTC daily — after the weekly pin refresh (Mondays) has had time
+    # to open its PR, and offset from the hour so it isn't queued behind
+    # everyone else's midnight cron.
+    - cron: '30 14 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  stack:
+    name: Real stack
+    runs-on: ubuntu-latest
+    # Generous: five image pulls plus a media-ui build plus *arr first-boot.
+    # If it ever gets near this, something is hanging rather than slow.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+
+      - name: Boot the stack and assert
+        run: ./scripts/integration-test.sh
+
+      - name: Upload deploy log on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: integration-logs
+          path: ~/.mmc/logs/
+          retention-days: 7
+          if-no-files-found: ignore

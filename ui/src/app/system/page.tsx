@@ -17,6 +17,7 @@ import { useBrowserHost } from '@/lib/useBrowserHost';
 import { toast } from 'sonner';
 import type { ServiceHealth, VpnStatus, DockerServiceStatus } from '@/lib/types/common';
 import type { NasStatus } from '@/app/api/system/nas-status/route';
+import { SERVICES, SERVICE_GROUPS } from '@/lib/services';
 
 interface ServiceInfo {
   description: string;
@@ -26,37 +27,21 @@ interface ServiceInfo {
   tip?: string;
 }
 
-const SERVICE_CATALOG: Record<string, ServiceInfo> = {
-  gluetun: { description: 'VPN client — routes all download traffic through WireGuard/OpenVPN' },
-  qbittorrent: { description: 'Torrent client — downloads from torrent indexers via VPN', port: 8080, tip: 'Default login — username: admin, password: your QBITTORRENT_PASSWORD from Settings. Change the default password after first login.' },
-  sabnzbd: { description: 'Usenet client — downloads from Usenet providers via VPN', port: 8081 },
-  prowlarr: { description: 'Indexer manager — manages torrent and Usenet sources for Sonarr/Radarr', port: 9696 },
-  // No `port` on purpose — FlareSolverr has no browsable UI and publishes no
-  // host port, so no "Open UI" link should render for it.
-  flaresolverr: { description: 'Cloudflare solver — lets Prowlarr scrape indexers behind CF/DDoS-Guard', tip: 'No web UI and no published port by design. Runs inside Gluetun\'s network namespace so challenges are solved from the VPN exit IP. Prowlarr reaches it at http://gluetun:8191.' },
-  sonarr: { description: 'TV show manager — monitors, downloads, and organises TV episodes', port: 8989 },
-  radarr: { description: 'Movie manager — monitors, downloads, and organises movies', port: 7878 },
-  unpackerr: { description: 'Archive extractor — unpacks completed downloads for import' },
-  bazarr: { description: 'Subtitle manager — finds and downloads subtitles automatically', port: 6767 },
-  seerr: { description: 'Request manager — lets users browse and request media', port: 5055 },
-  recyclarr: { description: 'Quality sync — keeps quality profiles aligned with TRaSH Guides' },
-  watchtower: { description: 'Auto-updater — checks for and applies Docker image updates' },
-  'media-ui': { description: 'Unified dashboard — this web interface' },
-};
-
-interface ServiceGroup {
-  label: string;
-  services: string[];
-}
-
-const SERVICE_GROUPS: ServiceGroup[] = [
-  { label: 'VPN Gateway', services: ['gluetun'] },
-  { label: 'Download Clients', services: ['qbittorrent', 'sabnzbd'] },
-  { label: 'Indexer & Media Managers', services: ['prowlarr', 'flaresolverr', 'sonarr', 'radarr', 'unpackerr'] },
-  { label: 'Media Companions', services: ['bazarr', 'seerr'] },
-  { label: 'Operations', services: ['recyclarr', 'watchtower'] },
-  { label: 'Web UI', services: ['media-ui'] },
-];
+// Descriptions, tips, groups and ports all come from the service manifest —
+// see lib/services.ts. This page used to hold its own copy of each, which is
+// how NetworkTopology ended up disagreeing with it about FlareSolverr.
+const SERVICE_CATALOG: Record<string, ServiceInfo> = Object.fromEntries(
+  SERVICES.map((svc) => [
+    svc.name,
+    {
+      description: svc.description,
+      tip: svc.tip,
+      port: svc.webUi?.defaultPort,
+      path: svc.webUi?.path,
+      https: svc.webUi?.https,
+    },
+  ]),
+);
 
 function getDockerBadge(svc: DockerServiceStatus) {
   if (svc.state === 'running' && svc.health === 'healthy') return <Badge variant="success">Healthy</Badge>;

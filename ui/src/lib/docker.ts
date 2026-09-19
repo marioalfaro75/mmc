@@ -2,6 +2,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { existsSync } from 'fs';
 import { formatRouteRow } from './proc-route';
+import { VALID_SERVICES, NETNS_SERVICES } from './services';
 
 const execFileAsync = promisify(execFile);
 
@@ -31,24 +32,12 @@ function composeArgs(): string[] {
   ];
 }
 
-export const VALID_SERVICES = new Set([
-  'gluetun',
-  'qbittorrent',
-  'sabnzbd',
-  'unpackerr',
-  'prowlarr',
-  'flaresolverr',
-  'sonarr',
-  'radarr',
-  'bazarr',
-  'seerr',
-  'recyclarr',
-  'watchtower',
-  'media-ui',
-]);
+// Both derived from the service manifest — see lib/services.ts for why
+// these are no longer written out by hand.
+export { VALID_SERVICES };
 
 // Services that share gluetun's network — cannot run without gluetun
-const VPN_DEPENDENT_SERVICES = ['qbittorrent', 'sabnzbd', 'flaresolverr'];
+const VPN_DEPENDENT_SERVICES = NETNS_SERVICES;
 
 export interface DockerServiceStatus {
   name: string;

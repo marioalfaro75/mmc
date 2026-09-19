@@ -540,13 +540,34 @@ Static checks run on every push and PR via `.github/workflows/ci.yml`:
 |-------|---------|-----------------|
 | Shell syntax | `bash -n scripts/*.sh` | Typos in deploy/init/backup scripts |
 | Compose render | `docker compose config -q` | Bad YAML or unresolved `${VAR}` references |
+| Manifest drift | `cd ui && npm test` | The service manifest disagreeing with `docker-compose.yml` |
 | TypeScript | `cd ui && npx tsc --noEmit` | Type errors in the UI |
 | Unit tests | `cd ui && npm test` | Schema integrity, shell-escape safety, mount-script input validation |
+| Browser tests | `cd ui && npm run test:e2e` | Settings, Updates and routing-evidence behaviour against a stubbed API |
 | systemd unit | `systemd-analyze verify scripts/mmc.service` | Malformed boot unit |
 
 Run the UI tests locally with `cd ui && npm test` (or `npm run test:watch`). The test suite lives in `ui/src/**/*.test.ts`.
 
-These are static + unit checks only. Full end-to-end testing (VPN kill-switch, NAS mounts, boot survival) needs to run against a real Ubuntu VM — see the deploy guide above.
+### The service manifest
+
+`ui/src/lib/services.ts` is the single declaration of what the stack contains. Each service states its name, label, group, description, image pin, update source, web UI port, network namespace, API-key location and whether the Network page monitors it — once. Everything else derives from it: the valid-service set, the VPN grouping, the System page catalogue, the Logs picker, the Updates tab's sources, the routing-evidence client list.
+
+**Adding a service is two files**: `docker-compose.yml`, then `services.ts`.
+
+`ui/src/lib/services.compose.test.ts` asserts the manifest against `docker compose config` — same service set, same `network_mode` namespaces, same `IMAGE_*` pins — plus that `.env.example` and the env schema agree, and that `media-ui` never acquires a hard dependency on something it monitors. It needs no Docker daemon (`compose config` is parsing, not orchestration) and runs in milliseconds as part of `npm test`.
+
+### Integration tests
+
+`scripts/integration-test.sh` boots a real stack — Prowlarr, Sonarr, Radarr, Bazarr, Seerr and a media-ui built from your working tree — seeds the `*arr` API keys the way `deploy.sh` does, and asserts the dashboard against it. No VPN credentials and no secrets are needed: the three services that share Gluetun's network namespace are deliberately not started (see the header of `docker-compose.ci.yml`).
+
+```bash
+./scripts/integration-test.sh          # up, assert, tear down (~10 min)
+./scripts/integration-test.sh --keep   # leave it running to poke at
+```
+
+An existing `.env` is moved aside and restored on exit. In CI it runs nightly and on PRs that touch image pins or the compose topology — the places where an upstream change can break the dashboard without any local code changing.
+
+These stop short of full end-to-end: VPN kill-switch behaviour, NAS mounts and boot survival still need a real Ubuntu VM — see the deploy guide above.
 
 ## Managing Containers
 

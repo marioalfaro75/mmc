@@ -11,6 +11,7 @@ import {
   Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { SERVICE_NAMES } from '@/lib/services';
 
 type Tab = 'services' | 'deploy';
 type LogSource = 'app' | 'docker';
@@ -72,11 +73,11 @@ export default function LogsPage() {
 /* ------------------------------------------------------------------ */
 /* Service Log Tab                                                     */
 /* ------------------------------------------------------------------ */
-const SERVICE_LIST = [
-  'sonarr', 'radarr', 'prowlarr', 'flaresolverr', 'bazarr',
-  'seerr', 'recyclarr', 'gluetun', 'qbittorrent', 'sabnzbd',
-  'unpackerr', 'watchtower', 'media-ui',
-];
+// Every service in the stack, in manifest order — see lib/services.ts. The
+// tab order now follows the path a download takes (tunnel, clients,
+// managers, companions, operations, dashboard) rather than the arbitrary
+// order this list had grown into.
+const SERVICE_LIST = SERVICE_NAMES;
 
 interface ServiceLogResponse {
   service: string;

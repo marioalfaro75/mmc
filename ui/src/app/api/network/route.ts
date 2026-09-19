@@ -4,18 +4,11 @@ import { lookupCountry } from '@/lib/api/geolocation';
 import { getTunnelStats, getContainerNetworkStats } from '@/lib/docker';
 import type { NetworkStats, VpnConnectionStatus } from '@/lib/types/common';
 import { requireAdmin } from '@/lib/auth';
+import { MONITORED_SERVICES } from '@/lib/services';
 
-const MONITORED_CONTAINERS = [
-  'gluetun',
-  'qbittorrent',
-  'sabnzbd',
-  'flaresolverr',
-  'sonarr',
-  'radarr',
-  'prowlarr',
-  'bazarr',
-  'media-ui',
-];
+// Declared per-service in the manifest (`monitored: true`) rather than as a
+// list here — see lib/services.ts.
+const MONITORED_CONTAINERS = MONITORED_SERVICES;
 
 export async function GET(request: Request) {
   const denied = requireAdmin(request);

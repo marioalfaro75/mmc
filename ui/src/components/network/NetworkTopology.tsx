@@ -15,8 +15,20 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/common/Badge';
 import type { NetworkStats, ServiceNetIO } from '@/lib/types/common';
+import { VPN_SERVICES as VPN_SERVICE_NAMES, getService } from '@/lib/services';
 
-const VPN_SERVICES = new Set(['gluetun', 'qbittorrent', 'sabnzbd']);
+/**
+ * Everything inside the tunnel: the gateway plus every container sharing its
+ * network namespace.
+ *
+ * This used to be a hand-written set that FlareSolverr was never added to,
+ * so the diagram filed it under "Docker Internal Network … uses your regular
+ * internet connection" — the opposite of the truth, since it runs in
+ * Gluetun's namespace and every request it makes exits through the VPN. It
+ * now comes from the service manifest, which is also what the Network page's
+ * routing evidence and the VPN settings blast radius derive from.
+ */
+const VPN_SERVICES = new Set(VPN_SERVICE_NAMES);
 
 interface Props {
   data: NetworkStats;
@@ -146,19 +158,25 @@ export function NetworkTopology({ data, tunnelRate }: Props) {
             <ArrowDown className="sm:hidden h-5 w-5 text-muted-foreground" />
           </div>
 
-          {/* Download clients */}
+          {/* Inside the tunnel — not only download clients: FlareSolverr
+              shares the namespace too, so its Cloudflare challenges are
+              solved from the VPN exit IP. */}
           <div className="flex gap-3">
-            {vpnServices.filter(s => s.name !== 'gluetun').map(s => (
-              <div key={s.name} className="flex flex-col items-center gap-1 rounded-lg border border-border bg-surface p-3 min-w-[100px]">
-                <Download className="h-5 w-5 text-muted-foreground" />
-                <span className="text-xs font-medium">{s.name}</span>
+            {vpnServices.filter(s => s.name !== 'gluetun').map(s => {
+              const def = getService(s.name);
+              const Icon = def?.group === 'Download Clients' ? Download : Shield;
+              return (
+              <div key={s.name} className="flex flex-col items-center gap-1 rounded-lg border border-border bg-surface p-3 min-w-[100px]" title={def?.description}>
+                <Icon className="h-5 w-5 text-muted-foreground" />
+                <span className="text-xs font-medium">{def?.label ?? s.name}</span>
                 <div className="text-[10px] text-muted-foreground text-center">
                   <span className="text-success">{s.rx}</span>
                   {' / '}
                   <span className="text-primary">{s.tx}</span>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
