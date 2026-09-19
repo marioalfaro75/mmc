@@ -26,7 +26,15 @@ DATA_ROOT="$CI_ROOT/data"
 BACKUP_DIR="$CI_ROOT/backups"
 ENV_FILE="$PROJECT_DIR/.env"
 ENV_BACKUP="$PROJECT_DIR/.env.integration-backup"
+# Declared as shell variables, then interpolated into the generated .env
+# below, so the readiness probes and the containers agree on one set of
+# ports rather than two lists that can drift.
 PORT_UI=3000
+PORT_SONARR=8989
+PORT_RADARR=7878
+PORT_PROWLARR=9696
+PORT_BAZARR=6767
+PORT_SEERR=5055
 UI="http://127.0.0.1:${PORT_UI}"
 
 COMPOSE_ARGS=(compose
@@ -117,11 +125,11 @@ FIREWALL_VPN_INPUT_PORTS=
 DOCKER_SUBNET=172.29.0.0/24
 LOCAL_SUBNET=192.168.1.0/24
 HOST_BIND=127.0.0.1
-PORT_SONARR=8989
-PORT_RADARR=7878
-PORT_PROWLARR=9696
-PORT_BAZARR=6767
-PORT_SEERR=5055
+PORT_SONARR=${PORT_SONARR}
+PORT_RADARR=${PORT_RADARR}
+PORT_PROWLARR=${PORT_PROWLARR}
+PORT_BAZARR=${PORT_BAZARR}
+PORT_SEERR=${PORT_SEERR}
 PORT_QBITTORRENT=8080
 PORT_SABNZBD=8081
 PORT_GLUETUN_CONTROL=8000
@@ -233,6 +241,42 @@ until curl -fsS "${UI}/api/health/live" >/dev/null 2>&1; do
   sleep 3; waited=$((waited + 3))
 done
 echo "  media-ui answering after ${waited}s"
+
+# ------------------------------------------------------------------
+say "Waiting for the backends to actually serve HTTP"
+# config.xml is NOT a readiness signal. The *arr apps write it early in
+# startup and then spend several more seconds running database
+# migrations before they bind their port — Sonarr and Radarr were still
+# migrating while the assertions ran, and /api/health correctly reported
+# them offline. Prowlarr happened to be quick enough to pass, which is
+# what a race looks like.
+#
+# deploy.sh solves the same problem with wait_for_port; it cannot be
+# sourced (its main dispatch runs at the bottom), so this mirrors it.
+#
+# Any HTTP status below 500 counts as up: the *arr apps answer 401
+# without an API key, and that still proves the listener is serving.
+wait_for_http() {
+    _name="$1"; _port="$2"; _waited=0
+    while : ; do
+        _code=$(curl -s -o /dev/null -m 3 -w '%{http_code}' "http://127.0.0.1:${_port}/" 2>/dev/null || echo 000)
+        if [ "$_code" -ge 200 ] 2>/dev/null && [ "$_code" -lt 500 ]; then
+            echo "  $_name answering on :$_port after ${_waited}s (HTTP $_code)"
+            return 0
+        fi
+        if [ "$_waited" -ge 180 ]; then
+            echo "$_name did not serve HTTP on :$_port after ${_waited}s (last: $_code)" >&2
+            return 1
+        fi
+        sleep 3; _waited=$((_waited + 3))
+    done
+}
+
+wait_for_http sonarr   "$PORT_SONARR"
+wait_for_http radarr   "$PORT_RADARR"
+wait_for_http prowlarr "$PORT_PROWLARR"
+wait_for_http bazarr   "$PORT_BAZARR"
+wait_for_http seerr    "$PORT_SEERR"
 
 # ------------------------------------------------------------------
 say "Running assertions"
