@@ -7,11 +7,11 @@ type Action = 'pause' | 'resume' | 'forceStart';
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { action } = (await request.json()) as { action: Action };
-    const id = params.id;
+    const { id } = await params;
 
     if (id.startsWith('torrent-')) {
       const hash = id.replace('torrent-', '');
@@ -46,10 +46,10 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const id = params.id;
+    const { id } = await params;
     const deleteFiles = request.nextUrl.searchParams.get('deleteFiles') === 'true';
 
     if (id.startsWith('torrent-')) {

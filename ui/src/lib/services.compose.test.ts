@@ -190,8 +190,8 @@ describe('env schema vs .env.example', () => {
   // Vars deploy.sh computes, or the shell provides.
   const EXEMPT = new Set(['HOST_PROJECT_DIR', 'HOME']);
 
-  // Plain `.match` with a lookahead rather than `matchAll` — the build
-  // targets ES5, where spreading an iterator needs downlevelIteration.
+  // Plain `.match` with a lookahead rather than `matchAll`: the keys are all
+  // this needs, and it avoids a capture-group indirection.
   const exampleKeys = (): string[] =>
     readFileSync(join(ROOT, '.env.example'), 'utf8').match(/^[A-Z][A-Z0-9_]*(?==)/gm) ?? [];
 
