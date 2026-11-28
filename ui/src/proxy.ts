@@ -188,10 +188,10 @@ const LOGIN_HTML = `<!DOCTYPE html>
 </html>`;
 
 /* ------------------------------------------------------------------ */
-/*  Middleware                                                          */
+/*  Proxy (formerly middleware; renamed in Next 16)                     */
 /* ------------------------------------------------------------------ */
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
 

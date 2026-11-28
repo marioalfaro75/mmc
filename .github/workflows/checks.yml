@@ -76,10 +76,10 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: TypeScript
         run: npx tsc --noEmit
-      # No lint step: ESLint has never been configured here, so `next lint`
-      # drops into an interactive setup prompt. Wiring it up means triaging
-      # whatever it flags across the existing codebase — worth doing, but not
-      # as a side effect of the release-pipeline change.
+      # No lint step: ESLint has never been configured here, and Next 16
+      # removed `next lint` outright. Wiring up the ESLint CLI means triaging
+      # whatever it flags across the existing codebase, which is its own
+      # change. `npm run typecheck` runs the same tsc check locally.
       - name: Unit tests
         # Includes services.compose.test.ts, which asserts the service
         # manifest against `docker compose config` — the runner image
